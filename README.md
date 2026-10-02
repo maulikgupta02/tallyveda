@@ -59,7 +59,7 @@ The report uses the standard credit terms (LTM, YoY, DSO, DPO, DIO, CCC, TNW, De
 ```bash
 # backend
 cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
-.venv/bin/uvicorn app.main:app --port 8000          # dashboard: http://localhost:8000/bank (admin/admin)
+TC_DEV=1 .venv/bin/uvicorn app.main:app --port 8000   # dashboard: http://localhost:8000/bank (admin/admin)
 
 # mock Tally (instead of real Tally)
 python3 dev/mock_tally.py --port 9000
@@ -96,7 +96,8 @@ This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PC
 | Variable | Default | |
 |---|---|---|
 | `TC_BANK_NAME` | Demo Bank | Shown to applicants in the connector |
-| `TC_ADMIN_USER` / `TC_ADMIN_PASSWORD` | admin / admin | Dashboard login. **Change these** |
+| `TC_ADMIN_USER` / `TC_ADMIN_PASSWORD` | none | Dashboard login. Required: the backend won't start without them |
+| `TC_DEV` | unset | `1` allows the `admin`/`admin` login for local runs. Never set it in production |
 | `TC_DATA_DIR` | `backend/data` | SQLite database and uploaded bundles |
 | `TC_CODE_TTL_HOURS` | 72 | How long a code stays valid |
 | `TC_DEFAULT_MONTHS` | 24 | Months of data requested |

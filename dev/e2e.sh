@@ -11,7 +11,7 @@ cleanup() { kill "${MOCK_PID:-}" "${API_PID:-}" 2>/dev/null || true; }
 trap cleanup EXIT
 
 python3 dev/mock_tally.py --port "$TALLY_PORT" >"$WORK/mock.log" 2>&1 & MOCK_PID=$!
-(cd backend && TC_DATA_DIR="$WORK/data" exec .venv/bin/uvicorn app.main:app --port "$API_PORT" >"$WORK/api.log" 2>&1) & API_PID=$!
+(cd backend && TC_DEV=1 TC_DATA_DIR="$WORK/data" exec .venv/bin/uvicorn app.main:app --port "$API_PORT" >"$WORK/api.log" 2>&1) & API_PID=$!
 (cd connector && go build -o "$WORK/connector" .)
 
 for _ in $(seq 1 50); do

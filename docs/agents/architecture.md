@@ -137,9 +137,9 @@ this repo). PyPI/Go-stdlib dependencies only (`fastapi`, `uvicorn`, `jinja2`,
 `TC_DEFAULT_MONTHS`, `TC_MAX_UPLOAD_MB`, `TC_CONNECTOR_EXE`, `TC_MONITOR_DAY`,
 `TC_MONITOR_OVERDUE_DAYS`. Connector-side env/flags (not server config, but worth knowing):
 `TC_TALLY_URL`/`-tally`, `TC_SERVER`/`-server`, `TC_HOME` (test/dev override for where
-monitoring settings are persisted, default `%AppData%\TallyConnector`). All have defaults;
-none are secrets files or `.env`-loaded — they're plain OS environment variables, and
-`TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` default to `admin`/`admin` if unset (see risks.md).
+monitoring settings are persisted, default `%AppData%\TallyConnector`). None are secrets files or `.env`-loaded — they're plain OS environment variables. All have
+defaults except `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`: `config.py` raises at import if either
+is unset, unless `TC_DEV=1` (which falls back to `admin`/`admin` for local runs and tests).
 
 ## Entry points
 - Backend: `uvicorn app.main:app` (from `backend/`), app object is `app.main:app`.

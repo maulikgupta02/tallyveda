@@ -2,7 +2,11 @@
 
 import gzip
 import json
+import os
+import subprocess
+import sys
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -91,3 +95,13 @@ def test_due_schedule():
     assert not store.monitoring_due(early, utc(2026, 9, 3))  # 33 days, but before the 5th
     assert store.monitoring_due(early | {"force_refresh": 1}, utc(2026, 8, 2))
     assert not store.monitoring_due(app | {"monitoring_status": "stopped_by_bank"}, utc(2026, 12, 1))
+
+
+def test_login_required_outside_dev():
+    backend = Path(__file__).resolve().parent.parent
+    env = {k: v for k, v in os.environ.items() if not k.startswith("TC_")}
+    run = lambda extra: subprocess.run([sys.executable, "-c", "import app.config"], cwd=backend,
+                                       env=env | extra, capture_output=True, text=True)
+    assert "TC_ADMIN_PASSWORD" in run({}).stderr
+    assert run({"TC_ADMIN_USER": "bank", "TC_ADMIN_PASSWORD": "s3cret"}).returncode == 0
+    assert run({"TC_DEV": "1"}).returncode == 0

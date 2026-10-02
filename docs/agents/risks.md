@@ -14,11 +14,10 @@
   against real Windows 10/11** ("Validate the Windows scheduled task on Windows 10 and 11 as
   a standard (non-admin) user... This path can't be tested on macOS"). Any change here is
   unverifiable in this sandbox; treat it as higher-risk than the rest of the Go code.
-- **Default credentials**: `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` default to `admin`/`admin`
-  (`backend/app/config.py`) if the env vars aren't set. The README flags this under "Before a
-  pilot" as something that must change, but the code has no safeguard (no startup warning, no
-  refusal to run with defaults in a non-dev context). Don't treat a repo/install using the
-  defaults as production-safe.
+- **Dashboard login**: `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` are required. `config.py` refuses
+  to start without them, and only `TC_DEV=1` (tests, `dev/e2e.sh`, local runs) allows
+  `admin`/`admin`. Never set `TC_DEV` on a hosted deployment, and don't reintroduce a
+  fallback. It's still one shared Basic-auth login, not per-bank accounts (see below).
 - **`connector/dist/`** — prebuilt `.exe` binaries are committed-but-gitignored (per the task
   brief and `.gitignore`). Never rebuild into this path casually; a verification build should
   go to a throwaway path outside the repo (this onboarding pass did that).

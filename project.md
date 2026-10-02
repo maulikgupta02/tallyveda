@@ -26,7 +26,7 @@ except where noted.
 cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 
 # backend — run (verified: starts, /healthz returns {"ok": true})
-.venv/bin/uvicorn app.main:app --port 8000        # dashboard at /bank, admin/admin by default
+TC_DEV=1 .venv/bin/uvicorn app.main:app --port 8000   # dashboard at /bank, admin/admin (dev only)
 
 # backend — tests (verified: 14 passed)
 .venv/bin/python -m pytest -q
@@ -123,7 +123,7 @@ dev/
   `architecture.md` for the full list.
 - SQLite schema evolves via an explicit `MIGRATIONS` dict in `store.py`, applied idempotently
   on every connection — no separate migration tool/files.
-- Security-sensitive defaults (`admin`/`admin`, 72h codes, 300MB upload cap) are documented
+- Security-sensitive defaults (72h codes, 300MB upload cap) are documented
   inline in `README.md` under "Before a pilot" — read that section before any production use.
 
 ## Docs
