@@ -40,7 +40,7 @@ Logs go to `%AppData%\TallyConnector\connector.log`. On Windows the exe is a GUI
 
 ### Linux / cloud installs (no scheduler)
 
-`schedule_other.go` is a no-op on anything but Windows (there is no portable "Task Scheduler" API), so a connector running on a Linux cloud host (e.g. an AWS instance reaching Tally over the network via `-tally`/`TC_TALLY_URL`) needs its own scheduler for `-monitor-run`. `build.sh` produces `dist/tallyconnector-linux-amd64` for this alongside the Windows exes. Two ready-to-use options:
+`schedule_other.go` is a no-op on anything but Windows (there is no portable "Task Scheduler" API), so a connector running on a Linux cloud host (e.g. an AWS instance reaching Tally over the network via `-tally`/`TC_TALLY_URL`) needs its own scheduler for `-monitor-run`. `build.sh` produces `dist/tallyconnector-linux-amd64` for this alongside the Windows exe. Two ready-to-use options:
 
 **cron** — add a line like this to the service account's crontab (`crontab -e`), running a few times a day to match the Windows cadence:
 ```
@@ -122,7 +122,7 @@ TallyConnector.exe -monitor-stop                                 # withdraw moni
 cd connector && SERVER=https://tally.yourbank.in VERSION=1.0.0 ./build.sh
 ```
 
-This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PCs, plus `dist/tallyconnector-linux-amd64` for Linux cloud installs (see "Linux / cloud installs" above). Before giving the Windows exe to applicants, sign it with the bank's code-signing certificate (`signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f bank.pfx TallyConnector.exe`). Without a signature, Windows SmartScreen and antivirus tools will warn about an unsigned download.
+This produces one `dist/TallyConnector.exe` that runs on every Windows PC (a 32-bit build, so it works on 32-bit, 64-bit and ARM Windows alike), plus `dist/tallyconnector-linux-amd64` for Linux cloud installs (see "Linux / cloud installs" above). Before giving the Windows exe to applicants, sign it with the bank's code-signing certificate (`signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f bank.pfx TallyConnector.exe`). Without a signature, Windows SmartScreen and antivirus tools will warn about an unsigned download.
 
 ## Backend configuration (environment variables)
 
