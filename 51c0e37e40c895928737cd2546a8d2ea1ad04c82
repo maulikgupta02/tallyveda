@@ -1,0 +1,75 @@
+backend/app/templates/msme.html
+  d5cdac50ea5e4f20 1-88
+backend/app/config.py
+  d5cdac50ea5e4f20 6-8,10-11
+  ba08dd2afa38f3cf 9
+backend/app/templates/msme_login.html
+  d5cdac50ea5e4f20 1-41
+backend/app/templates/application.html
+  d5cdac50ea5e4f20 72-80
+backend/app/store.py
+  d5cdac50ea5e4f20 1-10,33-46,49,83-85,112-114,144-164,171-244,250,255-257,271-274,277-280,283,286
+project.md
+  d5cdac50ea5e4f20 31,80-91,101,103-104,109
+README.md
+  d5cdac50ea5e4f20 99-100,111-124
+backend/app/manage.py
+  d5cdac50ea5e4f20 1-54
+design.md
+  d5cdac50ea5e4f20 5,10-14,17,21,23,26,93-95
+docs/agents/architecture.md
+  d5cdac50ea5e4f20 18,22-31,39-47,132-136,162-163
+backend/app/main.py
+  d5cdac50ea5e4f20 10-11,15,17-20,62-83,85,261-262,279,281,287-290,294-295,301-302,308-309,314-321,323,325-326,332-333,337-338,343-344,349-350,355-356,360-371,374-380,388-400,406-408,410,415-416,423-425,463-464,469-470,474-475,483-484,486
+backend/tests/test_monitoring.py
+  d5cdac50ea5e4f20 6,101-137
+  1eb726b0b7aadb53 138
+docs/agents/risks.md
+  d5cdac50ea5e4f20 20-25,79-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "51c0e37e40c895928737cd2546a8d2ea1ad04c82",
+  "prompts": {
+    "1eb726b0b7aadb53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f9130fb-99be-40c4-84b1-3fa41f9541db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "ba08dd2afa38f3cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bddbbea-b05c-4c03-bb64-2675ba6b7611",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "d5cdac50ea5e4f20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6378ab4d-e21b-456f-b058-3688c695fcfa",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 581,
+      "overriden_lines": 0
+    }
+  }
+}
