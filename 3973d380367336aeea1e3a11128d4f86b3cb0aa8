@@ -1,0 +1,29 @@
+backend/app/config.py
+  1eb726b0b7aadb53 6-12
+backend/tests/conftest.py
+  1eb726b0b7aadb53 1-3
+backend/tests/test_monitoring.py
+  1eb726b0b7aadb53 5-7,9,98-107
+docs/agents/risks.md
+  1eb726b0b7aadb53 17-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "3973d380367336aeea1e3a11128d4f86b3cb0aa8",
+  "prompts": {
+    "1eb726b0b7aadb53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f9130fb-99be-40c4-84b1-3fa41f9541db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 7,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    }
+  }
+}
