@@ -1,0 +1,23 @@
+# Render Blueprint for the backend — see README.md "Deploying (Render + Neon)".
+# The connector (Go, runs on the applicant's PC) isn't deployed here.
+services:
+  - type: web
+    name: tally-connector-backend
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        sync: false
+      - key: TC_ADMIN_USER
+        sync: false
+      - key: TC_ADMIN_PASSWORD
+        generateValue: true
+      - key: TC_BANK_NAME
+        value: Demo Bank

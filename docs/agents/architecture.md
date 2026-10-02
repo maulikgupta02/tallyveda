@@ -31,16 +31,17 @@ itself). They never share code or a process.
   - Bank JSON API (`/api/bank/applications...`) — same bank Basic auth, for LOS integration.
   - Also owns upload-size/gzip-bomb guarding (`_read_bundle`, `_gunzip_json`) and a simple
     in-memory per-IP throttle (`_failed_attempts`, 20/hour) on code/token checks.
-- **`store.py`** — owns all persistence (SQLite, stdlib `sqlite3`, one file at
-  `config.DATA_DIR/tally_connector.db`). No ORM; raw SQL with `conn.row_factory = sqlite3.Row`.
-  Schema is created and migrated idempotently on every connection (`SCHEMA` + `MIGRATIONS`
-  dict — new columns are added via `ALTER TABLE` if missing, never a separate migration
-  runner/tool). Owns code generation/expiry, monitoring-token hashing (SHA-256, token itself
-  is returned once and never stored), the due/overdue date math, and multi-tenancy: a
-  `tenants` table (one row per bank) and a `users` table (role `bank` — sees every
-  application for its tenant — or `msme` — sees only its one `application_id`; passwords are
-  salted PBKDF2-SHA256, stdlib only, never stored or logged in the clear). Every
-  `applications` row carries a `tenant_id`.
+- **`store.py`** — owns all persistence: SQLite (stdlib `sqlite3`, one file at
+  `config.DATA_DIR/tally_connector.db`) by default, or Postgres (`psycopg[binary]`) when
+  `DATABASE_URL` is set — see "Storage backend" below. No ORM; raw SQL, dict-like rows on
+  both engines. Schema is created and migrated idempotently on every connection (`SCHEMA` +
+  `MIGRATIONS` dict — new columns are added via `ALTER TABLE` if missing, never a separate
+  migration runner/tool). Owns code generation/expiry, monitoring-token hashing (SHA-256,
+  token itself is returned once and never stored), the due/overdue date math, and
+  multi-tenancy: a `tenants` table (one row per bank) and a `users` table (role `bank` — sees
+  every application for its tenant — or `msme` — sees only its one `application_id`;
+  passwords are salted PBKDF2-SHA256, stdlib only, never stored or logged in the clear).
+  Every `applications` row carries a `tenant_id`.
 - **`manage.py`** — the only tenant/user provisioning tool (no admin web UI yet):
   `python -m app.manage create-tenant "Bank name"` / `create-bank-user <tenant_id> <username>`.
   `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` only seed the very first tenant + bank user, the first
@@ -162,7 +163,8 @@ every amount is debit-positive** (Tally's XML is the opposite sign; the connecto
 see the doc comment at the top of `bundle.go`). The backend only ever receives this shape; it
 never talks to Tally directly.
 
-**SQLite schema** (`backend/app/store.py`, `backend/data/tally_connector.db` by default):
+**Schema** (`backend/app/store.py`; SQLite at `backend/data/tally_connector.db` by default, or
+Postgres when `DATABASE_URL` is set — see "Storage backend" below):
 - `tenants` — one row per bank: `id`, `name`, `created_at`.
 - `users` — one row per login: `tenant_id`, `username` (unique), `password_hash` (salted
   PBKDF2-SHA256), `role` (`bank` | `msme`), `application_id` (set only for `msme` — the one
@@ -173,24 +175,55 @@ never talks to Tally directly.
   started/last-seen timestamps, a manual `force_refresh` flag, pointer to the latest report).
 - `reports` — one row per upload (initial or refresh): status (processing | ready | failed),
   computed `indicators_json`/`snapshot_json`/`alerts_json`, `high_flags` count. Report
-  artifacts themselves (the gzip bundle, `report.json`, `report.html`) live on disk under
-  `DATA_DIR/applications/<app_id>/reports/<report_id>/`, not in SQLite. `store.latest_ready_report`/
+  artifacts themselves (the gzip bundle, `report.json`, `report.html`) are not in this table —
+  see "Storage backend" below for where they live. `store.latest_ready_report`/
   `store.load_report_json`/`store.applications_with_latest_report` read the full report dict
-  (metrics, indicators, flags, alerts) back off disk for `report/dashboard.py`'s view-models —
-  the DB columns alone aren't enough for those, they only carry the indicator/snapshot summary.
+  (metrics, indicators, flags, alerts) back for `report/dashboard.py`'s view-models — the DB
+  columns alone aren't enough for those, they only carry the indicator/snapshot summary.
+- `report_files` — only populated when `DATABASE_URL` is set: `application_id`, `report_id`,
+  `name` (`bundle.json.gz` | `report.json` | `report.html`), `data` (bytea), `created_at`,
+  primary key `(report_id, name)`. Table always exists (it's in `SCHEMA`, both engines) but is
+  simply unused under SQLite, where these files go to disk instead.
 
 No other datastore, queue, or cache exists in this repo.
 
+## Storage backend
+`store.IS_POSTGRES` (`DATABASE_URL` starts with `postgres://`/`postgresql://`) picks the
+engine; every function in `store.py` runs the same SQL either way except two spots:
+- `_connect()` opens a `sqlite3.Connection` or wraps a `psycopg.Connection` in `_PGConnection`,
+  a small shim that translates `?` placeholders to `%s` and gives both engines dict-like rows
+  (`sqlite3.Row` vs. psycopg's `dict_row`), so every other query in the file is backend-agnostic.
+  `psycopg.connect(..., prepare_threshold=None)` disables server-side prepared statements —
+  Neon's pooled endpoint is PgBouncer in transaction mode, which can hand a later statement on
+  the same logical connection to a different backend process, so nothing here relies on
+  session state (`SET`, temp tables, advisory locks, prepared statements) surviving between
+  statements. Each `db()` call opens and closes its own connection (no pool) — simplest way to
+  reconnect cleanly after Neon's free tier autosuspends on idle, and already how the SQLite
+  path has always worked.
+- `save_report_file`/`load_report_file` write/read one per-report artifact: a disk file under
+  `DATA_DIR/applications/<app_id>/reports/<report_id>/<name>` for SQLite, a `report_files` row
+  for Postgres. `process_report`/`main.py`'s upload and download routes call these instead of
+  touching paths directly, so neither knows which backend is active.
+
+`SCHEMA`/`MIGRATIONS` themselves are plain SQL (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ...
+ADD COLUMN`, `CREATE INDEX IF NOT EXISTS`) that Postgres accepts unchanged; the only
+per-engine piece there is `_existing_columns` (`PRAGMA table_info` vs. a
+`information_schema.columns` query) to decide which `ALTER TABLE`s are still needed.
+
 ## External services / SDKs
-None. No cloud SDK, no third-party API, no payment/messaging integration. The only network
-calls are: connector ↔ Tally's local XML/HTTP port, and connector ↔ bank backend over
-plain HTTP(S) (the backend's own TLS termination is the bank's responsibility, not code in
-this repo). PyPI/Go-stdlib dependencies only (`fastapi`, `uvicorn`, `jinja2`,
-`python-multipart`, `pytest`, `httpx` for the backend; zero third-party Go modules).
+Postgres (optional, via `psycopg[binary]`, when `DATABASE_URL` is set — see above; tested
+against a local Postgres cluster and against Neon's pooled endpoint). Otherwise none: no cloud
+SDK, no third-party API, no payment/messaging integration. The only network calls are:
+connector ↔ Tally's local XML/HTTP port, and connector ↔ bank backend over plain HTTP(S) (TLS
+termination in front of the backend — Render's own TLS when hosted there, otherwise the
+bank's responsibility). PyPI/Go-stdlib dependencies only (`fastapi`, `uvicorn`, `jinja2`,
+`python-multipart`, `psycopg[binary]`, `pytest`, `httpx` for the backend; zero third-party Go
+modules).
 
 ## Config (names only — see `backend/app/config.py` and `README.md` "Backend configuration")
-`TC_BANK_NAME`, `TC_ADMIN_USER`, `TC_ADMIN_PASSWORD`, `TC_DATA_DIR`, `TC_CODE_TTL_HOURS`,
-`TC_DEFAULT_MONTHS`, `TC_MAX_UPLOAD_MB`, `TC_CONNECTOR_EXE`, `TC_MONITOR_OVERDUE_DAYS`.
+`TC_BANK_NAME`, `TC_ADMIN_USER`, `TC_ADMIN_PASSWORD`, `TC_DATA_DIR`, `DATABASE_URL`,
+`TC_CODE_TTL_HOURS`, `TC_DEFAULT_MONTHS`, `TC_MAX_UPLOAD_MB`, `TC_CONNECTOR_EXE`,
+`TC_CONNECTOR_URL`, `TC_MONITOR_OVERDUE_DAYS`.
 Connector-side env/flags (not server config, but worth knowing):
 `TC_TALLY_URL`/`-tally`, `TC_SERVER`/`-server`, `TC_HOME` (test/dev override for where
 monitoring settings are persisted, default `%AppData%\TallyConnector`). None are secrets files or `.env`-loaded — they're plain OS environment variables. All have

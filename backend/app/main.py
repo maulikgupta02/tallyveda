@@ -192,7 +192,7 @@ def _gunzip_json(raw: bytes) -> dict:
 def _store_upload(app_id: str, source: str, raw_gz: bytes, bundle: dict) -> str:
     company = (bundle.get("company") or {}).get("name", "")
     report_id = store.create_report(app_id, source, company)
-    (store.report_dir(app_id, report_id) / "bundle.json.gz").write_bytes(raw_gz)
+    store.save_report_file(app_id, report_id, "bundle.json.gz", raw_gz)
     return report_id
 
 
@@ -249,18 +249,18 @@ def monitor_stop(request: Request):
 
 def process_report(report_id: str) -> None:
     r = store.get_report(report_id)
-    d = store.report_dir(r["application_id"], report_id)
+    app_id = r["application_id"]
     try:
-        bundle = json.loads(gzip.decompress((d / "bundle.json.gz").read_bytes()))
+        bundle = json.loads(gzip.decompress(store.load_report_file(app_id, report_id, "bundle.json.gz")))
         report = build_report(bundle)
         snap = snapshot(report)
-        prev = store.previous_ready_report(r["application_id"], r["created_at"])
+        prev = store.previous_ready_report(app_id, r["created_at"])
         alerts = compare(prev["indicators"], prev["snapshot"] or {}, report["indicators"], snap) if prev else []
         report["alerts"] = alerts
         report["report_id"] = report_id
         report["previous_report_at"] = prev["created_at"] if prev else None
-        (d / "report.json").write_text(report_json(report))
-        (d / "report.html").write_text(render_html(report, store.get_application(r["application_id"])))
+        store.save_report_file(app_id, report_id, "report.json", report_json(report).encode())
+        store.save_report_file(app_id, report_id, "report.html", render_html(report, store.get_application(app_id)).encode())
         store.finish_report(report_id, report["period"]["to"].isoformat(), report["indicators"], snap,
                             report["summary"]["high_flags"], alerts)
     except Exception as e:  # keep the upload; the bank can recompute after a fix
@@ -300,7 +300,7 @@ def dashboard(request: Request, filter: str = "", user: dict = Depends(bank_user
         bank_name=config.BANK_NAME,
         default_months=config.DEFAULT_MONTHS,
         monitoring_labels=MONITORING_LABELS,
-        download_url=str(request.base_url) + "download" if config.CONNECTOR_EXE else None,
+        download_url=str(request.base_url) + "download" if (config.CONNECTOR_EXE or config.CONNECTOR_URL) else None,
     )
 
 
@@ -478,10 +478,10 @@ def _report_file(report_id: str, name: str, media_type: str):
     r = store.get_report(report_id)
     if not r:
         raise HTTPException(404, "No such report")
-    path = store.report_dir(r["application_id"], report_id) / name
-    if not path.exists():
+    data = store.load_report_file(r["application_id"], report_id, name)
+    if data is None:
         raise HTTPException(404, f"Report not available (status: {r['status']})")
-    return Response(path.read_bytes(), media_type=media_type)
+    return Response(data, media_type=media_type)
 
 
 # --------------------------------------------------------------- bank JSON API
@@ -546,6 +546,8 @@ def api_refresh(app_id: str, user: dict = Depends(bank_user)):
 
 @app.get("/download", include_in_schema=False)
 def download():
+    if config.CONNECTOR_URL:
+        return RedirectResponse(config.CONNECTOR_URL)
     if not config.CONNECTOR_EXE or not Path(config.CONNECTOR_EXE).exists():
         raise HTTPException(404, "Connector download not configured")
     return FileResponse(config.CONNECTOR_EXE, filename="TallyConnector.exe")

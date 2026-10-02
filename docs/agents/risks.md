@@ -70,9 +70,33 @@
   never persisted. One-time codes are stored in plaintext in SQLite but are short-lived
   (`TC_CODE_TTL_HOURS`, default 72h) and single-use (cleared on first successful upload).
 - Uploaded Tally bundles (real financial data: ledgers, vouchers, balances) are stored
-  unencrypted on disk under `DATA_DIR/applications/...` and in the `reports` table. The
-  README's "Before a pilot" section flags this explicitly ("encrypt bundles at rest, set a
-  retention and deletion policy, audit log") — none of that is implemented yet.
+  unencrypted at rest — on disk under `DATA_DIR/applications/...` (SQLite) or in the
+  `report_files` table (Postgres) — and in the `reports` table either way. The README's
+  "Before a pilot" section flags this explicitly ("encrypt bundles at rest, set a retention
+  and deletion policy, audit log") — none of that is implemented yet, on either backend.
+
+## Free-tier hosting (Render + Neon)
+- **Render's free web service disk is ephemeral** — wiped on every restart, redeploy or
+  wake-from-sleep. `DATABASE_URL` (Postgres) must be set there; running it with the default
+  SQLite/`TC_DATA_DIR` setup would silently lose every application, report and uploaded
+  bundle the first time the instance restarts. `render.yaml` doesn't set `DATABASE_URL` for
+  you (`sync: false`) precisely so this can't be deployed by accident without it.
+- **Render's free instance sleeps after ~15 minutes idle**, and the first request afterwards
+  can take about a minute to wake it. The connector's HTTP client (`connector/internal/upload`)
+  already budgets 15 minutes per request and retries a connection failure (not just a slow
+  response), so this is expected to self-recover rather than fail outright — but it's only
+  been exercised against a local mock of a cold connection refusal, never a real Render sleep
+  cycle, so treat it as logically-sound-but-unverified against the real platform.
+- **Neon's free tier caps total storage at 0.5 GB** across all of a project's branches. Tally
+  bundles can be large (gzip helps, but a company with years of vouchers still adds up); there
+  is no pruning/retention policy here (see above), so a free Neon project could fill up with
+  no warning from this code — worth monitoring manually before relying on it past a pilot.
+- **The Postgres path has been run once against Neon's real pooled endpoint** (a throwaway
+  schema, dropped afterward — never against `public`), confirming `prepare_threshold=None`
+  and the no-session-state query style work through PgBouncer transaction pooling. It has
+  **not** been run against Neon over any real length of time (autosuspend/resume under a
+  realistic request pattern, the 0.5 GB cap actually being hit) — treat that as unverified
+  until it's been live for a while.
 
 ## Gaps against the product direction
 The owner hosts the backend for many banks and MSMEs, with daily refreshes and an MSME-facing

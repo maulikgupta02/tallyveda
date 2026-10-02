@@ -47,6 +47,8 @@ type Backend struct {
 }
 
 func New(url string) *Backend {
+	// 15 minutes comfortably covers a free-tier backend's cold start (sleeps after
+	// 15 min idle, ~1 minute to wake) plus a large upload's own processing time.
 	return &Backend{URL: strings.TrimRight(url, "/"), HTTP: &http.Client{Timeout: 15 * time.Minute}}
 }
 
@@ -81,24 +83,45 @@ func bearer(token string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + token}
 }
 
+// call makes one small JSON request (verify/monitor status/monitor stop),
+// retrying on a connection failure — the bank's backend may be a free-tier
+// instance asleep after 15 minutes idle, so the very first request after a
+// gap can hit "connection refused" while it wakes up, not just be slow.
 func (b *Backend) call(ctx context.Context, path string, headers map[string]string, body []byte, out any) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, b.URL+path, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt*attempt) * 3 * time.Second):
+			}
+		}
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, b.URL+path, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := b.HTTP.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("could not reach the bank's server (%s). Check your internet connection: %v", b.URL, err)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			lastErr = apiError(resp)
+			resp.Body.Close()
+			if resp.StatusCode < 500 {
+				return lastErr // not retryable (bad code, unauthorised…)
+			}
+			continue
+		}
+		defer resp.Body.Close()
+		if out == nil {
+			return nil
+		}
+		return json.NewDecoder(resp.Body).Decode(out)
 	}
-	resp, err := b.HTTP.Do(req)
-	if err != nil {
-		return fmt.Errorf("could not reach the bank's server (%s). Check your internet connection: %v", b.URL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return apiError(resp)
-	}
-	if out == nil {
-		return nil
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return lastErr
 }
 
 // upload gzips the bundle and posts it, retrying transient failures.

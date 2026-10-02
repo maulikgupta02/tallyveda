@@ -8,7 +8,10 @@ is disbursed.
 
 ## Stack
 - **Backend**: Python 3.12, FastAPI + Jinja2 (server-rendered HTML, no JS framework),
-  SQLite (stdlib `sqlite3`, no ORM), `uvicorn`. Lives in `backend/`.
+  SQLite (stdlib `sqlite3`, no ORM) by default, or Postgres (via `psycopg[binary]`, no ORM)
+  when `DATABASE_URL` is set — the only durable storage on a Render free web service, whose
+  disk is ephemeral. `uvicorn`. Lives in `backend/`. See "Deploying" in `README.md` and
+  `docs/agents/architecture.md`'s "Storage backend" section.
 - **Connector**: Go 1.22, standard library only (no third-party deps — `connector/go.mod`
   has no `require` block). Builds to a single static Windows `.exe`. Lives in `connector/`.
 - **Dev tooling**: `dev/mock_tally.py` (fake TallyPrime XML/HTTP server with a synthetic
@@ -30,6 +33,10 @@ TC_DEV=1 .venv/bin/uvicorn app.main:app --port 8000   # dashboard at /bank, admi
 
 # backend — tests (verified: 17 passed)
 .venv/bin/python -m pytest -q
+
+# backend — tests against Postgres instead of SQLite (verified: 40/40 passed against a
+# throwaway local cluster; same suite, no code path is SQLite-specific)
+DATABASE_URL=postgresql://user@host:port/dbname .venv/bin/python -m pytest -q
 
 # connector — vet/tests (verified: go vet clean, `go test ./...` passed — extract and tally packages have tests)
 cd connector && go vet ./... && go test ./...
@@ -60,9 +67,12 @@ script itself as unverified here; re-run it on a machine without that intercepti
 relying on it.
 
 No database migrations beyond `backend/app/store.py`'s own `SCHEMA`/`MIGRATIONS` (applied
-automatically on every connection — see `architecture.md`). No separate build step for the
-backend. No deploy tooling is checked in yet. The README still says the bank runs the
-backend behind its own TLS, but that's out of date — see "Product direction" below.
+automatically on every connection, against SQLite or Postgres — see `architecture.md`). No
+separate build step for the backend. **Deploy tooling now exists**: `render.yaml` at the repo
+root (Render Blueprint, free web service) plus a Neon free Postgres database — see README's
+"Deploying (Render + Neon)". The README still says the bank runs the backend behind its own
+TLS; that's out of date for the hosted path (Render terminates TLS) but still applies if a
+bank runs the backend itself — see "Product direction" below.
 
 ## Product direction (owner, 2026-10-02)
 - **We host the backend** (not the bank). Banks and MSMEs both use it as a hosted service.

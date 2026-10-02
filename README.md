@@ -131,14 +131,55 @@ This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PC
 | `TC_BANK_NAME` | Demo Bank | Shown to applicants in the connector |
 | `TC_ADMIN_USER` / `TC_ADMIN_PASSWORD` | none | Required (backend won't start without them). Seed the first bank tenant + its first bank user on first startup of an empty database only; every login after that is a real per-tenant account in `store.py`'s `users` table — see "Accounts" below |
 | `TC_DEV` | unset | `1` allows the `admin`/`admin` seed login for local runs. Never set it in production |
-| `TC_DATA_DIR` | `backend/data` | SQLite database and uploaded bundles |
+| `TC_DATA_DIR` | `backend/data` | SQLite database and uploaded bundles — ignored when `DATABASE_URL` is set |
+| `DATABASE_URL` | unset | `postgres://...`/`postgresql://...` — when set, everything (including per-report files) is stored in Postgres instead of SQLite/`TC_DATA_DIR`. See "Deploying (Render + Neon)" below |
 | `TC_CODE_TTL_HOURS` | 72 | How long a code stays valid |
 | `TC_DEFAULT_MONTHS` | 24 | Months of data requested |
 | `TC_MAX_UPLOAD_MB` | 300 | Maximum size of a compressed upload |
-| `TC_CONNECTOR_EXE` | – | Path to the signed exe, served at `/download` |
+| `TC_CONNECTOR_EXE` | – | Path to the signed exe on local disk, served at `/download` |
+| `TC_CONNECTOR_URL` | – | If set, `/download` redirects here instead (e.g. a GitHub Releases asset) — takes priority over `TC_CONNECTOR_EXE`, and is the only option that works on Render's ephemeral filesystem |
 | `TC_MONITOR_OVERDUE_DAYS` | 3 | Monitored clients with no data for longer are shown as overdue |
 
 Run the backend behind TLS (nginx, a load balancer, or similar). The connector sends financial data, so the server URL must be `https://` in production.
+
+## Deploying (Render + Neon)
+
+The backend can run on Render's **free** web service plan, with a Neon **free** Postgres
+database as the only durable storage (Render's own disk is ephemeral — it's wiped on every
+restart/redeploy/sleep, so `DATABASE_URL` must be set or every application, report and
+uploaded bundle is lost the first time the instance restarts).
+
+1. **Create a Neon project** (free tier) and copy its pooled connection string — it already
+   includes `sslmode=require&channel_binding=require` and looks like
+   `postgresql://user:pass@ep-xxxx-pooler.<region>.aws.neon.tech/dbname?sslmode=require...`.
+   Don't strip the `-pooler` or the query string.
+2. **Create a Render Blueprint** from this repo (`render.yaml` at the repo root, `rootDir:
+   backend`) — one free web service, `uvicorn app.main:app --host 0.0.0.0 --port $PORT`,
+   health check `/healthz`, region `singapore`, Python pinned via `PYTHON_VERSION`.
+3. **Set the env vars Render asks for** (the blueprint declares them but leaves the values to
+   you, since they're secrets):
+   - `DATABASE_URL` — Neon's pooled connection string from step 1.
+   - `TC_ADMIN_USER` — the first bank's admin username.
+   - `TC_ADMIN_PASSWORD` — Render can generate this one for you (`generateValue: true` in the
+     blueprint); copy it from the Render dashboard after the first deploy.
+   - `TC_BANK_NAME` — defaults to "Demo Bank" in the blueprint; change it to the real bank name.
+   - Never set `TC_DEV` here — it would allow an `admin`/`admin` login in production.
+4. **Deploy.** The backend creates its schema (tables, including the `report_files` table
+   used only when `DATABASE_URL` is set) on first startup, same as SQLite's `MIGRATIONS`
+   locally — no separate migration step to run.
+5. **The connector download** (`/download`) has nothing to serve from disk on Render (the
+   `.exe` isn't in the image and nothing written at runtime survives a restart). Set
+   `TC_CONNECTOR_URL` to a GitHub Releases asset URL for the built exe instead, or leave both
+   `TC_CONNECTOR_EXE`/`TC_CONNECTOR_URL` unset and distribute the exe to applicants directly.
+
+**Free-tier caveats** (see `docs/agents/risks.md` for the full list): Render's free instance
+sleeps after 15 minutes idle and the next request can take about a minute to wake it — the
+connector's HTTP client already allows up to 15 minutes per request and retries a connection
+failure, so this doesn't normally surface as an error, just a slow first upload/monitoring
+check after a gap. Neon's free tier caps storage at 0.5 GB total across all projects — bundles
+are real financial data (ledgers, vouchers, balances) and are stored unencrypted at rest, same
+as the local SQLite/disk setup; see "Before a pilot" above before using either for real
+customer data.
 
 ## Accounts
 

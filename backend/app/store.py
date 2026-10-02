@@ -1,5 +1,7 @@
-"""SQLite store for tenants, users, loan applications, link codes, monitoring
-and reports.
+"""Store for tenants, users, loan applications, link codes, monitoring and
+reports — SQLite by default, or Postgres when `DATABASE_URL` is set (the only
+durable storage on a Render free web service, whose filesystem is ephemeral
+and resets on every restart/sleep; see `docs/agents/architecture.md`).
 
 We host one backend for many banks and MSMEs. A `tenant` is a bank (the
 customer who pays for and uses the dashboard); every application belongs to
@@ -12,6 +14,12 @@ own company's data).
 An application is one borrower. Every upload (the first one via a one-time
 code, later ones via the monitoring token) creates a row in `reports`, so the
 bank keeps a history and can compare month to month.
+
+Only two things differ by backend, both confined to this file: `_connect()`
+(which engine, which placeholder/row shape) and `save_report_file`/
+`load_report_file` (per-report artifacts — on disk under `DATA_DIR` for
+SQLite, as a `bytea` row in Postgres, since Render's disk doesn't survive a
+restart). Every other function here is plain SQL that runs unchanged on both.
 """
 
 from __future__ import annotations
@@ -25,6 +33,57 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from . import config
+
+DATABASE_URL = config.DATABASE_URL
+IS_POSTGRES = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+
+if IS_POSTGRES:
+    import psycopg
+    from psycopg.rows import dict_row
+
+
+class _PGConnection:
+    """Makes a psycopg connection look enough like `sqlite3.Connection` that
+    every query below — written once, with `?` placeholders and dict-style
+    row access — runs unchanged on both engines. `DATABASE_URL` is typically
+    Neon's pooled endpoint (PgBouncer transaction mode), which doesn't
+    preserve session state across statements and can hand a later statement
+    on the same logical connection to a different backend process — so this
+    shim never relies on `SET`, temp tables or advisory locks, and disables
+    server-side prepared statements (`prepare_threshold=None`). Each `db()`
+    call runs its SCHEMA/ALTER TABLE/query statements inside one connection's
+    implicit transaction, committed once at the end (see `db()` below)."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql: str, params=()):
+        return self._raw.execute(sql.replace("?", "%s"), params)
+
+    def executescript(self, sql: str) -> None:
+        for statement in sql.split(";"):
+            statement = statement.strip()
+            if statement:
+                self._raw.execute(statement)
+
+    def commit(self) -> None:
+        self._raw.commit()
+
+    def close(self) -> None:
+        self._raw.close()
+
+
+def _pg_connect():
+    return _PGConnection(psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None))
+
+
+def _existing_columns(conn, table: str) -> set[str]:
+    if IS_POSTGRES:
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?", (table,)
+        ).fetchall()
+        return {r["column_name"] for r in rows}
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
 
 # No 0/O, 1/I/L: codes are read out over the phone.
 CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
@@ -75,6 +134,14 @@ CREATE TABLE IF NOT EXISTS reports (
     alerts_json TEXT               -- changes vs the previous ready report
 );
 CREATE INDEX IF NOT EXISTS reports_by_app ON reports(application_id, created_at);
+CREATE TABLE IF NOT EXISTS report_files (
+    application_id TEXT NOT NULL,
+    report_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    data BYTEA NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (report_id, name)
+);
 """
 
 # Columns added after the first release; applied to existing databases.
@@ -99,19 +166,32 @@ def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Databases whose schema this process has already brought up to date. Keyed by
+# target so tests that point DATA_DIR at a fresh directory still get a schema.
+_schema_ready: set[str] = set()
+
+
 def _connect():
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(config.DATA_DIR / "tally_connector.db")
-    conn.row_factory = sqlite3.Row
+    if IS_POSTGRES:
+        conn, target = _pg_connect(), DATABASE_URL
+    else:
+        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        target = str(config.DATA_DIR / "tally_connector.db")
+        conn = sqlite3.connect(target)
+        conn.row_factory = sqlite3.Row
+    if target in _schema_ready:
+        return conn
     conn.executescript(SCHEMA)
     for table, cols in MIGRATIONS.items():
-        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        have = _existing_columns(conn, table)
         for col, ddl in cols.items():
             if col not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
     # Created here, not in SCHEMA, because it's on a column added by MIGRATIONS above
     # (older databases don't have it until the ALTER TABLE just ran).
     conn.execute("CREATE INDEX IF NOT EXISTS applications_by_tenant ON applications(tenant_id, created_at)")
+    conn.commit()
+    _schema_ready.add(target)
     return conn
 
 
@@ -162,10 +242,36 @@ def _verify_password(password: str, stored: str) -> bool:
     return secrets.compare_digest(dk.hex(), hash_hex)
 
 
-def report_dir(app_id: str, report_id: str):
+def _report_dir(app_id: str, report_id: str):
     d = config.DATA_DIR / "applications" / app_id / "reports" / report_id
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def save_report_file(app_id: str, report_id: str, name: str, data: bytes) -> None:
+    """Persist one per-report artifact (`bundle.json.gz`, `report.json`,
+    `report.html`). On Postgres these live as a `bytea` row — Render's disk
+    doesn't survive a restart/sleep, so nothing written to `DATA_DIR` would."""
+    if IS_POSTGRES:
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO report_files (application_id, report_id, name, data, created_at) VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT (report_id, name) DO UPDATE SET data = excluded.data",
+                (app_id, report_id, name, data, now().isoformat()),
+            )
+    else:
+        (_report_dir(app_id, report_id) / name).write_bytes(data)
+
+
+def load_report_file(app_id: str, report_id: str, name: str) -> bytes | None:
+    if IS_POSTGRES:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT data FROM report_files WHERE report_id = ? AND name = ?", (report_id, name)
+            ).fetchone()
+        return bytes(row["data"]) if row else None
+    path = _report_dir(app_id, report_id) / name
+    return path.read_bytes() if path.exists() else None
 
 
 # ----------------------------------------------------------- tenants & users
@@ -442,13 +548,12 @@ def latest_ready_report(app_id: str) -> dict | None:
 
 
 def load_report_json(app_id: str, report_id: str) -> dict | None:
-    """The full report dict (metrics, indicators, flags, alerts) written to disk
-    by `report.builder.build_report`/`process_report` — not duplicated in SQLite.
-    Returns None if the file isn't there yet (report still processing/failed)."""
-    path = report_dir(app_id, report_id) / "report.json"
-    if not path.exists():
-        return None
-    return json.loads(path.read_text())
+    """The full report dict (metrics, indicators, flags, alerts) written by
+    `report.builder.build_report`/`process_report` — not duplicated in the
+    `reports` table/row (see `save_report_file`/`load_report_file`).
+    Returns None if it isn't there yet (report still processing/failed)."""
+    data = load_report_file(app_id, report_id, "report.json")
+    return json.loads(data) if data else None
 
 
 def applications_with_latest_report(tenant_id: str) -> list[tuple[dict, dict | None]]:

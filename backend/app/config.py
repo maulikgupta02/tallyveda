@@ -2,6 +2,11 @@ import os
 from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("TC_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
+# When set (postgres://... or postgresql://...), store.py stores everything in Postgres
+# instead of SQLite + DATA_DIR — the only durable option on a Render free web service,
+# whose disk is ephemeral. Unset (the default) keeps today's SQLite/DATA_DIR behaviour
+# exactly, for local dev, tests and dev/e2e.sh. See docs/agents/architecture.md.
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 BANK_NAME = os.environ.get("TC_BANK_NAME", "Demo Bank")
 # Bank/MSME logins are now real per-tenant accounts in store.py's `users` table, not a
 # single shared Basic-auth password. TC_ADMIN_USER/TC_ADMIN_PASSWORD only *seed* the
@@ -20,5 +25,9 @@ DEFAULT_MONTHS = int(os.environ.get("TC_DEFAULT_MONTHS", "24"))
 # Daily monitoring: a refresh is due once a day has passed since the last
 # report, and flagged overdue after N days with no data at all.
 MONITOR_OVERDUE_DAYS = int(os.environ.get("TC_MONITOR_OVERDUE_DAYS", "3"))
-# Optional: path to the built TallyConnector.exe, served at /download.
+# Optional: path to the built TallyConnector.exe, served at /download. Useful for a
+# local/VM deploy with the exe on disk, but a Render free web service's filesystem is
+# ephemeral and has no build step for it — set TC_CONNECTOR_URL instead (e.g. a GitHub
+# Releases asset) and /download redirects there. TC_CONNECTOR_URL takes priority.
 CONNECTOR_EXE = os.environ.get("TC_CONNECTOR_EXE", "")
+CONNECTOR_URL = os.environ.get("TC_CONNECTOR_URL", "")
