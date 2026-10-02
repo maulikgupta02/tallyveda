@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit report · Shree Ganesh Traders Pvt Ltd</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --surface-2: #f3f2ef; --line: #e2e1dc;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --series-1: #2a78d6; --series-2: #eb6834;
+    --age-1: #86b6ef; --age-2: #5598e7; --age-3: #2a78d6; --age-4: #1c5cab; --age-5: #104281; --age-6: #0d366b;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    border-bottom: 2px solid var(--text); padding-bottom: 12px; margin-bottom: 20px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); break-after: avoid; }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--text-2); }
+  .sub, .note { color: var(--text-2); }
+  .note { font-size: 12px; margin: 6px 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+  .tile { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+  .tile .k { font-size: 12px; color: var(--text-2); }
+  .tile .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .p, .plain { font-size: 11.5px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+  .tile[title], td[title] { cursor: help; }
+  .glossary td:first-child { font-weight: 600; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin: 6px 0 10px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--text-2); font-weight: 600; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  .wrap { overflow-x: auto; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; white-space: nowrap; }
+  .status i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .status.green i { background: var(--good); } .status.amber i { background: var(--warning); }
+  .status.red i { background: var(--critical); } .status.na i { background: var(--line); }
+  .flag { border-left: 4px solid var(--line); background: var(--surface-2); padding: 8px 12px; margin: 8px 0; border-radius: 0 6px 6px 0; }
+  .flag.high { border-color: var(--critical); } .flag.medium { border-color: var(--serious); } .flag.low { border-color: var(--warning); }
+  .flag b { display: block; }
+  .flag .sev { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+  figure.viz { margin: 8px 0 12px; }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .chart .baseline { stroke: var(--text-2); stroke-width: 1; }
+  .chart .axis { fill: var(--muted); font-size: 10px; }
+  .chart .hit { fill: transparent; }
+  .chart g:hover .hit { fill: var(--surface-2); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .disclaimer { margin-top: 40px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+  .toolbar { display: flex; gap: 8px; }
+  .toolbar a, .toolbar button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none; cursor: pointer; }
+  @media print { .toolbar { display: none; } main { padding: 0; } h2 { break-before: auto; } }
+</style>
+</head>
+<body>
+<main>
+
+
+<header class="top">
+  <div>
+    <h1>Shree Ganesh Traders Pvt Ltd</h1>
+    <div class="sub">
+      Books 27 Sep 2024 – 27 Sep 2026
+      
+      
+    </div>
+    <div class="note">
+      Application: Shree Ganesh Traders (LN-2026-0142) · 
+      Extracted from Tally 27 Sep 2026 · Report generated 27 Sep 2026
+    </div>
+  </div>
+  
+  <div class="toolbar">
+    <button onclick="window.print()">Print / PDF</button>
+    <a href="/bank/reports/53b281f130af40ee8dbb65b5dcfeeec3.json">JSON</a>
+    <a href="/bank/applications/7ce6d3473c8e44af8c524680dda774a9">History</a>
+    <a href="/bank">All applications</a>
+  </div>
+  
+</header>
+
+<section>
+  <div class="tiles">
+    
+    <div class="tile"><div class="k">Revenue (last 12 months)</div><div class="v">₹8.21 Cr</div></div>
+    
+    <div class="tile"><div class="k">Revenue growth</div><div class="v">9.0%</div></div>
+    
+    <div class="tile"><div class="k">Net profit (last 12 months)</div><div class="v">₹95.13 L</div></div>
+    
+    <div class="tile"><div class="k">Receivables</div><div class="v">₹1.73 Cr</div></div>
+    
+    <div class="tile"><div class="k">Net worth</div><div class="v">₹2.37 Cr</div></div>
+    
+    <div class="tile"><div class="k">Total debt</div><div class="v">₹1.38 Cr</div></div>
+    
+  </div>
+</section>
+
+
+<h2>Changes since previous report (27 Sep 2026)</h2>
+
+<div class="flag high"><span class="sev">high</span><b>Receivables &gt; 90 days · Overdue ageing bucket worsened</b>Good → Concern (8.3% → 40.6%).</div>
+
+<div class="flag high"><span class="sev">high</span><b>New red flag: Stuck receivables: customers who have stopped paying</b>Not present in the previous report.</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>DSO · Days sales outstanding worsened</b>Good → Watch (54 days → 72 days).</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Receivables up 31%</b>₹1.31 Cr → ₹1.73 Cr since the previous report.</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Receivables older than 90 days up 544%</b>₹10.87 L → ₹70.02 L since the previous report.</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Total debt up 72%</b>₹80.19 L → ₹1.38 Cr since the previous report.</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Bank OD / CC utilised up 221%</b>₹27.69 L → ₹88.99 L since the previous report.</div>
+
+
+
+<h2>Risk indicators</h2>
+<p class="note">
+  10 green · 3 amber ·
+  1 red · 2 high-severity red flags.
+  Thresholds are bank policy and can be edited in <code>backend/app/analysis/indicators.py</code>.
+</p>
+<div class="wrap"><table>
+  <tr><th>Area</th><th>Indicator</th><th class="n">Value</th><th>Rating</th></tr>
+  
+  <tr>
+    <td>Revenue</td><td title="(LTM sales − prior 12-month sales) ÷ prior 12-month sales.">YoY growth · Year-on-year growth<div class="plain">How much sales grew compared with the same period a year earlier.</div></td><td class="n">9.0%</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Profitability</td><td title="Net profit ÷ sales, from voucher-level P&amp;L.">Net margin · Net profit margin (pre-tax, as booked)<div class="plain">Profit left from each ₹100 of sales after all expenses.</div></td><td class="n">11.6%</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Concentration</td><td title="Largest customer&#39;s LTM sales ÷ total LTM credit-customer sales.">Top-1 share · Largest-customer concentration<div class="plain">Share of sales from the single largest customer.</div></td><td class="n">28.2%</td>
+    <td><span class="status amber"><i></i>Watch</span></td>
+  </tr>
+  
+  <tr>
+    <td>Concentration</td><td title="Top 5 customers&#39; LTM sales ÷ total LTM credit-customer sales.">Top-5 share · Top-5 customer concentration<div class="plain">Share of sales from the five largest customers.</div></td><td class="n">61.5%</td>
+    <td><span class="status amber"><i></i>Watch</span></td>
+  </tr>
+  
+  <tr>
+    <td>Receivables</td><td title="Trade receivables ÷ LTM credit sales (incl. GST) × 365.">DSO · Days sales outstanding<div class="plain">Debtor days: average number of days customers take to pay.</div></td><td class="n">72 days</td>
+    <td><span class="status amber"><i></i>Watch</span></td>
+  </tr>
+  
+  <tr>
+    <td>Receivables</td><td title="(91-180 + 181-365 + &gt; 365-day buckets) ÷ total receivables.">Receivables &gt; 90 days · Overdue ageing bucket<div class="plain">Share of money owed by customers that is more than 3 months old.</div></td><td class="n">40.6%</td>
+    <td><span class="status red"><i></i>Concern</span></td>
+  </tr>
+  
+  <tr>
+    <td>Payables</td><td title="Trade payables ÷ LTM credit purchases (incl. GST) × 365.">DPO · Days payables outstanding<div class="plain">Creditor days: average number of days the company takes to pay suppliers.</div></td><td class="n">55 days</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Working capital</td><td title="DSO + DIO − DPO.">CCC · Cash conversion cycle (cash-to-cash cycle)<div class="plain">Days between paying suppliers and collecting from customers: the gap the bank&#39;s working-capital limit funds.</div></td><td class="n">88 days</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Liquidity</td><td title="(Cash, bank, debtors, stock, advances) ÷ (creditors, taxes, provisions, OD/CC).">Current ratio · Current assets ÷ current liabilities<div class="plain">Can short-term assets pay the bills due within a year? Banks typically look for 1.33× or more.</div></td><td class="n">2.14×</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Leverage</td><td title="(Secured + unsecured loans + OD/CC) ÷ TNW.">Debt / TNW · Gearing (debt-to-equity)<div class="plain">Borrowings for every ₹1 of the owners&#39; own money.</div></td><td class="n">0.58×</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Leverage</td><td title="(Loans + current liabilities) ÷ TNW.">TOL / TNW · Total outside liabilities to tangible net worth<div class="plain">Everything owed to outsiders for every ₹1 of the owners&#39; money. Banks commonly cap this around 3-4×.</div></td><td class="n">1.08×</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Debt service</td><td title="EBITDA ÷ interest expense.">ICR · Interest coverage ratio<div class="plain">How many times operating profit covers the interest bill.</div></td><td class="n">10.72×</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Debt service</td><td title="EBITDA ÷ (interest + principal repaid on term and unsecured loans, LTM).">DSCR · Debt service coverage ratio (approx.)<div class="plain">How many times operating profit covers interest plus loan instalments. Below 1.2× is usually a concern.</div></td><td class="n">4.40×</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+  <tr>
+    <td>Banking</td><td title="LTM cash receipts from debtors ÷ all receipts from debtors.">Cash receipts share · Cash share of customer collections<div class="plain">Share of customer payments received in cash instead of through the bank.</div></td><td class="n">4.1%</td>
+    <td><span class="status green"><i></i>Good</span></td>
+  </tr>
+  
+</table></div>
+
+<h2>Red flags</h2>
+
+<div class="flag high"><span class="sev">high</span><b>Window dressing: year-end sales spike</b>March 2026 sales were 1.8× the average month of that year. ₹18.94 L of sales were reversed in April 2026.</div>
+
+<div class="flag high"><span class="sev">high</span><b>Stuck receivables: customers who have stopped paying</b>2 customers owing ₹1.25 Cr (72% of receivables) have made no payment in 90 days.</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Circular trading risk: parties on both sides</b>1 party (7.2% of sales) also appears as suppliers: Balaji Distributors. Check for circular or related-party trading.</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Cash receipts of ₹2 L or more (s.269ST)</b>4 receipts totalling ₹10.21 L in the last 12 months (Income Tax Act s.269ST prohibits cash receipts of ₹2 L or more).</div>
+
+<div class="flag medium"><span class="sev">medium</span><b>Possible fund diversion: large loans and advances given</b>₹1.32 Cr given as loans/advances (56% of net worth). Check for diversion of funds to group or related parties.</div>
+
+<div class="flag low"><span class="sev">low</span><b>Back-dated entries</b>14 vouchers (0.2% of transaction value) were entered after later-dated vouchers; the largest gap is 293 days. Common around audits, year end or loan applications.</div>
+
+<div class="flag low"><span class="sev">low</span><b>Cash payments above ₹10,000 (s.40A(3))</b>24 cash payments totalling ₹3.92 L (disallowable under s.40A(3)).</div>
+
+
+<h2>Revenue and profitability (LTM vs prior 12 months)</h2>
+<figure class="viz"><div class="legend"><span class="key"><i style="background:var(--series-1)"></i>Sales (net of GST)</span><span class="key"><i style="background:var(--series-2)"></i>Collections from customers</span></div><svg viewBox="0 0 760 220" role="img" class="chart"><line x1="56" x2="752" y1="192.0" y2="192.0" class="grid"/><text x="50" y="196.0" class="axis" text-anchor="end">₹0</text><line x1="56" x2="752" y1="147.0" y2="147.0" class="grid"/><text x="50" y="151.0" class="axis" text-anchor="end">₹50.00 L</text><line x1="56" x2="752" y1="102.0" y2="102.0" class="grid"/><text x="50" y="106.0" class="axis" text-anchor="end">₹1.00 Cr</text><line x1="56" x2="752" y1="57.0" y2="57.0" class="grid"/><text x="50" y="61.0" class="axis" text-anchor="end">₹1.50 Cr</text><line x1="56" x2="752" y1="12.0" y2="12.0" class="grid"/><text x="50" y="16.0" class="axis" text-anchor="end">₹2.00 Cr</text><g><title>Sep 2024
+Sales (net of GST): ₹5.62 L
+Collections from customers: ₹8.50 L</title><rect x="56.0" y="12" width="27.8" height="180" class="hit"/><path d="M60.0,192.0 V190.9 Q60.0,186.9 64.0,186.9 H64.9 Q68.9,186.9 68.9,190.9 V192.0 Z" style="fill:var(--series-1)"/><path d="M70.9,192.0 V188.4 Q70.9,184.4 74.9,184.4 H75.8 Q79.8,184.4 79.8,188.4 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Oct 2024
+Sales (net of GST): ₹75.17 L
+Collections from customers: ₹53.65 L</title><rect x="83.8" y="12" width="27.8" height="180" class="hit"/><path d="M87.8,192.0 V128.3 Q87.8,124.3 91.8,124.3 H92.8 Q96.8,124.3 96.8,128.3 V192.0 Z" style="fill:var(--series-1)"/><path d="M98.8,192.0 V147.7 Q98.8,143.7 102.8,143.7 H103.7 Q107.7,143.7 107.7,147.7 V192.0 Z" style="fill:var(--series-2)"/></g><text x="97.8" y="212" class="axis" text-anchor="middle">Oct 24</text><g><title>Nov 2024
+Sales (net of GST): ₹75.40 L
+Collections from customers: ₹67.55 L</title><rect x="111.7" y="12" width="27.8" height="180" class="hit"/><path d="M115.7,192.0 V128.1 Q115.7,124.1 119.7,124.1 H120.6 Q124.6,124.1 124.6,128.1 V192.0 Z" style="fill:var(--series-1)"/><path d="M126.6,192.0 V135.2 Q126.6,131.2 130.6,131.2 H131.5 Q135.5,131.2 135.5,135.2 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Dec 2024
+Sales (net of GST): ₹64.82 L
+Collections from customers: ₹77.87 L</title><rect x="139.5" y="12" width="27.8" height="180" class="hit"/><path d="M143.5,192.0 V137.7 Q143.5,133.7 147.5,133.7 H148.4 Q152.4,133.7 152.4,137.7 V192.0 Z" style="fill:var(--series-1)"/><path d="M154.4,192.0 V125.9 Q154.4,121.9 158.4,121.9 H159.4 Q163.4,121.9 163.4,125.9 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Jan 2025
+Sales (net of GST): ₹58.70 L
+Collections from customers: ₹80.73 L</title><rect x="167.4" y="12" width="27.8" height="180" class="hit"/><path d="M171.4,192.0 V143.2 Q171.4,139.2 175.4,139.2 H176.3 Q180.3,139.2 180.3,143.2 V192.0 Z" style="fill:var(--series-1)"/><path d="M182.3,192.0 V123.3 Q182.3,119.3 186.3,119.3 H187.2 Q191.2,119.3 191.2,123.3 V192.0 Z" style="fill:var(--series-2)"/></g><text x="181.3" y="212" class="axis" text-anchor="middle">Jan 25</text><g><title>Feb 2025
+Sales (net of GST): ₹52.34 L
+Collections from customers: ₹57.11 L</title><rect x="195.2" y="12" width="27.8" height="180" class="hit"/><path d="M199.2,192.0 V148.9 Q199.2,144.9 203.2,144.9 H204.1 Q208.1,144.9 208.1,148.9 V192.0 Z" style="fill:var(--series-1)"/><path d="M210.1,192.0 V144.6 Q210.1,140.6 214.1,140.6 H215.0 Q219.0,140.6 219.0,144.6 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Mar 2025
+Sales (net of GST): ₹70.53 L
+Collections from customers: ₹74.27 L</title><rect x="223.0" y="12" width="27.8" height="180" class="hit"/><path d="M227.0,192.0 V132.5 Q227.0,128.5 231.0,128.5 H232.0 Q236.0,128.5 236.0,132.5 V192.0 Z" style="fill:var(--series-1)"/><path d="M238.0,192.0 V129.2 Q238.0,125.2 242.0,125.2 H242.9 Q246.9,125.2 246.9,129.2 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Apr 2025
+Sales (net of GST): ₹59.11 L
+Collections from customers: ₹65.67 L</title><rect x="250.9" y="12" width="27.8" height="180" class="hit"/><path d="M254.9,192.0 V142.8 Q254.9,138.8 258.9,138.8 H259.8 Q263.8,138.8 263.8,142.8 V192.0 Z" style="fill:var(--series-1)"/><path d="M265.8,192.0 V136.9 Q265.8,132.9 269.8,132.9 H270.7 Q274.7,132.9 274.7,136.9 V192.0 Z" style="fill:var(--series-2)"/></g><text x="264.8" y="212" class="axis" text-anchor="middle">Apr 25</text><g><title>May 2025
+Sales (net of GST): ₹63.84 L
+Collections from customers: ₹66.06 L</title><rect x="278.7" y="12" width="27.8" height="180" class="hit"/><path d="M282.7,192.0 V138.5 Q282.7,134.5 286.7,134.5 H287.6 Q291.6,134.5 291.6,138.5 V192.0 Z" style="fill:var(--series-1)"/><path d="M293.6,192.0 V136.5 Q293.6,132.5 297.6,132.5 H298.6 Q302.6,132.5 302.6,136.5 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Jun 2025
+Sales (net of GST): ₹59.78 L
+Collections from customers: ₹62.56 L</title><rect x="306.6" y="12" width="27.8" height="180" class="hit"/><path d="M310.6,192.0 V142.2 Q310.6,138.2 314.6,138.2 H315.5 Q319.5,138.2 319.5,142.2 V192.0 Z" style="fill:var(--series-1)"/><path d="M321.5,192.0 V139.7 Q321.5,135.7 325.5,135.7 H326.4 Q330.4,135.7 330.4,139.7 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Jul 2025
+Sales (net of GST): ₹54.02 L
+Collections from customers: ₹69.19 L</title><rect x="334.4" y="12" width="27.8" height="180" class="hit"/><path d="M338.4,192.0 V147.4 Q338.4,143.4 342.4,143.4 H343.3 Q347.3,143.4 347.3,147.4 V192.0 Z" style="fill:var(--series-1)"/><path d="M349.3,192.0 V133.7 Q349.3,129.7 353.3,129.7 H354.2 Q358.2,129.7 358.2,133.7 V192.0 Z" style="fill:var(--series-2)"/></g><text x="348.3" y="212" class="axis" text-anchor="middle">Jul 25</text><g><title>Aug 2025
+Sales (net of GST): ₹59.41 L
+Collections from customers: ₹55.61 L</title><rect x="362.2" y="12" width="27.8" height="180" class="hit"/><path d="M366.2,192.0 V142.5 Q366.2,138.5 370.2,138.5 H371.2 Q375.2,138.5 375.2,142.5 V192.0 Z" style="fill:var(--series-1)"/><path d="M377.2,192.0 V145.9 Q377.2,141.9 381.2,141.9 H382.1 Q386.1,141.9 386.1,145.9 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Sep 2025
+Sales (net of GST): ₹61.75 L
+Collections from customers: ₹55.92 L</title><rect x="390.1" y="12" width="27.8" height="180" class="hit"/><path d="M394.1,192.0 V140.4 Q394.1,136.4 398.1,136.4 H399.0 Q403.0,136.4 403.0,140.4 V192.0 Z" style="fill:var(--series-1)"/><path d="M405.0,192.0 V145.7 Q405.0,141.7 409.0,141.7 H409.9 Q413.9,141.7 413.9,145.7 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Oct 2025
+Sales (net of GST): ₹79.09 L
+Collections from customers: ₹72.50 L</title><rect x="417.9" y="12" width="27.8" height="180" class="hit"/><path d="M421.9,192.0 V124.8 Q421.9,120.8 425.9,120.8 H426.8 Q430.8,120.8 430.8,124.8 V192.0 Z" style="fill:var(--series-1)"/><path d="M432.8,192.0 V130.7 Q432.8,126.7 436.8,126.7 H437.8 Q441.8,126.7 441.8,130.7 V192.0 Z" style="fill:var(--series-2)"/></g><text x="431.8" y="212" class="axis" text-anchor="middle">Oct 25</text><g><title>Nov 2025
+Sales (net of GST): ₹76.64 L
+Collections from customers: ₹75.70 L</title><rect x="445.8" y="12" width="27.8" height="180" class="hit"/><path d="M449.8,192.0 V127.0 Q449.8,123.0 453.8,123.0 H454.7 Q458.7,123.0 458.7,127.0 V192.0 Z" style="fill:var(--series-1)"/><path d="M460.7,192.0 V127.9 Q460.7,123.9 464.7,123.9 H465.6 Q469.6,123.9 469.6,127.9 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Dec 2025
+Sales (net of GST): ₹65.23 L
+Collections from customers: ₹82.45 L</title><rect x="473.6" y="12" width="27.8" height="180" class="hit"/><path d="M477.6,192.0 V137.3 Q477.6,133.3 481.6,133.3 H482.5 Q486.5,133.3 486.5,137.3 V192.0 Z" style="fill:var(--series-1)"/><path d="M488.5,192.0 V121.8 Q488.5,117.8 492.5,117.8 H493.4 Q497.4,117.8 497.4,121.8 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Jan 2026
+Sales (net of GST): ₹69.25 L
+Collections from customers: ₹80.91 L</title><rect x="501.4" y="12" width="27.8" height="180" class="hit"/><path d="M505.4,192.0 V133.7 Q505.4,129.7 509.4,129.7 H510.4 Q514.4,129.7 514.4,133.7 V192.0 Z" style="fill:var(--series-1)"/><path d="M516.4,192.0 V123.2 Q516.4,119.2 520.4,119.2 H521.3 Q525.3,119.2 525.3,123.2 V192.0 Z" style="fill:var(--series-2)"/></g><text x="515.4" y="212" class="axis" text-anchor="middle">Jan 26</text><g><title>Feb 2026
+Sales (net of GST): ₹56.71 L
+Collections from customers: ₹71.67 L</title><rect x="529.3" y="12" width="27.8" height="180" class="hit"/><path d="M533.3,192.0 V145.0 Q533.3,141.0 537.3,141.0 H538.2 Q542.2,141.0 542.2,145.0 V192.0 Z" style="fill:var(--series-1)"/><path d="M544.2,192.0 V131.5 Q544.2,127.5 548.2,127.5 H549.1 Q553.1,127.5 553.1,131.5 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Mar 2026
+Sales (net of GST): ₹1.14 Cr
+Collections from customers: ₹71.81 L</title><rect x="557.1" y="12" width="27.8" height="180" class="hit"/><path d="M561.1,192.0 V93.3 Q561.1,89.3 565.1,89.3 H566.0 Q570.0,89.3 570.0,93.3 V192.0 Z" style="fill:var(--series-1)"/><path d="M572.0,192.0 V131.4 Q572.0,127.4 576.0,127.4 H577.0 Q581.0,127.4 581.0,131.4 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Apr 2026
+Sales (net of GST): ₹41.85 L
+Collections from customers: ₹92.19 L</title><rect x="585.0" y="12" width="27.8" height="180" class="hit"/><path d="M589.0,192.0 V158.3 Q589.0,154.3 593.0,154.3 H593.9 Q597.9,154.3 597.9,158.3 V192.0 Z" style="fill:var(--series-1)"/><path d="M599.9,192.0 V113.0 Q599.9,109.0 603.9,109.0 H604.8 Q608.8,109.0 608.8,113.0 V192.0 Z" style="fill:var(--series-2)"/></g><text x="598.9" y="212" class="axis" text-anchor="middle">Apr 26</text><g><title>May 2026
+Sales (net of GST): ₹73.19 L
+Collections from customers: ₹80.20 L</title><rect x="612.8" y="12" width="27.8" height="180" class="hit"/><path d="M616.8,192.0 V130.1 Q616.8,126.1 620.8,126.1 H621.7 Q625.7,126.1 625.7,130.1 V192.0 Z" style="fill:var(--series-1)"/><path d="M627.7,192.0 V123.8 Q627.7,119.8 631.7,119.8 H632.6 Q636.6,119.8 636.6,123.8 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Jun 2026
+Sales (net of GST): ₹73.29 L
+Collections from customers: ₹46.84 L</title><rect x="640.6" y="12" width="27.8" height="180" class="hit"/><path d="M644.6,192.0 V130.0 Q644.6,126.0 648.6,126.0 H649.6 Q653.6,126.0 653.6,130.0 V192.0 Z" style="fill:var(--series-1)"/><path d="M655.6,192.0 V153.8 Q655.6,149.8 659.6,149.8 H660.5 Q664.5,149.8 664.5,153.8 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Jul 2026
+Sales (net of GST): ₹67.46 L
+Collections from customers: ₹72.11 L</title><rect x="668.5" y="12" width="27.8" height="180" class="hit"/><path d="M672.5,192.0 V135.3 Q672.5,131.3 676.5,131.3 H677.4 Q681.4,131.3 681.4,135.3 V192.0 Z" style="fill:var(--series-1)"/><path d="M683.4,192.0 V131.1 Q683.4,127.1 687.4,127.1 H688.3 Q692.3,127.1 692.3,131.1 V192.0 Z" style="fill:var(--series-2)"/></g><text x="682.4" y="212" class="axis" text-anchor="middle">Jul 26</text><g><title>Aug 2026
+Sales (net of GST): ₹54.92 L
+Collections from customers: ₹43.59 L</title><rect x="696.3" y="12" width="27.8" height="180" class="hit"/><path d="M700.3,192.0 V146.6 Q700.3,142.6 704.3,142.6 H705.2 Q709.2,142.6 709.2,146.6 V192.0 Z" style="fill:var(--series-1)"/><path d="M711.2,192.0 V156.8 Q711.2,152.8 715.2,152.8 H716.2 Q720.2,152.8 720.2,156.8 V192.0 Z" style="fill:var(--series-2)"/></g><g><title>Sep 2026
+Sales (net of GST): ₹43.85 L
+Collections from customers: ₹21.58 L</title><rect x="724.2" y="12" width="27.8" height="180" class="hit"/><path d="M728.2,192.0 V156.5 Q728.2,152.5 732.2,152.5 H733.1 Q737.1,152.5 737.1,156.5 V192.0 Z" style="fill:var(--series-1)"/><path d="M739.1,192.0 V176.6 Q739.1,172.6 743.1,172.6 H744.0 Q748.0,172.6 748.0,176.6 V192.0 Z" style="fill:var(--series-2)"/></g><line x1="56" x2="752" y1="192" y2="192" class="baseline"/></svg></figure>
+<p class="note">
+  Seasonality, CV (coefficient of variation: how much monthly sales swing), last 12 months:
+  26.0%.
+  Peak month 2026-03, weakest 2026-04.
+</p>
+<div class="wrap"><table>
+  <tr><th></th><th class="n">Last 12 months</th><th class="n">Prior 12 months</th></tr>
+  
+  <tr><td>Sales</td><td class="n">₹8.21 Cr</td><td class="n">₹7.53 Cr</td></tr>
+  
+  <tr><td>Direct incomes</td><td class="n">₹0</td><td class="n">₹0</td></tr>
+  
+  <tr><td>Purchases</td><td class="n">₹6.13 Cr</td><td class="n">₹5.95 Cr</td></tr>
+  
+  <tr><td>Direct expenses</td><td class="n">₹8.91 L</td><td class="n">₹8.86 L</td></tr>
+  
+  <tr><td>COGS (cost of goods sold)</td><td class="n">₹6.14 Cr</td><td class="n">₹5.95 Cr</td></tr>
+  
+  <tr><td>Gross profit</td><td class="n">₹2.07 Cr</td><td class="n">₹1.58 Cr</td></tr>
+  
+  <tr><td>Indirect expenses</td><td class="n">₹1.12 Cr</td><td class="n">₹1.08 Cr</td></tr>
+  
+  <tr><td>Indirect incomes</td><td class="n">₹0</td><td class="n">₹0</td></tr>
+  
+  <tr><td>Net profit</td><td class="n">₹95.13 L</td><td class="n">₹49.69 L</td></tr>
+  
+  <tr><td>Interest</td><td class="n">₹10.42 L</td><td class="n">₹12.41 L</td></tr>
+  
+  <tr><td>Depreciation</td><td class="n">₹6.20 L</td><td class="n">₹6.20 L</td></tr>
+  
+  <tr><td>EBITDA (operating profit)</td><td class="n">₹1.12 Cr</td><td class="n">₹68.31 L</td></tr>
+  
+  <tr><td>Gross margin</td><td class="n">25.2%</td><td class="n">21.0%</td></tr>
+  <tr><td>Net margin</td><td class="n">11.6%</td><td class="n">6.6%</td></tr>
+</table></div>
+
+<p class="note">Interest and depreciation are identified by ledger name. Profit is computed from vouchers, not from a finalised P&amp;L.</p>
+
+<h2>Customers: concentration and spread</h2>
+
+<div class="tiles">
+  <div class="tile"><div class="k">Active customers (12m)</div><div class="v">26</div></div>
+  <div class="tile" title="Largest-customer concentration. Largest customer&#39;s LTM sales ÷ total LTM credit-customer sales."><div class="k">Top-1 share</div><div class="v">28.2%</div><div class="p">Share of sales from the single largest customer.</div></div>
+  <div class="tile" title="Top-5 customer concentration. Top 5 customers&#39; LTM sales ÷ total LTM credit-customer sales."><div class="k">Top-5 share</div><div class="v">61.5%</div><div class="p">Share of sales from the five largest customers.</div></div>
+  <div class="tile"><div class="k">Top-10 share</div><div class="v">79.2%</div><div class="p">Share of sales from the ten largest customers.</div></div>
+  <div class="tile"><div class="k">Pareto count</div><div class="v">11</div><div class="p">Customers that make up 80% of sales.</div></div>
+  <div class="tile" title="Herfindahl-Hirschman Index. Sum of squared % shares of each customer. &lt; 1,500 unconcentrated; 1,500-2,500 moderate; &gt; 2,500 high."><div class="k">HHI</div><div class="v">1189</div><div class="p">How concentrated sales are among customers (0 = spread out, 10,000 = one customer).</div></div>
+</div>
+<p class="note">Cash / counter sales are 3.0% of sales and are excluded from customer concentration.</p>
+<div class="wrap"><table>
+  <tr><th>Customer</th><th>State</th><th class="n">Sales (12m)</th><th class="n">Share</th><th class="n">Outstanding</th><th class="n">&gt; 90 days</th><th class="n">Last payment</th></tr>
+  
+  <tr><td>Sunrise Retail Pvt Ltd</td><td>Maharashtra</td><td class="n">₹2.32 Cr</td><td class="n">28.2%</td>
+    <td class="n">₹1.23 Cr</td><td class="n">₹70.02 L</td><td class="n">11 May 2026</td></tr>
+  
+  <tr><td>Metro Wholesale Mart</td><td>Maharashtra</td><td class="n">₹99.06 L</td><td class="n">12.1%</td>
+    <td class="n">₹6.43 L</td><td class="n">₹0</td><td class="n">20 Sep 2026</td></tr>
+  
+  <tr><td>Patel Brothers</td><td>Maharashtra</td><td class="n">₹73.88 L</td><td class="n">9.0%</td>
+    <td class="n">₹13.70 L</td><td class="n">₹0</td><td class="n">18 Sep 2026</td></tr>
+  
+  <tr><td>Balaji Distributors</td><td>Maharashtra</td><td class="n">₹58.83 L</td><td class="n">7.2%</td>
+    <td class="n">₹3.62 L</td><td class="n">₹0</td><td class="n">20 Sep 2026</td></tr>
+  
+  <tr><td>Om Sai Agencies</td><td>Maharashtra</td><td class="n">₹41.65 L</td><td class="n">5.1%</td>
+    <td class="n">₹0</td><td class="n">₹0</td><td class="n">–</td></tr>
+  
+  <tr><td>Krishna Enterprises</td><td>Maharashtra</td><td class="n">₹38.36 L</td><td class="n">4.7%</td>
+    <td class="n">₹1.88 L</td><td class="n">₹0</td><td class="n">10 Sep 2026</td></tr>
+  
+  <tr><td>Mahalaxmi Super Market</td><td>Delhi</td><td class="n">₹35.31 L</td><td class="n">4.3%</td>
+    <td class="n">₹2.66 L</td><td class="n">₹0</td><td class="n">14 Sep 2026</td></tr>
+  
+  <tr><td>Vardhman Stores</td><td>Gujarat</td><td class="n">₹28.09 L</td><td class="n">3.4%</td>
+    <td class="n">₹3.58 L</td><td class="n">₹0</td><td class="n">16 Sep 2026</td></tr>
+  
+  <tr><td>Royal Traders</td><td>Karnataka</td><td class="n">₹26.78 L</td><td class="n">3.3%</td>
+    <td class="n">₹28,536</td><td class="n">₹0</td><td class="n">10 Sep 2026</td></tr>
+  
+  <tr><td>(Cash / counter sales)</td><td></td><td class="n">₹24.85 L</td><td class="n">3.0%</td>
+    <td class="n">₹0</td><td class="n">₹0</td><td class="n">–</td></tr>
+  
+  <tr><td>Sai Krupa Traders</td><td>Tamil Nadu</td><td class="n">₹16.97 L</td><td class="n">2.1%</td>
+    <td class="n">₹5.41 L</td><td class="n">₹0</td><td class="n">04 Aug 2026</td></tr>
+  
+  <tr><td>Ganga Sales Corporation</td><td>Maharashtra</td><td class="n">₹16.95 L</td><td class="n">2.1%</td>
+    <td class="n">₹0</td><td class="n">₹0</td><td class="n">–</td></tr>
+  
+  <tr><td>Lakshmi General Stores</td><td>Karnataka</td><td class="n">₹12.90 L</td><td class="n">1.6%</td>
+    <td class="n">₹73,723</td><td class="n">₹0</td><td class="n">28 Aug 2026</td></tr>
+  
+  <tr><td>Classic Distributors</td><td>Maharashtra</td><td class="n">₹12.80 L</td><td class="n">1.6%</td>
+    <td class="n">₹2.50 L</td><td class="n">₹0</td><td class="n">22 Aug 2026</td></tr>
+  
+  <tr><td>Bharat Retail</td><td>Maharashtra</td><td class="n">₹11.25 L</td><td class="n">1.4%</td>
+    <td class="n">₹0</td><td class="n">₹0</td><td class="n">–</td></tr>
+  
+</table></div>
+
+
+<h3>Customer retention (last 12 months vs prior 12)</h3>
+<div class="wrap"><table>
+  <tr><td>Active customers now / before</td><td class="n">26 / 25</td></tr>
+  <tr><td>New customers (share of current sales)</td><td class="n">3 (3.4%)</td></tr>
+  <tr><td>Lost customers (share of prior sales)</td><td class="n">2 (3.4%)</td></tr>
+  <tr><td>NRR (net revenue retention): how much repeat customers bought vs last year</td><td class="n">105.7%</td></tr>
+  <tr><td colspan="2" class="note">Largest lost: Jain Trading Co, Deccan Supplies</td></tr>
+</table></div>
+
+
+<div class="cols">
+  <div>
+    <h3>Sales by state</h3>
+    <table>
+      <tr><th>State</th><th class="n">Sales</th><th class="n">Share</th></tr>
+      <tr><td>Maharashtra</td><td class="n">₹6.44 Cr</td><td class="n">78.5%</td></tr><tr><td>Delhi</td><td class="n">₹43.83 L</td><td class="n">5.3%</td></tr><tr><td>Karnataka</td><td class="n">₹39.68 L</td><td class="n">4.8%</td></tr><tr><td>Gujarat</td><td class="n">₹36.96 L</td><td class="n">4.5%</td></tr><tr><td>(Cash / counter sales)</td><td class="n">₹24.85 L</td><td class="n">3.0%</td></tr><tr><td>Tamil Nadu</td><td class="n">₹20.36 L</td><td class="n">2.5%</td></tr><tr><td>Madhya Pradesh</td><td class="n">₹5.78 L</td><td class="n">0.7%</td></tr><tr><td>Goa</td><td class="n">₹5.02 L</td><td class="n">0.6%</td></tr>
+    </table>
+  </div>
+  <div>
+    <h3>Customers by annual sales</h3>
+    <table>
+      <tr><th>Band</th><th class="n">Customers</th><th class="n">Sales</th></tr>
+      <tr><td>₹1-10 L</td><td class="n">10</td><td class="n">₹70.26 L</td></tr><tr><td>₹10-50 L</td><td class="n">12</td><td class="n">₹2.62 Cr</td></tr><tr><td>₹50 L-1 Cr</td><td class="n">3</td><td class="n">₹2.32 Cr</td></tr><tr><td>&gt; ₹1 Cr</td><td class="n">1</td><td class="n">₹2.32 Cr</td></tr>
+    </table>
+  </div>
+</div>
+
+<h2>Receivables (debtors) and ageing</h2>
+
+<div class="tiles">
+  <div class="tile"><div class="k">Total receivables</div><div class="v">₹1.73 Cr</div></div>
+  <div class="tile" title="Days sales outstanding. Trade receivables ÷ LTM credit sales (incl. GST) × 365."><div class="k">DSO</div><div class="v">72 days</div><div class="p">Debtor days: average number of days customers take to pay.</div></div>
+  <div class="tile" title="Overdue ageing bucket. (91-180 + 181-365 + &gt; 365-day buckets) ÷ total receivables."><div class="k">Receivables &gt; 90 days</div><div class="v">40.6%</div><div class="p">Share of money owed by customers that is more than 3 months old.</div></div>
+  <div class="tile" title="Collections ÷ billing. LTM receipts from customers ÷ LTM credit billing."><div class="k">Collection efficiency</div><div class="v">98.9%</div><div class="p">How much of what was billed to customers was actually collected.</div></div>
+</div>
+<figure class="viz"><div class="legend"><span class="key"><i style="background:var(--age-1)"></i>0-30 d</span><span class="key"><i style="background:var(--age-2)"></i>31-60 d</span><span class="key"><i style="background:var(--age-3)"></i>61-90 d</span><span class="key"><i style="background:var(--age-4)"></i>91-180 d</span><span class="key"><i style="background:var(--age-5)"></i>181-365 d</span><span class="key"><i style="background:var(--age-6)"></i>&gt;365 d</span></div><svg viewBox="0 0 760 30" role="img" class="chart"><rect x="0.0" y="4" width="198.2" height="22" rx="0" style="fill:var(--age-1)"><title>0-30 days: ₹45.45 L (26%)</title></rect><rect x="200.2" y="4" width="144.7" height="22" rx="0" style="fill:var(--age-2)"><title>31-60 days: ₹33.31 L (19%)</title></rect><rect x="346.9" y="4" width="102.7" height="22" rx="0" style="fill:var(--age-3)"><title>61-90 days: ₹23.77 L (14%)</title></rect><rect x="451.6" y="4" width="280.9" height="22" rx="0" style="fill:var(--age-4)"><title>91-180 days: ₹64.23 L (37%)</title></rect><rect x="734.5" y="4" width="25.5" height="22" rx="0" style="fill:var(--age-5)"><title>181-365 days: ₹5.80 L (3%)</title></rect></svg></figure>
+<div class="wrap"><table>
+  <tr><th class="n">0-30 days</th><th class="n">31-60 days</th><th class="n">61-90 days</th><th class="n">91-180 days</th><th class="n">181-365 days</th><th class="n">&gt;365 days</th></tr>
+  <tr><td class="n">₹45.45 L</td><td class="n">₹33.31 L</td><td class="n">₹23.77 L</td><td class="n">₹64.23 L</td><td class="n">₹5.80 L</td><td class="n">₹0</td></tr>
+</table></div>
+<p class="note">Ageing method: FIFO on invoices. Advances received from customers: ₹4.23 L.</p>
+<h3>Largest debtors</h3>
+<div class="wrap"><table>
+  <tr><th>Customer</th><th class="n">Outstanding</th><th class="n">Share</th><th class="n">&gt; 90 days</th><th class="n">Last payment</th></tr>
+  
+  <tr><td>Sunrise Retail Pvt Ltd</td><td class="n">₹1.23 Cr</td><td class="n">71.3%</td><td class="n">₹70.02 L</td>
+    <td class="n">11 May 2026</td></tr>
+  
+  <tr><td>Patel Brothers</td><td class="n">₹13.70 L</td><td class="n">7.9%</td><td class="n">₹0</td>
+    <td class="n">18 Sep 2026</td></tr>
+  
+  <tr><td>Metro Wholesale Mart</td><td class="n">₹6.43 L</td><td class="n">3.7%</td><td class="n">₹0</td>
+    <td class="n">20 Sep 2026</td></tr>
+  
+  <tr><td>Sai Krupa Traders</td><td class="n">₹5.41 L</td><td class="n">3.1%</td><td class="n">₹0</td>
+    <td class="n">04 Aug 2026</td></tr>
+  
+  <tr><td>Balaji Distributors</td><td class="n">₹3.62 L</td><td class="n">2.1%</td><td class="n">₹0</td>
+    <td class="n">20 Sep 2026</td></tr>
+  
+  <tr><td>Vardhman Stores</td><td class="n">₹3.58 L</td><td class="n">2.1%</td><td class="n">₹0</td>
+    <td class="n">16 Sep 2026</td></tr>
+  
+  <tr><td>Mahalaxmi Super Market</td><td class="n">₹2.66 L</td><td class="n">1.5%</td><td class="n">₹0</td>
+    <td class="n">14 Sep 2026</td></tr>
+  
+  <tr><td>Classic Distributors</td><td class="n">₹2.50 L</td><td class="n">1.4%</td><td class="n">₹0</td>
+    <td class="n">22 Aug 2026</td></tr>
+  
+  <tr><td>Kaveri Marketing</td><td class="n">₹2.03 L</td><td class="n">1.2%</td><td class="n">₹0</td>
+    <td class="n">14 Jun 2026</td></tr>
+  
+  <tr><td>Krishna Enterprises</td><td class="n">₹1.88 L</td><td class="n">1.1%</td><td class="n">₹0</td>
+    <td class="n">10 Sep 2026</td></tr>
+  
+</table></div>
+
+<h2>Payables (creditors) and supplier concentration</h2>
+
+<div class="tiles">
+  <div class="tile"><div class="k">Total payables</div><div class="v">₹1.01 Cr</div></div>
+  <div class="tile" title="Days payables outstanding. Trade payables ÷ LTM credit purchases (incl. GST) × 365."><div class="k">DPO</div><div class="v">55 days</div><div class="p">Creditor days: average number of days the company takes to pay suppliers.</div></div>
+  <div class="tile"><div class="k">Payables &gt; 90 days</div><div class="v">0.0%</div><div class="p">Share of supplier dues more than 3 months old.</div></div>
+  <div class="tile"><div class="k">Suppliers (12m)</div><div class="v">10</div></div>
+  <div class="tile"><div class="k">Largest supplier</div><div class="v">33.3%</div></div>
+</div>
+<figure class="viz"><div class="legend"><span class="key"><i style="background:var(--age-1)"></i>0-30 d</span><span class="key"><i style="background:var(--age-2)"></i>31-60 d</span><span class="key"><i style="background:var(--age-3)"></i>61-90 d</span><span class="key"><i style="background:var(--age-4)"></i>91-180 d</span><span class="key"><i style="background:var(--age-5)"></i>181-365 d</span><span class="key"><i style="background:var(--age-6)"></i>&gt;365 d</span></div><svg viewBox="0 0 760 30" role="img" class="chart"><rect x="0.0" y="4" width="444.8" height="22" rx="0" style="fill:var(--age-1)"><title>0-30 days: ₹59.27 L (59%)</title></rect><rect x="446.8" y="4" width="313.2" height="22" rx="0" style="fill:var(--age-2)"><title>31-60 days: ₹41.55 L (41%)</title></rect><rect x="760.0" y="4" width="0.5" height="22" rx="0" style="fill:var(--age-3)"><title>61-90 days: ₹0 (0%)</title></rect></svg></figure>
+<div class="cols">
+  <div>
+    <h3>Largest suppliers (12m purchases)</h3>
+    <table>
+      <tr><th>Supplier</th><th class="n">Purchases</th><th class="n">Share</th></tr>
+      <tr><td>Hindustan Foods Ltd</td><td class="n">₹2.04 Cr</td><td class="n">33.3%</td></tr><tr><td>Agro Mills Pvt Ltd</td><td class="n">₹1.06 Cr</td><td class="n">17.2%</td></tr><tr><td>Balaji Distributors (Purchase)</td><td class="n">₹71.65 L</td><td class="n">11.7%</td></tr><tr><td>Western Packaging</td><td class="n">₹65.64 L</td><td class="n">10.7%</td></tr><tr><td>Coastal Commodities</td><td class="n">₹43.47 L</td><td class="n">7.1%</td></tr><tr><td>Nirmal Oils</td><td class="n">₹40.12 L</td><td class="n">6.5%</td></tr><tr><td>Prime Grains</td><td class="n">₹24.83 L</td><td class="n">4.0%</td></tr><tr><td>Supreme Spices</td><td class="n">₹23.08 L</td><td class="n">3.8%</td></tr><tr><td>Fresh Farm Products</td><td class="n">₹20.89 L</td><td class="n">3.4%</td></tr><tr><td>Shakti Pulses</td><td class="n">₹13.97 L</td><td class="n">2.3%</td></tr>
+    </table>
+  </div>
+  <div>
+    <h3>Largest creditors</h3>
+    <table>
+      <tr><th>Supplier</th><th class="n">Outstanding</th><th class="n">&gt; 90 days</th></tr>
+      <tr><td>Hindustan Foods Ltd</td><td class="n">₹32.02 L</td><td class="n">₹0</td></tr><tr><td>Balaji Distributors (Purchase)</td><td class="n">₹19.53 L</td><td class="n">₹0</td></tr><tr><td>Coastal Commodities</td><td class="n">₹15.10 L</td><td class="n">₹0</td></tr><tr><td>Agro Mills Pvt Ltd</td><td class="n">₹14.01 L</td><td class="n">₹0</td></tr><tr><td>Western Packaging</td><td class="n">₹5.97 L</td><td class="n">₹0</td></tr><tr><td>Shakti Pulses</td><td class="n">₹4.95 L</td><td class="n">₹0</td></tr><tr><td>Fresh Farm Products</td><td class="n">₹4.93 L</td><td class="n">₹0</td></tr><tr><td>Supreme Spices</td><td class="n">₹2.22 L</td><td class="n">₹0</td></tr><tr><td>Nirmal Oils</td><td class="n">₹2.09 L</td><td class="n">₹0</td></tr>
+    </table>
+  </div>
+</div>
+
+<h2>Working capital cycle</h2>
+<div class="tiles">
+  <div class="tile" title="Days sales outstanding. Trade receivables ÷ LTM credit sales (incl. GST) × 365."><div class="k">DSO</div><div class="v">72 days</div><div class="p">Debtor days: average number of days customers take to pay.</div></div>
+  <div class="tile" title="Days inventory outstanding. Closing stock ÷ LTM COGS × 365."><div class="k">DIO</div><div class="v">71 days</div><div class="p">Inventory days: how many days of stock the company holds.</div></div>
+  <div class="tile" title="Days payables outstanding. Trade payables ÷ LTM credit purchases (incl. GST) × 365."><div class="k">DPO</div><div class="v">55 days</div><div class="p">Creditor days: average number of days the company takes to pay suppliers.</div></div>
+  <div class="tile" title="Cash conversion cycle (cash-to-cash cycle). DSO + DIO − DPO."><div class="k">CCC</div><div class="v">88 days</div><div class="p">Days between paying suppliers and collecting from customers: the gap the bank&#39;s working-capital limit funds.</div></div>
+</div>
+<p class="note">CCC = DSO + DIO − DPO. DSO and DPO use credit billing / purchases including GST; DIO uses COGS.</p>
+
+<h2>Balance sheet, leverage and debt service</h2>
+<p class="note">Position as at 27 Sep 2026, from ledger closing balances. Net worth is assets less outside liabilities, so it includes the current year's unposted profit.</p>
+<div class="cols">
+  <table>
+    <tr><th>Assets</th><th class="n"></th></tr>
+    <tr><td>Cash and bank</td><td class="n">₹19.55 L</td></tr>
+    <tr><td>Receivables</td><td class="n">₹1.73 Cr</td></tr>
+    <tr><td>Stock</td><td class="n">₹1.19 Cr</td></tr>
+    <tr><td>Advances to suppliers</td><td class="n">₹0</td></tr>
+    <tr><td>Loans, advances and deposits</td><td class="n">₹1.32 Cr</td></tr>
+    <tr><td>Other current assets</td><td class="n">₹0</td></tr>
+    <tr><th>Current assets</th><th class="n">₹4.43 Cr</th></tr>
+    <tr><td>Fixed assets</td><td class="n">₹50.10 L</td></tr>
+    <tr><td>Investments</td><td class="n">₹0</td></tr>
+    <tr><th>Total assets</th><th class="n">₹4.93 Cr</th></tr>
+  </table>
+  <table>
+    <tr><th>Liabilities</th><th class="n"></th></tr>
+    <tr><td>Creditors</td><td class="n">₹1.01 Cr</td></tr>
+    <tr><td>Advances from customers</td><td class="n">₹4.23 L</td></tr>
+    <tr><td>Taxes payable</td><td class="n">₹13.13 L</td></tr>
+    <tr><td>Provisions and other</td><td class="n">₹0</td></tr>
+    <tr><td>Bank OD / CC (working-capital limit drawn)</td><td class="n">₹88.99 L</td></tr>
+    <tr><th>Current liabilities</th><th class="n">₹2.07 Cr</th></tr>
+    <tr><td>Secured loans</td><td class="n">₹23.75 L</td></tr>
+    <tr><td>Unsecured loans</td><td class="n">₹25.00 L</td></tr>
+    <tr><th>Net worth (TNW: ₹2.37 Cr)</th><th class="n">₹2.37 Cr</th></tr>
+  </table>
+</div>
+<div class="tiles">
+  <div class="tile" title="Current assets ÷ current liabilities. (Cash, bank, debtors, stock, advances) ÷ (creditors, taxes, provisions, OD/CC)."><div class="k">Current ratio</div><div class="v">2.14×</div><div class="p">Can short-term assets pay the bills due within a year? Banks typically look for 1.33× or more.</div></div>
+  <div class="tile" title="Acid-test ratio. (Current assets − stock) ÷ current liabilities."><div class="k">Quick ratio</div><div class="v">1.56×</div><div class="p">Current ratio without stock: can it pay without selling inventory?</div></div>
+  <div class="tile" title="Gearing (debt-to-equity). (Secured + unsecured loans + OD/CC) ÷ TNW."><div class="k">Debt / TNW</div><div class="v">0.58×</div><div class="p">Borrowings for every ₹1 of the owners&#39; own money.</div></div>
+  <div class="tile" title="Total outside liabilities to tangible net worth. (Loans + current liabilities) ÷ TNW."><div class="k">TOL / TNW</div><div class="v">1.08×</div><div class="p">Everything owed to outsiders for every ₹1 of the owners&#39; money. Banks commonly cap this around 3-4×.</div></div>
+  <div class="tile" title="Interest coverage ratio. EBITDA ÷ interest expense."><div class="k">ICR</div><div class="v">10.72×</div><div class="p">How many times operating profit covers the interest bill.</div></div>
+  <div class="tile" title="Debt service coverage ratio (approx.). EBITDA ÷ (interest + principal repaid on term and unsecured loans, LTM)."><div class="k">DSCR</div><div class="v">4.40×</div><div class="p">How many times operating profit covers interest plus loan instalments. Below 1.2× is usually a concern.</div></div>
+</div>
+<h3>Existing borrowings</h3>
+<div class="wrap"><table>
+  <tr><th>Lender / ledger</th><th>Type</th><th class="n">Outstanding</th><th class="n">Repaid (12m)</th><th class="n">Drawn (12m)</th></tr>
+  
+  <tr><td>SBI Cash Credit A/c</td><td>OD / CC</td><td class="n">₹88.99 L</td><td class="n">₹8.32 Cr</td><td class="n">₹8.47 Cr</td></tr>
+  
+  <tr><td>Loan from Director - R. Agarwal</td><td>Unsecured</td><td class="n">₹25.00 L</td><td class="n">₹0</td><td class="n">₹0</td></tr>
+  
+  <tr><td>ICICI Term Loan</td><td>Secured</td><td class="n">₹23.75 L</td><td class="n">₹15.00 L</td><td class="n">₹0</td></tr>
+  
+</table></div>
+<p class="note">DSCR = EBITDA ÷ (interest + principal repaid on term and unsecured loans in the last 12 months). Unsecured loans may include promoter funds that the bank may treat as quasi-equity.</p>
+
+<h2>Banking and cash</h2>
+<figure class="viz"><div class="legend"><span class="key"><i style="background:var(--series-1)"></i>Purchases</span><span class="key"><i style="background:var(--series-2)"></i>All bank credits</span></div><svg viewBox="0 0 760 180" role="img" class="chart"><line x1="56" x2="752" y1="152.0" y2="152.0" class="grid"/><text x="50" y="156.0" class="axis" text-anchor="end">₹0</text><line x1="56" x2="752" y1="117.0" y2="117.0" class="grid"/><text x="50" y="121.0" class="axis" text-anchor="end">₹25.00 L</text><line x1="56" x2="752" y1="82.0" y2="82.0" class="grid"/><text x="50" y="86.0" class="axis" text-anchor="end">₹50.00 L</text><line x1="56" x2="752" y1="47.0" y2="47.0" class="grid"/><text x="50" y="51.0" class="axis" text-anchor="end">₹75.00 L</text><line x1="56" x2="752" y1="12.0" y2="12.0" class="grid"/><text x="50" y="16.0" class="axis" text-anchor="end">₹1.00 Cr</text><g><title>Sep 2024
+Purchases: ₹1.61 L
+All bank credits: ₹8.50 L</title><rect x="56.0" y="12" width="27.8" height="140" class="hit"/><path d="M60.0,152.0 V152.0 Q60.0,149.8 62.2,149.8 H66.7 Q68.9,149.8 68.9,152.0 V152.0 Z" style="fill:var(--series-1)"/><path d="M70.9,152.0 V144.1 Q70.9,140.1 74.9,140.1 H75.8 Q79.8,140.1 79.8,144.1 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Oct 2024
+Purchases: ₹69.06 L
+All bank credits: ₹52.80 L</title><rect x="83.8" y="12" width="27.8" height="140" class="hit"/><path d="M87.8,152.0 V59.3 Q87.8,55.3 91.8,55.3 H92.8 Q96.8,55.3 96.8,59.3 V152.0 Z" style="fill:var(--series-1)"/><path d="M98.8,152.0 V82.1 Q98.8,78.1 102.8,78.1 H103.7 Q107.7,78.1 107.7,82.1 V152.0 Z" style="fill:var(--series-2)"/></g><text x="97.8" y="172" class="axis" text-anchor="middle">Oct 24</text><g><title>Nov 2024
+Purchases: ₹70.17 L
+All bank credits: ₹66.22 L</title><rect x="111.7" y="12" width="27.8" height="140" class="hit"/><path d="M115.7,152.0 V57.8 Q115.7,53.8 119.7,53.8 H120.6 Q124.6,53.8 124.6,57.8 V152.0 Z" style="fill:var(--series-1)"/><path d="M126.6,152.0 V63.3 Q126.6,59.3 130.6,59.3 H131.5 Q135.5,59.3 135.5,63.3 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Dec 2024
+Purchases: ₹48.35 L
+All bank credits: ₹77.33 L</title><rect x="139.5" y="12" width="27.8" height="140" class="hit"/><path d="M143.5,152.0 V88.3 Q143.5,84.3 147.5,84.3 H148.4 Q152.4,84.3 152.4,88.3 V152.0 Z" style="fill:var(--series-1)"/><path d="M154.4,152.0 V47.7 Q154.4,43.7 158.4,43.7 H159.4 Q163.4,43.7 163.4,47.7 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Jan 2025
+Purchases: ₹46.68 L
+All bank credits: ₹78.86 L</title><rect x="167.4" y="12" width="27.8" height="140" class="hit"/><path d="M171.4,152.0 V90.6 Q171.4,86.6 175.4,86.6 H176.3 Q180.3,86.6 180.3,90.6 V152.0 Z" style="fill:var(--series-1)"/><path d="M182.3,152.0 V45.6 Q182.3,41.6 186.3,41.6 H187.2 Q191.2,41.6 191.2,45.6 V152.0 Z" style="fill:var(--series-2)"/></g><text x="181.3" y="172" class="axis" text-anchor="middle">Jan 25</text><g><title>Feb 2025
+Purchases: ₹43.69 L
+All bank credits: ₹55.56 L</title><rect x="195.2" y="12" width="27.8" height="140" class="hit"/><path d="M199.2,152.0 V94.8 Q199.2,90.8 203.2,90.8 H204.1 Q208.1,90.8 208.1,94.8 V152.0 Z" style="fill:var(--series-1)"/><path d="M210.1,152.0 V78.2 Q210.1,74.2 214.1,74.2 H215.0 Q219.0,74.2 219.0,78.2 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Mar 2025
+Purchases: ₹46.86 L
+All bank credits: ₹68.66 L</title><rect x="223.0" y="12" width="27.8" height="140" class="hit"/><path d="M227.0,152.0 V90.4 Q227.0,86.4 231.0,86.4 H232.0 Q236.0,86.4 236.0,90.4 V152.0 Z" style="fill:var(--series-1)"/><path d="M238.0,152.0 V59.9 Q238.0,55.9 242.0,55.9 H242.9 Q246.9,55.9 246.9,59.9 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Apr 2025
+Purchases: ₹36.32 L
+All bank credits: ₹63.15 L</title><rect x="250.9" y="12" width="27.8" height="140" class="hit"/><path d="M254.9,152.0 V105.2 Q254.9,101.2 258.9,101.2 H259.8 Q263.8,101.2 263.8,105.2 V152.0 Z" style="fill:var(--series-1)"/><path d="M265.8,152.0 V67.6 Q265.8,63.6 269.8,63.6 H270.7 Q274.7,63.6 274.7,67.6 V152.0 Z" style="fill:var(--series-2)"/></g><text x="264.8" y="172" class="axis" text-anchor="middle">Apr 25</text><g><title>May 2025
+Purchases: ₹46.71 L
+All bank credits: ₹64.04 L</title><rect x="278.7" y="12" width="27.8" height="140" class="hit"/><path d="M282.7,152.0 V90.6 Q282.7,86.6 286.7,86.6 H287.6 Q291.6,86.6 291.6,90.6 V152.0 Z" style="fill:var(--series-1)"/><path d="M293.6,152.0 V66.3 Q293.6,62.3 297.6,62.3 H298.6 Q302.6,62.3 302.6,66.3 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Jun 2025
+Purchases: ₹59.41 L
+All bank credits: ₹60.45 L</title><rect x="306.6" y="12" width="27.8" height="140" class="hit"/><path d="M310.6,152.0 V72.8 Q310.6,68.8 314.6,68.8 H315.5 Q319.5,68.8 319.5,72.8 V152.0 Z" style="fill:var(--series-1)"/><path d="M321.5,152.0 V71.4 Q321.5,67.4 325.5,67.4 H326.4 Q330.4,67.4 330.4,71.4 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Jul 2025
+Purchases: ₹35.18 L
+All bank credits: ₹67.19 L</title><rect x="334.4" y="12" width="27.8" height="140" class="hit"/><path d="M338.4,152.0 V106.8 Q338.4,102.8 342.4,102.8 H343.3 Q347.3,102.8 347.3,106.8 V152.0 Z" style="fill:var(--series-1)"/><path d="M349.3,152.0 V61.9 Q349.3,57.9 353.3,57.9 H354.2 Q358.2,57.9 358.2,61.9 V152.0 Z" style="fill:var(--series-2)"/></g><text x="348.3" y="172" class="axis" text-anchor="middle">Jul 25</text><g><title>Aug 2025
+Purchases: ₹36.76 L
+All bank credits: ₹54.92 L</title><rect x="362.2" y="12" width="27.8" height="140" class="hit"/><path d="M366.2,152.0 V104.5 Q366.2,100.5 370.2,100.5 H371.2 Q375.2,100.5 375.2,104.5 V152.0 Z" style="fill:var(--series-1)"/><path d="M377.2,152.0 V79.1 Q377.2,75.1 381.2,75.1 H382.1 Q386.1,75.1 386.1,79.1 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Sep 2025
+Purchases: ₹60.18 L
+All bank credits: ₹52.48 L</title><rect x="390.1" y="12" width="27.8" height="140" class="hit"/><path d="M394.1,152.0 V71.7 Q394.1,67.7 398.1,67.7 H399.0 Q403.0,67.7 403.0,71.7 V152.0 Z" style="fill:var(--series-1)"/><path d="M405.0,152.0 V82.5 Q405.0,78.5 409.0,78.5 H409.9 Q413.9,78.5 413.9,82.5 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Oct 2025
+Purchases: ₹52.79 L
+All bank credits: ₹70.00 L</title><rect x="417.9" y="12" width="27.8" height="140" class="hit"/><path d="M421.9,152.0 V82.1 Q421.9,78.1 425.9,78.1 H426.8 Q430.8,78.1 430.8,82.1 V152.0 Z" style="fill:var(--series-1)"/><path d="M432.8,152.0 V58.0 Q432.8,54.0 436.8,54.0 H437.8 Q441.8,54.0 441.8,58.0 V152.0 Z" style="fill:var(--series-2)"/></g><text x="431.8" y="172" class="axis" text-anchor="middle">Oct 25</text><g><title>Nov 2025
+Purchases: ₹54.31 L
+All bank credits: ₹71.91 L</title><rect x="445.8" y="12" width="27.8" height="140" class="hit"/><path d="M449.8,152.0 V80.0 Q449.8,76.0 453.8,76.0 H454.7 Q458.7,76.0 458.7,80.0 V152.0 Z" style="fill:var(--series-1)"/><path d="M460.7,152.0 V55.3 Q460.7,51.3 464.7,51.3 H465.6 Q469.6,51.3 469.6,55.3 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Dec 2025
+Purchases: ₹63.00 L
+All bank credits: ₹77.12 L</title><rect x="473.6" y="12" width="27.8" height="140" class="hit"/><path d="M477.6,152.0 V67.8 Q477.6,63.8 481.6,63.8 H482.5 Q486.5,63.8 486.5,67.8 V152.0 Z" style="fill:var(--series-1)"/><path d="M488.5,152.0 V48.0 Q488.5,44.0 492.5,44.0 H493.4 Q497.4,44.0 497.4,48.0 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Jan 2026
+Purchases: ₹66.28 L
+All bank credits: ₹76.52 L</title><rect x="501.4" y="12" width="27.8" height="140" class="hit"/><path d="M505.4,152.0 V63.2 Q505.4,59.2 509.4,59.2 H510.4 Q514.4,59.2 514.4,63.2 V152.0 Z" style="fill:var(--series-1)"/><path d="M516.4,152.0 V48.9 Q516.4,44.9 520.4,44.9 H521.3 Q525.3,44.9 525.3,48.9 V152.0 Z" style="fill:var(--series-2)"/></g><text x="515.4" y="172" class="axis" text-anchor="middle">Jan 26</text><g><title>Feb 2026
+Purchases: ₹40.54 L
+All bank credits: ₹67.46 L</title><rect x="529.3" y="12" width="27.8" height="140" class="hit"/><path d="M533.3,152.0 V99.2 Q533.3,95.2 537.3,95.2 H538.2 Q542.2,95.2 542.2,99.2 V152.0 Z" style="fill:var(--series-1)"/><path d="M544.2,152.0 V61.6 Q544.2,57.6 548.2,57.6 H549.1 Q553.1,57.6 553.1,61.6 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Mar 2026
+Purchases: ₹41.02 L
+All bank credits: ₹70.47 L</title><rect x="557.1" y="12" width="27.8" height="140" class="hit"/><path d="M561.1,152.0 V98.6 Q561.1,94.6 565.1,94.6 H566.0 Q570.0,94.6 570.0,98.6 V152.0 Z" style="fill:var(--series-1)"/><path d="M572.0,152.0 V57.3 Q572.0,53.3 576.0,53.3 H577.0 Q581.0,53.3 581.0,57.3 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Apr 2026
+Purchases: ₹47.94 L
+All bank credits: ₹70.53 L</title><rect x="585.0" y="12" width="27.8" height="140" class="hit"/><path d="M589.0,152.0 V88.9 Q589.0,84.9 593.0,84.9 H593.9 Q597.9,84.9 597.9,88.9 V152.0 Z" style="fill:var(--series-1)"/><path d="M599.9,152.0 V57.3 Q599.9,53.3 603.9,53.3 H604.8 Q608.8,53.3 608.8,57.3 V152.0 Z" style="fill:var(--series-2)"/></g><text x="598.9" y="172" class="axis" text-anchor="middle">Apr 26</text><g><title>May 2026
+Purchases: ₹33.48 L
+All bank credits: ₹76.48 L</title><rect x="612.8" y="12" width="27.8" height="140" class="hit"/><path d="M616.8,152.0 V109.1 Q616.8,105.1 620.8,105.1 H621.7 Q625.7,105.1 625.7,109.1 V152.0 Z" style="fill:var(--series-1)"/><path d="M627.7,152.0 V48.9 Q627.7,44.9 631.7,44.9 H632.6 Q636.6,44.9 636.6,48.9 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Jun 2026
+Purchases: ₹50.81 L
+All bank credits: ₹44.64 L</title><rect x="640.6" y="12" width="27.8" height="140" class="hit"/><path d="M644.6,152.0 V84.9 Q644.6,80.9 648.6,80.9 H649.6 Q653.6,80.9 653.6,84.9 V152.0 Z" style="fill:var(--series-1)"/><path d="M655.6,152.0 V93.5 Q655.6,89.5 659.6,89.5 H660.5 Q664.5,89.5 664.5,93.5 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Jul 2026
+Purchases: ₹55.81 L
+All bank credits: ₹70.97 L</title><rect x="668.5" y="12" width="27.8" height="140" class="hit"/><path d="M672.5,152.0 V77.9 Q672.5,73.9 676.5,73.9 H677.4 Q681.4,73.9 681.4,77.9 V152.0 Z" style="fill:var(--series-1)"/><path d="M683.4,152.0 V56.6 Q683.4,52.6 687.4,52.6 H688.3 Q692.3,52.6 692.3,56.6 V152.0 Z" style="fill:var(--series-2)"/></g><text x="682.4" y="172" class="axis" text-anchor="middle">Jul 26</text><g><title>Aug 2026
+Purchases: ₹56.65 L
+All bank credits: ₹41.99 L</title><rect x="696.3" y="12" width="27.8" height="140" class="hit"/><path d="M700.3,152.0 V76.7 Q700.3,72.7 704.3,72.7 H705.2 Q709.2,72.7 709.2,76.7 V152.0 Z" style="fill:var(--series-1)"/><path d="M711.2,152.0 V97.2 Q711.2,93.2 715.2,93.2 H716.2 Q720.2,93.2 720.2,97.2 V152.0 Z" style="fill:var(--series-2)"/></g><g><title>Sep 2026
+Purchases: ₹46.39 L
+All bank credits: ₹21.18 L</title><rect x="724.2" y="12" width="27.8" height="140" class="hit"/><path d="M728.2,152.0 V91.0 Q728.2,87.0 732.2,87.0 H733.1 Q737.1,87.0 737.1,91.0 V152.0 Z" style="fill:var(--series-1)"/><path d="M739.1,152.0 V126.4 Q739.1,122.4 743.1,122.4 H744.0 Q748.0,122.4 748.0,126.4 V152.0 Z" style="fill:var(--series-2)"/></g><line x1="56" x2="752" y1="152" y2="152" class="baseline"/></svg></figure>
+<div class="wrap"><table>
+  <tr><td>Customer receipts through bank (12m)</td><td class="n">₹7.67 Cr</td></tr>
+  <tr><td>Customer receipts in cash (12m)</td><td class="n">₹32.65 L (4.1%)</td></tr>
+  <tr><td>Cash receipts of ₹2 L or more (s.269ST)</td><td class="n">4</td></tr>
+  <tr><td>Cash payments above ₹10,000 (s.40A(3))</td><td class="n">24</td></tr>
+  <tr><td>Days with negative cash-in-hand</td><td class="n">0</td></tr>
+</table></div>
+<p class="note">Compare monthly bank credits with the bank statement to verify that the books reflect real flows.</p>
+
+<h2>GST and taxes</h2>
+<div class="wrap"><table>
+  <tr><td>Output tax on sales (12m)</td><td class="n">₹83.67 L</td></tr>
+  <tr><td>Effective output tax rate</td><td class="n">10.2%</td></tr>
+  <tr><td>Tax paid from bank / cash (12m)</td><td class="n">₹15.42 L</td></tr>
+  <tr><td>Taxes payable at period end</td><td class="n">₹1.61 Cr</td></tr>
+</table></div>
+<p class="note">Reconcile with GSTR-1 / GSTR-3B turnover before relying on revenue figures.</p>
+
+<h2>Data coverage</h2>
+
+<div class="wrap"><table>
+  <tr><td>Accounting vouchers analysed</td><td class="n">7013</td></tr>
+  <tr><td>Voucher date range</td><td class="n">27 Sep 2024 – 20 Sep 2026</td></tr>
+  <tr><td>Ledgers / customers / suppliers</td><td class="n">71 / 28 / 10</td></tr>
+  <tr><td>Cancelled / non-accounting vouchers skipped</td><td class="n">5 / 0</td></tr>
+  <tr><td>Outstanding bills (bill-wise)</td><td class="n">0</td></tr>
+  <tr><td>Connector version</td><td class="n">n/a</td></tr>
+</table></div>
+
+
+<h2>Glossary</h2>
+<div class="wrap"><table class="glossary">
+  <tr><th>Term</th><th>Stands for</th><th>In plain English</th><th>How this report computes it</th></tr>
+  <tr><td>Ageing</td><td>Receivables / payables ageing</td><td>How old the unpaid bills are.</td><td class="note">Outstanding split by bill date: bill-wise where Tally tracks bills, else FIFO against invoices.</td></tr><tr><td>Back-dated entries</td><td>Entries out of creation order</td><td>Vouchers keyed in later but dated earlier.</td><td class="note">Vouchers whose MasterID (creation order) is after vouchers dated 30+ days later.</td></tr><tr><td>Cash receipts share</td><td>Cash share of customer collections</td><td>Share of customer payments received in cash instead of through the bank.</td><td class="note">LTM cash receipts from debtors ÷ all receipts from debtors.</td></tr><tr><td>CCC</td><td>Cash conversion cycle (cash-to-cash cycle)</td><td>Days between paying suppliers and collecting from customers: the gap the bank&#39;s working-capital limit funds.</td><td class="note">DSO + DIO − DPO.</td></tr><tr><td>Circular trading</td><td>Round-tripping between related parties</td><td>The same party buying and selling with the company, which can inflate turnover.</td><td class="note">Debtor and creditor ledgers matched by GSTIN or normalised name.</td></tr><tr><td>COGS</td><td>Cost of goods sold</td><td>What the goods that were sold cost the company.</td><td class="note">Purchases + direct expenses − (closing stock − opening stock).</td></tr><tr><td>Collection efficiency</td><td>Collections ÷ billing</td><td>How much of what was billed to customers was actually collected.</td><td class="note">LTM receipts from customers ÷ LTM credit billing.</td></tr><tr><td>Current ratio</td><td>Current assets ÷ current liabilities</td><td>Can short-term assets pay the bills due within a year? Banks typically look for 1.33× or more.</td><td class="note">(Cash, bank, debtors, stock, advances) ÷ (creditors, taxes, provisions, OD/CC).</td></tr><tr><td>CV</td><td>Coefficient of variation (seasonality)</td><td>How much monthly sales swing up and down.</td><td class="note">Standard deviation of monthly LTM sales ÷ their mean.</td></tr><tr><td>Debt / TNW</td><td>Gearing (debt-to-equity)</td><td>Borrowings for every ₹1 of the owners&#39; own money.</td><td class="note">(Secured + unsecured loans + OD/CC) ÷ TNW.</td></tr><tr><td>DIO</td><td>Days inventory outstanding</td><td>Inventory days: how many days of stock the company holds.</td><td class="note">Closing stock ÷ LTM COGS × 365.</td></tr><tr><td>DPO</td><td>Days payables outstanding</td><td>Creditor days: average number of days the company takes to pay suppliers.</td><td class="note">Trade payables ÷ LTM credit purchases (incl. GST) × 365.</td></tr><tr><td>DSCR</td><td>Debt service coverage ratio (approx.)</td><td>How many times operating profit covers interest plus loan instalments. Below 1.2× is usually a concern.</td><td class="note">EBITDA ÷ (interest + principal repaid on term and unsecured loans, LTM).</td></tr><tr><td>DSO</td><td>Days sales outstanding</td><td>Debtor days: average number of days customers take to pay.</td><td class="note">Trade receivables ÷ LTM credit sales (incl. GST) × 365.</td></tr><tr><td>EBITDA</td><td>Earnings before interest, tax, depreciation and amortisation</td><td>Operating profit: the cash-like profit the business earns before financing costs.</td><td class="note">Net profit + interest + depreciation (identified by ledger name).</td></tr><tr><td>Gross margin</td><td>Gross profit margin</td><td>What is left from each ₹100 of sales after the cost of goods.</td><td class="note">(Sales + direct income − COGS) ÷ sales.</td></tr><tr><td>HHI</td><td>Herfindahl-Hirschman Index</td><td>How concentrated sales are among customers (0 = spread out, 10,000 = one customer).</td><td class="note">Sum of squared % shares of each customer. &lt; 1,500 unconcentrated; 1,500-2,500 moderate; &gt; 2,500 high.</td></tr><tr><td>ICR</td><td>Interest coverage ratio</td><td>How many times operating profit covers the interest bill.</td><td class="note">EBITDA ÷ interest expense.</td></tr><tr><td>LTM</td><td>Last twelve months (TTM)</td><td>The 12 months up to the extraction date.</td><td class="note">Rolling 365-day window ending on the report date.</td></tr><tr><td>Net margin</td><td>Net profit margin (pre-tax, as booked)</td><td>Profit left from each ₹100 of sales after all expenses.</td><td class="note">Net profit ÷ sales, from voucher-level P&amp;L.</td></tr><tr><td>NRR</td><td>Net revenue retention</td><td>How much repeat customers bought this year vs last year.</td><td class="note">LTM sales to customers active in both periods ÷ their prior-year sales.</td></tr><tr><td>OD / CC</td><td>Overdraft / cash credit</td><td>The working-capital limit drawn from the bank.</td><td class="note">Credit balances in Bank OD / OCC ledgers and overdrawn current accounts.</td></tr><tr><td>Quick ratio</td><td>Acid-test ratio</td><td>Current ratio without stock: can it pay without selling inventory?</td><td class="note">(Current assets − stock) ÷ current liabilities.</td></tr><tr><td>Receivables &gt; 90 days</td><td>Overdue ageing bucket</td><td>Share of money owed by customers that is more than 3 months old.</td><td class="note">(91-180 + 181-365 + &gt; 365-day buckets) ÷ total receivables.</td></tr><tr><td>s.269ST</td><td>Income Tax Act s.269ST</td><td>Law barring receipt of ₹2 lakh or more in cash in a transaction.</td><td class="note"></td></tr><tr><td>s.40A(3)</td><td>Income Tax Act s.40A(3)</td><td>Cash expenses above ₹10,000 are not tax-deductible.</td><td class="note"></td></tr><tr><td>TNW</td><td>Tangible net worth</td><td>The owners&#39; own money in the business, excluding intangible items.</td><td class="note">Total assets − outside liabilities − misc. expenses (asset).</td></tr><tr><td>TOL / TNW</td><td>Total outside liabilities to tangible net worth</td><td>Everything owed to outsiders for every ₹1 of the owners&#39; money. Banks commonly cap this around 3-4×.</td><td class="note">(Loans + current liabilities) ÷ TNW.</td></tr><tr><td>Top-1 share</td><td>Largest-customer concentration</td><td>Share of sales from the single largest customer.</td><td class="note">Largest customer&#39;s LTM sales ÷ total LTM credit-customer sales.</td></tr><tr><td>Top-5 share</td><td>Top-5 customer concentration</td><td>Share of sales from the five largest customers.</td><td class="note">Top 5 customers&#39; LTM sales ÷ total LTM credit-customer sales.</td></tr><tr><td>Window dressing</td><td>Year-end sales inflation</td><td>Sales booked at year end that are reversed afterwards.</td><td class="note">March sales &gt; 1.6× the year&#39;s average month; April credit notes &gt; 10% of March sales.</td></tr><tr><td>YoY growth</td><td>Year-on-year growth</td><td>How much sales grew compared with the same period a year earlier.</td><td class="note">(LTM sales − prior 12-month sales) ÷ prior 12-month sales.</td></tr>
+</table></div>
+
+<p class="disclaimer">
+  This report is computed automatically from the applicant's Tally books as extracted on the date above. It has not been audited
+  and does not replace financial statements, bank statements, GST returns or a credit officer's judgement. Figures are only as
+  accurate as the underlying bookkeeping.
+</p>
+</main>
+</body>
+</html>

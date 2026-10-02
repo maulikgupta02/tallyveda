@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tally Connector</title>
+<style>
+  :root { color-scheme: light; --surface: #f6f5f2; --card: #ffffff; --line: #e2e1dc; --text: #0b0b0b; --text-2: #52514e;
+    --accent: #2a78d6; --accent-ink: #ffffff; --good: #0ca30c; --critical: #d03b3b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text); font: 15px/1.5 "Segoe UI", -apple-system, Roboto, Arial, sans-serif; }
+  main { max-width: 560px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--text-2); margin: 0 0 20px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
+  .card.off { opacity: .45; pointer-events: none; }
+  .step { display: flex; gap: 10px; align-items: center; font-weight: 600; margin-bottom: 10px; }
+  .num { width: 24px; height: 24px; border-radius: 50%; background: var(--line); display: grid; place-items: center; font-size: 13px; }
+  .ok .num { background: var(--good); color: #fff; }
+  label { display: block; font-size: 13px; color: var(--text-2); margin: 10px 0 4px; }
+  input[type=text], select { width: 100%; font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  input.code { font: 600 20px ui-monospace, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+  button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 6px; border: 0; background: var(--accent); color: var(--accent-ink);
+    cursor: pointer; margin-top: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .err { color: var(--critical); font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
+  .muted { color: var(--text-2); font-size: 13px; }
+  .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text); margin-top: 12px; }
+  .consent input { margin-top: 3px; }
+  ol.help { font-size: 13px; padding-left: 20px; margin: 8px 0 0; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 12px 0 6px; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .done { font-size: 16px; font-weight: 600; color: var(--good); }
+  .hidden { display: none; }
+  button.secondary { background: #fff; color: var(--text); border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Share Tally data with your bank</h1>
+  <p class="sub">This tool reads your accounts from Tally on this computer and sends them securely to your bank.
+    It does not change anything in Tally.</p>
+
+  <section class="card hidden" id="mon">
+    <div class="step"><span class="num">✓</span>Monthly updates are on</div>
+    <div id="monText" class="muted"></div>
+    <button id="monStop" class="secondary">Stop monthly updates</button>
+    <div id="monErr" class="err"></div>
+  </section>
+
+  <section class="card" id="s1">
+    <div class="step"><span class="num">1</span>Connect to Tally</div>
+    <div id="tallyMsg" class="muted">Looking for Tally…</div>
+    <div id="tallyHelp" class="hidden">
+      <ol class="help">
+        <li>Open TallyPrime and load your company.</li>
+        <li>Press <b>F1 (Help) → Settings → Connectivity</b>. In Tally.ERP 9: <b>F12 → Advanced Configuration</b>.</li>
+        <li>Set <b>TallyPrime acts as</b> to <b>Both</b> (or Server) and <b>Port</b> to <b>9000</b>. Accept and restart Tally if asked.</li>
+      </ol>
+      <p class="muted">This page checks again automatically every few seconds.</p>
+    </div>
+  </section>
+
+  <section class="card off" id="s2">
+    <div class="step"><span class="num">2</span>Enter the code from your bank</div>
+    <input type="text" id="code" class="code" placeholder="XXXX-XXXX" maxlength="9" autocomplete="off">
+    <button id="verifyBtn">Continue</button>
+    <div id="verifyErr" class="err"></div>
+    <div id="verifyOk" class="muted hidden"></div>
+  </section>
+
+  <section class="card off" id="s3">
+    <div class="step"><span class="num">3</span>Choose the company and approve</div>
+    <label for="company">Company in Tally</label>
+    <select id="company"></select>
+    <label for="name">Your full name</label>
+    <input type="text" id="name" autocomplete="name">
+    <div class="consent"><input type="checkbox" id="agree"><span id="consentText"></span></div>
+    <div class="consent hidden" id="monOpt"><input type="checkbox" id="monitoring"><span id="monOptText"></span></div>
+    <button id="startBtn" disabled>Share data</button>
+    <div id="startErr" class="err"></div>
+  </section>
+
+  <section class="card off" id="s4">
+    <div class="step"><span class="num">4</span>Sending</div>
+    <div class="bar"><i id="barFill"></i></div>
+    <div id="stage" class="muted">Waiting…</div>
+    <div id="jobErr" class="err"></div>
+    <div id="doneMsg" class="hidden">
+      <p class="done">Done. Your bank has received the data.</p>
+      <p class="muted" id="summary"></p>
+      <p class="muted">You can close this tab.</p>
+    </div>
+  </section>
+  <p class="muted">Tally Connector {{VERSION}}</p>
+</main>
+<script>
+const TOKEN = "{{TOKEN}}";
+const $ = (id) => document.getElementById(id);
+let info = null, tallyOk = false, months = 24;
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ("Error " + r.status));
+  return data;
+}
+
+function mark(id, ok) { $(id).classList.toggle("ok", ok); }
+function enable(id, on) { $(id).classList.toggle("off", !on); }
+
+async function checkTally() {
+  try {
+    const s = await api("/api/tally");
+    if (s.ok && s.companies && s.companies.length) {
+      tallyOk = true;
+      $("tallyMsg").textContent = `${s.banner}. Companies open: ${s.companies.map(c => c.name).join(", ")}`;
+      $("tallyHelp").classList.add("hidden");
+      mark("s1", true);
+      const sel = $("company"), current = sel.value;
+      sel.innerHTML = "";
+      s.companies.forEach(c => { const o = document.createElement("option"); o.value = o.textContent = c.name; sel.appendChild(o); });
+      if (current) sel.value = current;
+      enable("s2", true);
+      updateConsent();
+      return;
+    }
+    tallyOk = false;
+    mark("s1", false);
+    $("tallyMsg").textContent = s.ok ? "Tally is running but no company is open. Open your company in Tally."
+                                     : `Tally was not found at ${s.url}.`;
+    $("tallyHelp").classList.toggle("hidden", s.ok);
+  } catch (e) {
+    $("tallyMsg").textContent = "Connector error: " + e.message;
+  }
+  setTimeout(checkTally, 4000);
+}
+
+$("code").addEventListener("input", (e) => {
+  let v = e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 8);
+  e.target.value = v.length > 4 ? v.slice(0, 4) + "-" + v.slice(4) : v;
+});
+$("code").addEventListener("keydown", (e) => { if (e.key === "Enter") $("verifyBtn").click(); });
+
+$("verifyBtn").onclick = async () => {
+  $("verifyErr").textContent = "";
+  $("verifyBtn").disabled = true;
+  try {
+    info = await api("/api/verify", { code: $("code").value });
+    months = info.months || 24;
+    $("monOpt").classList.toggle("hidden", !info.monitoring_offered);
+    $("monOptText").textContent = `Also send ${info.bank_name} an updated copy about once a month, automatically, ` +
+      `whenever Tally is open on this computer. You can stop this at any time by opening this tool again.`;
+    $("verifyOk").textContent = `${info.bank_name} is requesting ${months} months of data for ${info.applicant_name}` +
+      (info.reference ? ` (ref. ${info.reference})` : "") + ".";
+    $("verifyOk").classList.remove("hidden");
+    mark("s2", true);
+    enable("s3", true);
+    updateConsent();
+  } catch (e) {
+    $("verifyErr").textContent = e.message;
+  } finally {
+    $("verifyBtn").disabled = false;
+  }
+};
+
+function updateConsent() {
+  if (!info) return;
+  $("consentText").textContent = `I am authorised to share this company's accounting data. I consent to ${info.bank_name} ` +
+    `receiving the books of ${$("company").value} (ledgers, vouchers, outstanding bills and stock values) for the last ` +
+    `${months} months to assess a credit application.`;
+  $("startBtn").disabled = !($("agree").checked && $("name").value.trim() && tallyOk);
+}
+["agree", "name", "company"].forEach(id => $(id).addEventListener("input", updateConsent));
+
+$("startBtn").onclick = async () => {
+  $("startErr").textContent = "";
+  $("startBtn").disabled = true;
+  try {
+    await api("/api/start", { code: $("code").value, company: $("company").value, months, consent_name: $("name").value,
+                              monitoring: !!(info.monitoring_offered && $("monitoring").checked) });
+    enable("s4", true);
+    ["s1", "s2", "s3"].forEach(id => enable(id, false));
+    poll();
+  } catch (e) {
+    $("startErr").textContent = e.message;
+    $("startBtn").disabled = false;
+  }
+};
+
+async function poll() {
+  const j = await api("/api/progress");
+  $("barFill").style.width = Math.round(j.fraction * 100) + "%";
+  $("stage").textContent = j.stage;
+  if (j.error) {
+    $("jobErr").textContent = j.error + "\n\nFix the problem and press Share data again.";
+    ["s2", "s3"].forEach(id => enable(id, true));
+    $("startBtn").disabled = false;
+    return;
+  }
+  if (j.done) {
+    mark("s4", true);
+    $("summary").textContent = j.summary;
+    $("doneMsg").classList.remove("hidden");
+    loadMonitor();
+    return;
+  }
+  setTimeout(poll, 700);
+}
+
+async function loadMonitor() {
+  try {
+    const m = await api("/api/monitor");
+    $("mon").classList.toggle("hidden", !m.active);
+    if (m.active) {
+      $("monText").textContent = `This computer sends ${m.bank_name} a monthly copy of ${m.company}. ` +
+        (m.last_success ? `Last sent ${new Date(m.last_success).toLocaleDateString()}.` : "No monthly update sent yet.") +
+        (m.last_error ? ` Last attempt: ${m.last_error}.` : "");
+    }
+  } catch (e) { /* not critical */ }
+}
+
+$("monStop").onclick = async () => {
+  if (!confirm("Stop sending monthly updates to the bank?")) return;
+  $("monErr").textContent = "";
+  try {
+    await api("/api/monitor/stop", {});
+    $("mon").classList.add("hidden");
+  } catch (e) {
+    $("monErr").textContent = e.message;
+  }
+};
+
+// Heartbeat: the connector exits a little while after this tab is closed.
+setInterval(() => api("/api/ping").catch(() => {}), 10000);
+api("/api/ping").catch(() => {});
+loadMonitor();
+checkTally();
+</script>
+</body>
+</html>

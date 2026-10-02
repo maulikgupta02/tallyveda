@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ bank_name }} · Tally applications</title>
+<style>
+  :root { color-scheme: light; --surface: #fcfcfb; --surface-2: #f3f2ef; --line: #e2e1dc; --text: #0b0b0b; --text-2: #52514e;
+    --accent: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  form.new { display: flex; gap: 8px; flex-wrap: wrap; background: var(--surface-2); padding: 12px; border-radius: 8px; margin-bottom: 20px; align-items: end; }
+  label { display: flex; flex-direction: column; font-size: 12px; color: var(--text-2); gap: 4px; }
+  input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  button, a.btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--text); cursor: pointer; text-decoration: none; white-space: nowrap; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; color: var(--text-2); }
+  .code { font: 600 16px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; }
+  .muted { color: var(--text-2); font-size: 12px; }
+  .status { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; }
+  .status i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .status.ready i { background: var(--good); } .status.processing i { background: var(--warning); } .status.failed i { background: var(--critical); }
+  .inline { display: inline; }
+  label.check { justify-content: flex-end; padding-bottom: 8px; color: var(--text); font-size: 13px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
+  .badge.alert { background: #fbe3e3; color: #8a1f1f; } .badge.overdue { background: #fdf0d2; color: #6b4a00; }
+  a.name { color: var(--text); font-weight: 600; }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>{{ bank_name }} · Tally data requests</h1>
+<form class="new" method="post" action="/bank/applications">
+  <label>Applicant<input name="applicant_name" required placeholder="Company name"></label>
+  <label>Loan reference<input name="reference" placeholder="e.g. LN-2026-0142"></label>
+  <label>Months of data<input name="months" type="number" min="6" max="60" value="{{ default_months }}" style="width:90px"></label>
+  <label class="check"><span><input type="checkbox" name="monitoring" checked> Offer monthly monitoring</span></label>
+  <button class="primary">Create request</button>
+</form>
+<p class="muted">
+  Send the applicant the connector{% if download_url %} (<a href="{{ download_url }}">{{ download_url }}</a>){% endif %}
+  and their one-time code. They run it on the computer where Tally is open, enter the code and approve sharing.
+</p>
+<div class="wrap"><table>
+  <tr><th>Applicant</th><th>Code</th><th>Status</th><th>Monitoring</th><th>Last data</th><th></th></tr>
+  {% for a in apps %}
+  <tr>
+    <td><a class="name" href="/bank/applications/{{ a.id }}">{{ a.applicant_name }}</a>
+      <div class="muted">{{ a.reference or "" }}{% if a.company_name %} · {{ a.company_name }}{% endif %}</div></td>
+    <td>{% if a.code %}<span class="code">{{ a.code|code }}</span><div class="muted">expires {{ a.code_expires_at|when }} UTC</div>{% else %}<span class="muted">used</span>{% endif %}</td>
+    <td><span class="status {{ a.status }}"><i></i>{{ {"awaiting_data": "Awaiting data", "processing": "Processing", "ready": "Report ready", "failed": "Failed"}[a.status] }}</span>
+      {% if a.error %}<div class="muted">{{ a.error }}</div>{% endif %}</td>
+    <td>{{ monitoring_labels[a.monitoring_status] if a.monitoring_status != "off" else ("Offered" if a.monitoring_offered else "Off") }}
+      {% if a.overdue %}<span class="badge overdue">overdue</span>{% endif %}
+      {% if a.alert_count %}<span class="badge alert">{{ a.alert_count }} alert{{ "s" if a.alert_count > 1 }}</span>{% endif %}</td>
+    <td>{{ (a.last_report_at or a.uploaded_at)|when }}</td>
+    <td>
+      {% if a.latest_report_id %}<a class="btn" href="/bank/applications/{{ a.id }}/report">Latest report</a>{% endif %}
+      <form class="inline" method="post" action="/bank/applications/{{ a.id }}/code"><button>{{ "New code" if a.code else "Request again" }}</button></form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No requests yet.</td></tr>
+  {% endfor %}
+</table></div>
+</main>
+</body>
+</html>

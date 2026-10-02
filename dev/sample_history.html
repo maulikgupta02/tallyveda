@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shree Ganesh Traders · Demo Bank</title>
+<style>
+  :root { color-scheme: light; --surface: #fcfcfb; --surface-2: #f3f2ef; --line: #e2e1dc; --text: #0b0b0b; --text-2: #52514e;
+    --accent: #2a78d6; --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 16px; margin: 28px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .muted { color: var(--text-2); font-size: 12px; }
+  .top { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+  button, a.btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; color: var(--text); cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .inline { display: inline; }
+  .panel { background: var(--surface-2); border-radius: 8px; padding: 12px 14px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+  .panel .k { font-size: 12px; color: var(--text-2); } .panel .v { font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--text-2); }
+  td.c, th.c { text-align: center; white-space: nowrap; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--line); vertical-align: -1px; margin-right: 4px; }
+  .dot.green { background: var(--good); } .dot.amber { background: var(--warning); } .dot.red { background: var(--critical); }
+  .flag { border-left: 4px solid var(--line); background: var(--surface-2); padding: 6px 10px; margin: 6px 0; border-radius: 0 6px 6px 0; }
+  .flag.high { border-color: var(--critical); } .flag.medium { border-color: var(--serious); }
+  .flag b { display: block; }
+  .wrap { overflow-x: auto; }
+  .warn { color: #6b4a00; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<div class="top">
+  <div>
+    <h1>Shree Ganesh Traders</h1>
+    <div class="muted">LN-2026-0142 · Tally company: Shree Ganesh Traders Pvt Ltd
+       · consent by R Agarwal</div>
+  </div>
+  <div>
+    <a class="btn" href="/bank/applications/7ce6d3473c8e44af8c524680dda774a9/report">Latest report</a>
+    <a class="btn" href="/bank">All applications</a>
+  </div>
+</div>
+
+<h2>Monthly monitoring</h2>
+<div class="panel">
+  <div><div class="k">Status</div><div class="v">Monthly</div></div>
+  
+  <div><div class="k">Last data received</div><div class="v">2026-09-27 07:14</div></div>
+  <div><div class="k">Client last checked in</div><div class="v">2026-09-27 07:14</div></div>
+  <div><div class="k">Next refresh</div><div class="v">On or after day 5 of the month, 25+ days after the last</div></div>
+  
+  <div>
+    <form class="inline" method="post" action="/bank/applications/7ce6d3473c8e44af8c524680dda774a9/monitoring/refresh"><button>Refresh now</button></form>
+    <form class="inline" method="post" action="/bank/applications/7ce6d3473c8e44af8c524680dda774a9/monitoring/stop" onsubmit="return confirm('Stop monthly updates from this client?')"><button>Stop monitoring</button></form>
+  </div>
+  
+</div>
+<p class="muted">The client's connector checks in daily and uploads when a refresh is due and Tally is open. Refreshes are due once a month, after the monitoring day.</p>
+
+
+<h2>Indicator trend</h2>
+<div class="wrap"><table>
+  <tr><th>Indicator</th><th class="c">Books to<br>2026-04-30</th><th class="c">Books to<br>2026-06-30</th><th class="c">Books to<br>2026-09-27</th></tr>
+  
+  <tr><td>YoY growth · Year-on-year growth</td>
+    <td class="c"><span class="dot green"></span>11.3%</td><td class="c"><span class="dot green"></span>12.7%</td><td class="c"><span class="dot green"></span>9.0%</td></tr>
+  
+  <tr><td>Net margin · Net profit margin (pre-tax, as booked)</td>
+    <td class="c"><span class="dot green"></span>10.9%</td><td class="c"><span class="dot green"></span>15.9%</td><td class="c"><span class="dot green"></span>11.6%</td></tr>
+  
+  <tr><td>Top-1 share · Largest-customer concentration</td>
+    <td class="c"><span class="dot amber"></span>29.4%</td><td class="c"><span class="dot amber"></span>29.0%</td><td class="c"><span class="dot amber"></span>28.2%</td></tr>
+  
+  <tr><td>Top-5 share · Top-5 customer concentration</td>
+    <td class="c"><span class="dot amber"></span>61.6%</td><td class="c"><span class="dot amber"></span>62.4%</td><td class="c"><span class="dot amber"></span>61.5%</td></tr>
+  
+  <tr><td>DSO · Days sales outstanding</td>
+    <td class="c"><span class="dot green"></span>44 days</td><td class="c"><span class="dot green"></span>54 days</td><td class="c"><span class="dot amber"></span>72 days</td></tr>
+  
+  <tr><td>Receivables &gt; 90 days · Overdue ageing bucket</td>
+    <td class="c"><span class="dot green"></span>0.0%</td><td class="c"><span class="dot green"></span>8.3%</td><td class="c"><span class="dot red"></span>40.6%</td></tr>
+  
+  <tr><td>DPO · Days payables outstanding</td>
+    <td class="c"><span class="dot green"></span>42 days</td><td class="c"><span class="dot green"></span>49 days</td><td class="c"><span class="dot green"></span>55 days</td></tr>
+  
+  <tr><td>CCC · Cash conversion cycle (cash-to-cash cycle)</td>
+    <td class="c"><span class="dot green"></span>55 days</td><td class="c"><span class="dot green"></span>66 days</td><td class="c"><span class="dot green"></span>88 days</td></tr>
+  
+  <tr><td>Current ratio · Current assets ÷ current liabilities</td>
+    <td class="c"><span class="dot green"></span>2.40×</td><td class="c"><span class="dot green"></span>2.86×</td><td class="c"><span class="dot green"></span>2.14×</td></tr>
+  
+  <tr><td>Debt / TNW · Gearing (debt-to-equity)</td>
+    <td class="c"><span class="dot green"></span>0.53×</td><td class="c"><span class="dot green"></span>0.34×</td><td class="c"><span class="dot green"></span>0.58×</td></tr>
+  
+  <tr><td>TOL / TNW · Total outside liabilities to tangible net worth</td>
+    <td class="c"><span class="dot green"></span>1.03×</td><td class="c"><span class="dot green"></span>0.77×</td><td class="c"><span class="dot green"></span>1.08×</td></tr>
+  
+  <tr><td>ICR · Interest coverage ratio</td>
+    <td class="c"><span class="dot green"></span>9.25×</td><td class="c"><span class="dot green"></span>13.57×</td><td class="c"><span class="dot green"></span>10.72×</td></tr>
+  
+  <tr><td>DSCR · Debt service coverage ratio (approx.)</td>
+    <td class="c"><span class="dot green"></span>3.98×</td><td class="c"><span class="dot green"></span>5.73×</td><td class="c"><span class="dot green"></span>4.40×</td></tr>
+  
+  <tr><td>Cash receipts share · Cash share of customer collections</td>
+    <td class="c"><span class="dot green"></span>4.0%</td><td class="c"><span class="dot green"></span>4.2%</td><td class="c"><span class="dot green"></span>4.1%</td></tr>
+  
+</table></div>
+
+
+<h2>Reports</h2>
+<div class="wrap"><table>
+  <tr><th>Received</th><th>Type</th><th>Books up to</th><th>Status</th><th>Changes vs previous</th><th></th></tr>
+  
+  <tr>
+    <td>2026-09-27 07:14</td>
+    <td>Monthly</td>
+    <td>2026-09-27</td>
+    <td>ready</td>
+    <td>
+      <div class="flag high"><b>Receivables &gt; 90 days · Overdue ageing bucket worsened</b><span class="muted">Good → Concern (8.3% → 40.6%).</span></div><div class="flag high"><b>New red flag: Stuck receivables: customers who have stopped paying</b><span class="muted">Not present in the previous report.</span></div><div class="flag medium"><b>DSO · Days sales outstanding worsened</b><span class="muted">Good → Watch (54 days → 72 days).</span></div><div class="flag medium"><b>Receivables up 31%</b><span class="muted">₹1.31 Cr → ₹1.73 Cr since the previous report.</span></div>
+      <div class="muted">+3 more in the report</div>
+      
+    </td>
+    <td>
+      <a class="btn" href="/bank/reports/53b281f130af40ee8dbb65b5dcfeeec3">View</a>
+      <form class="inline" method="post" action="/bank/reports/53b281f130af40ee8dbb65b5dcfeeec3/recompute"><button>Recompute</button></form>
+    </td>
+  </tr>
+  
+  <tr>
+    <td>2026-09-27 07:14</td>
+    <td>Monthly</td>
+    <td>2026-06-30</td>
+    <td>ready</td>
+    <td>
+      <div class="flag medium"><b>Receivables older than 90 days up from near zero</b><span class="muted">₹0 → ₹10.87 L since the previous report.</span></div>
+      
+      
+    </td>
+    <td>
+      <a class="btn" href="/bank/reports/7346ac50d5f345d4be6c8a05b092f195">View</a>
+      <form class="inline" method="post" action="/bank/reports/7346ac50d5f345d4be6c8a05b092f195/recompute"><button>Recompute</button></form>
+    </td>
+  </tr>
+  
+  <tr>
+    <td>2026-09-27 07:14</td>
+    <td>First upload</td>
+    <td>2026-04-30</td>
+    <td>ready</td>
+    <td>
+      
+      
+      <span class="muted">—</span>
+    </td>
+    <td>
+      <a class="btn" href="/bank/reports/8d3e79c250194ee89bb12be0ae3f46ce">View</a>
+      <form class="inline" method="post" action="/bank/reports/8d3e79c250194ee89bb12be0ae3f46ce/recompute"><button>Recompute</button></form>
+    </td>
+  </tr>
+  
+</table></div>
+</main>
+</body>
+</html>

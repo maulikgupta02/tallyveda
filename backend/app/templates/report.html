@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit report · {{ r.company.name }}</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --surface-2: #f3f2ef; --line: #e2e1dc;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --series-1: #2a78d6; --series-2: #eb6834;
+    --age-1: #86b6ef; --age-2: #5598e7; --age-3: #2a78d6; --age-4: #1c5cab; --age-5: #104281; --age-6: #0d366b;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    border-bottom: 2px solid var(--text); padding-bottom: 12px; margin-bottom: 20px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); break-after: avoid; }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--text-2); }
+  .sub, .note { color: var(--text-2); }
+  .note { font-size: 12px; margin: 6px 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+  .tile { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+  .tile .k { font-size: 12px; color: var(--text-2); }
+  .tile .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .p, .plain { font-size: 11.5px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+  .tile[title], td[title] { cursor: help; }
+  .glossary td:first-child { font-weight: 600; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin: 6px 0 10px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--text-2); font-weight: 600; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  .wrap { overflow-x: auto; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; white-space: nowrap; }
+  .status i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .status.green i { background: var(--good); } .status.amber i { background: var(--warning); }
+  .status.red i { background: var(--critical); } .status.na i { background: var(--line); }
+  .flag { border-left: 4px solid var(--line); background: var(--surface-2); padding: 8px 12px; margin: 8px 0; border-radius: 0 6px 6px 0; }
+  .flag.high { border-color: var(--critical); } .flag.medium { border-color: var(--serious); } .flag.low { border-color: var(--warning); }
+  .flag b { display: block; }
+  .flag .sev { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+  figure.viz { margin: 8px 0 12px; }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .chart .baseline { stroke: var(--text-2); stroke-width: 1; }
+  .chart .axis { fill: var(--muted); font-size: 10px; }
+  .chart .hit { fill: transparent; }
+  .chart g:hover .hit { fill: var(--surface-2); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .disclaimer { margin-top: 40px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+  .toolbar { display: flex; gap: 8px; }
+  .toolbar a, .toolbar button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none; cursor: pointer; }
+  @media print { .toolbar { display: none; } main { padding: 0; } h2 { break-before: auto; } }
+</style>
+</head>
+<body>
+<main>
+{% macro tile(k, value) %}{% set t = T[k] %}<div class="tile" title="{{ t.name }}. {{ t.formula }}"><div class="k">{{ t.abbr }}</div><div class="v">{{ value }}</div><div class="p">{{ t.plain }}</div></div>{% endmacro %}
+{% set wc = m.working_capital %}{% set bs = m.bs %}{% set pl = m.pl %}{% set ppl = m.pl_prior %}
+<header class="top">
+  <div>
+    <h1>{{ r.company.name }}</h1>
+    <div class="sub">
+      Books {{ r.period.from|dmy }} – {{ r.period.to|dmy }}
+      {% if r.company.pan %} · PAN {{ r.company.pan }}{% endif %}
+      {% if r.company.state %} · {{ r.company.state }}{% endif %}
+    </div>
+    <div class="note">
+      {% if app.applicant_name %}Application: {{ app.applicant_name }}{% if app.reference %} ({{ app.reference }}){% endif %} · {% endif %}
+      Extracted from Tally {{ r.extracted_at|dmy }} · Report generated {{ r.generated_at|dmy }}
+    </div>
+  </div>
+  {% if app.id %}
+  <div class="toolbar">
+    <button onclick="window.print()">Print / PDF</button>
+    {% if r.report_id %}<a href="/bank/reports/{{ r.report_id }}.json">JSON</a>{% endif %}
+    <a href="/bank/applications/{{ app.id }}">History</a>
+    <a href="/bank">All applications</a>
+  </div>
+  {% endif %}
+</header>
+
+<section>
+  <div class="tiles">
+    {% for k, v in r.summary.headline %}
+    <div class="tile"><div class="k">{{ k }}</div><div class="v">{{ v }}</div></div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if r.previous_report_at %}
+<h2>Changes since previous report ({{ r.previous_report_at|dmy }})</h2>
+{% for f in r.alerts %}
+<div class="flag {{ f.severity }}"><span class="sev">{{ f.severity }}</span><b>{{ f.title }}</b>{{ f.detail }}</div>
+{% else %}
+<p class="sub">No material changes.</p>
+{% endfor %}
+{% endif %}
+
+<h2>Risk indicators</h2>
+<p class="note">
+  {{ r.summary.indicator_counts.green }} green · {{ r.summary.indicator_counts.amber }} amber ·
+  {{ r.summary.indicator_counts.red }} red · {{ r.summary.high_flags }} high-severity red flags.
+  Thresholds are bank policy and can be edited in <code>backend/app/analysis/indicators.py</code>.
+</p>
+<div class="wrap"><table>
+  <tr><th>Area</th><th>Indicator</th><th class="n">Value</th><th>Rating</th></tr>
+  {% for i in r.indicators %}
+  <tr>
+    <td>{{ i.section }}</td><td title="{{ i.formula }}">{{ i.label }}<div class="plain">{{ i.plain }}</div></td><td class="n">{{ i.display }}</td>
+    <td><span class="status {{ i.status }}"><i></i>{{ {"green": "Good", "amber": "Watch", "red": "Concern", "na": "n/a"}[i.status] }}</span></td>
+  </tr>
+  {% endfor %}
+</table></div>
+
+<h2>Red flags</h2>
+{% for f in r.flags %}
+<div class="flag {{ f.severity }}"><span class="sev">{{ f.severity }}</span><b>{{ f.title }}</b>{{ f.detail }}</div>
+{% else %}
+<p class="sub">No red flags detected.</p>
+{% endfor %}
+
+<h2>Revenue and profitability (LTM vs prior 12 months)</h2>
+{{ chart_sales|safe }}
+<p class="note">
+  Seasonality, CV (coefficient of variation: how much monthly sales swing), last 12 months:
+  {{ m.seasonality.cv|pct if m.seasonality.cv is not none else "n/a" }}.
+  {% if m.seasonality.peak %}Peak month {{ m.seasonality.peak }}, weakest {{ m.seasonality.trough }}.{% endif %}
+</p>
+<div class="wrap"><table>
+  <tr><th></th><th class="n">Last 12 months</th><th class="n">Prior 12 months</th></tr>
+  {% for label, key in [("Sales", "sales"), ("Direct incomes", "direct_income"), ("Purchases", "purchases"),
+      ("Direct expenses", "direct_expense"), ("COGS (cost of goods sold)", "cogs"), ("Gross profit", "gross_profit"),
+      ("Indirect expenses", "indirect_expense"), ("Indirect incomes", "indirect_income"), ("Net profit", "net_profit"),
+      ("Interest", "interest"), ("Depreciation", "depreciation"), ("EBITDA (operating profit)", "ebitda")] %}
+  <tr><td>{{ label }}</td><td class="n">{{ pl[key]|inr }}</td><td class="n">{{ ppl[key]|inr if ppl else "n/a" }}</td></tr>
+  {% endfor %}
+  <tr><td>Gross margin</td><td class="n">{{ pl.gross_margin|pct }}</td><td class="n">{{ ppl.gross_margin|pct if ppl else "n/a" }}</td></tr>
+  <tr><td>Net margin</td><td class="n">{{ pl.net_margin|pct }}</td><td class="n">{{ ppl.net_margin|pct if ppl else "n/a" }}</td></tr>
+</table></div>
+{% if not pl.stock_adjusted %}<p class="note">Stock valuation at the window boundaries was not available, so cost of goods sold is not adjusted for stock movement.</p>{% endif %}
+<p class="note">Interest and depreciation are identified by ledger name. Profit is computed from vouchers, not from a finalised P&amp;L.</p>
+
+<h2>Customers: concentration and spread</h2>
+{% set c = m.customers %}
+<div class="tiles">
+  <div class="tile"><div class="k">Active customers (12m)</div><div class="v">{{ c.count }}</div></div>
+  {{ tile("top1", c.top1_share|pct) }}
+  {{ tile("top5", c.top5_share|pct) }}
+  <div class="tile"><div class="k">Top-10 share</div><div class="v">{{ c.top10_share|pct }}</div><div class="p">Share of sales from the ten largest customers.</div></div>
+  <div class="tile"><div class="k">Pareto count</div><div class="v">{{ c.parties_for_80pct }}</div><div class="p">Customers that make up 80% of sales.</div></div>
+  {{ tile("hhi", c.hhi) }}
+</div>
+<p class="note">Cash / counter sales are {{ m.cash_sales_share|pct }} of sales and are excluded from customer concentration.</p>
+<div class="wrap"><table>
+  <tr><th>Customer</th><th>State</th><th class="n">Sales (12m)</th><th class="n">Share</th><th class="n">Outstanding</th><th class="n">&gt; 90 days</th><th class="n">Last payment</th></tr>
+  {% for t in r.top_customers %}
+  <tr><td>{{ t.name }}</td><td>{{ t.state }}</td><td class="n">{{ t.sales|inr }}</td><td class="n">{{ t.share|pct }}</td>
+    <td class="n">{{ t.outstanding|inr }}</td><td class="n">{{ t.over_90|inr }}</td><td class="n">{{ t.last_payment|dmy if t.last_payment else "–" }}</td></tr>
+  {% endfor %}
+</table></div>
+
+{% if m.retention %}{% set rt = m.retention %}
+<h3>Customer retention (last 12 months vs prior 12)</h3>
+<div class="wrap"><table>
+  <tr><td>Active customers now / before</td><td class="n">{{ rt.active }} / {{ rt.prior_active }}</td></tr>
+  <tr><td>New customers (share of current sales)</td><td class="n">{{ rt.new }} ({{ rt.new_revenue_share|pct }})</td></tr>
+  <tr><td>Lost customers (share of prior sales)</td><td class="n">{{ rt.lost }} ({{ rt.lost_prior_revenue_share|pct }})</td></tr>
+  <tr><td>NRR (net revenue retention): how much repeat customers bought vs last year</td><td class="n">{{ rt.net_revenue_retention|pct }}</td></tr>
+  {% if rt.lost_parties %}<tr><td colspan="2" class="note">Largest lost: {{ rt.lost_parties|join(", ") }}</td></tr>{% endif %}
+</table></div>
+{% endif %}
+
+<div class="cols">
+  <div>
+    <h3>Sales by state</h3>
+    <table>
+      <tr><th>State</th><th class="n">Sales</th><th class="n">Share</th></tr>
+      {% for s, v, sh in m.spread.states[:10] %}<tr><td>{{ s }}</td><td class="n">{{ v|inr }}</td><td class="n">{{ sh|pct }}</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div>
+    <h3>Customers by annual sales</h3>
+    <table>
+      <tr><th>Band</th><th class="n">Customers</th><th class="n">Sales</th></tr>
+      {% for b, n, v in m.spread.size_bands %}<tr><td>{{ b }}</td><td class="n">{{ n }}</td><td class="n">{{ v|inr }}</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+
+<h2>Receivables (debtors) and ageing</h2>
+{% set rv = m.receivables %}
+<div class="tiles">
+  <div class="tile"><div class="k">Total receivables</div><div class="v">{{ rv.total|inr }}</div></div>
+  {{ tile("dso", wc.dso|days) }}
+  {{ tile("recv_90", rv.over_90_share|pct) }}
+  {{ tile("collection_ratio", wc.collection_ratio|pct) }}
+</div>
+{{ chart_recv|safe }}
+<div class="wrap"><table>
+  <tr>{% for k in rv.buckets %}<th class="n">{{ k }} days</th>{% endfor %}</tr>
+  <tr>{% for v in rv.buckets.values() %}<td class="n">{{ v|inr }}</td>{% endfor %}</tr>
+</table></div>
+<p class="note">Ageing method: {{ rv.method }}. Advances received from customers: {{ rv.advances|inr }}.</p>
+<h3>Largest debtors</h3>
+<div class="wrap"><table>
+  <tr><th>Customer</th><th class="n">Outstanding</th><th class="n">Share</th><th class="n">&gt; 90 days</th><th class="n">Last payment</th></tr>
+  {% for d in r.top_debtors %}
+  <tr><td>{{ d.name }}</td><td class="n">{{ d.outstanding|inr }}</td><td class="n">{{ d.share|pct }}</td><td class="n">{{ d.over_90|inr }}</td>
+    <td class="n">{{ d.last_settlement|dmy if d.last_settlement else "–" }}</td></tr>
+  {% endfor %}
+</table></div>
+
+<h2>Payables (creditors) and supplier concentration</h2>
+{% set py = m.payables %}{% set s = m.suppliers %}
+<div class="tiles">
+  <div class="tile"><div class="k">Total payables</div><div class="v">{{ py.total|inr }}</div></div>
+  {{ tile("dpo", wc.dpo|days) }}
+  <div class="tile"><div class="k">Payables &gt; 90 days</div><div class="v">{{ py.over_90_share|pct }}</div><div class="p">Share of supplier dues more than 3 months old.</div></div>
+  <div class="tile"><div class="k">Suppliers (12m)</div><div class="v">{{ s.count }}</div></div>
+  <div class="tile"><div class="k">Largest supplier</div><div class="v">{{ s.top1_share|pct }}</div></div>
+</div>
+{{ chart_pay|safe }}
+<div class="cols">
+  <div>
+    <h3>Largest suppliers (12m purchases)</h3>
+    <table>
+      <tr><th>Supplier</th><th class="n">Purchases</th><th class="n">Share</th></tr>
+      {% for t in r.top_suppliers %}<tr><td>{{ t.name }}</td><td class="n">{{ t.purchases|inr }}</td><td class="n">{{ t.share|pct }}</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div>
+    <h3>Largest creditors</h3>
+    <table>
+      <tr><th>Supplier</th><th class="n">Outstanding</th><th class="n">&gt; 90 days</th></tr>
+      {% for t in r.top_creditors %}<tr><td>{{ t.name }}</td><td class="n">{{ t.outstanding|inr }}</td><td class="n">{{ t.over_90|inr }}</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+
+<h2>Working capital cycle</h2>
+<div class="tiles">
+  {{ tile("dso", wc.dso|days) }}
+  {{ tile("dio", wc.dio|days) }}
+  {{ tile("dpo", wc.dpo|days) }}
+  {{ tile("ccc", wc.ccc|days) }}
+</div>
+<p class="note">CCC = DSO + DIO − DPO. DSO and DPO use credit billing / purchases including GST; DIO uses COGS.</p>
+
+<h2>Balance sheet, leverage and debt service</h2>
+<p class="note">Position as at {{ r.period.to|dmy }}, from ledger closing balances. Net worth is assets less outside liabilities, so it includes the current year's unposted profit.</p>
+<div class="cols">
+  <table>
+    <tr><th>Assets</th><th class="n"></th></tr>
+    <tr><td>Cash and bank</td><td class="n">{{ bs.cash_bank|inr }}</td></tr>
+    <tr><td>Receivables</td><td class="n">{{ bs.debtors|inr }}</td></tr>
+    <tr><td>Stock</td><td class="n">{{ bs.stock|inr }}</td></tr>
+    <tr><td>Advances to suppliers</td><td class="n">{{ bs.supplier_advances|inr }}</td></tr>
+    <tr><td>Loans, advances and deposits</td><td class="n">{{ bs.loans_advances_given|inr }}</td></tr>
+    <tr><td>Other current assets</td><td class="n">{{ bs.other_current_assets|inr }}</td></tr>
+    <tr><th>Current assets</th><th class="n">{{ bs.current_assets|inr }}</th></tr>
+    <tr><td>Fixed assets</td><td class="n">{{ bs.fixed_assets|inr }}</td></tr>
+    <tr><td>Investments</td><td class="n">{{ bs.investments|inr }}</td></tr>
+    <tr><th>Total assets</th><th class="n">{{ bs.total_assets|inr }}</th></tr>
+  </table>
+  <table>
+    <tr><th>Liabilities</th><th class="n"></th></tr>
+    <tr><td>Creditors</td><td class="n">{{ bs.creditors|inr }}</td></tr>
+    <tr><td>Advances from customers</td><td class="n">{{ bs.customer_advances|inr }}</td></tr>
+    <tr><td>Taxes payable</td><td class="n">{{ bs.tax_payable|inr }}</td></tr>
+    <tr><td>Provisions and other</td><td class="n">{{ (bs.provisions + bs.other_current_liabilities)|inr }}</td></tr>
+    <tr><td>Bank OD / CC (working-capital limit drawn)</td><td class="n">{{ bs.bank_od|inr }}</td></tr>
+    <tr><th>Current liabilities</th><th class="n">{{ bs.current_liabilities|inr }}</th></tr>
+    <tr><td>Secured loans</td><td class="n">{{ bs.secured_loans|inr }}</td></tr>
+    <tr><td>Unsecured loans</td><td class="n">{{ bs.unsecured_loans|inr }}</td></tr>
+    <tr><th>Net worth (TNW: {{ bs.tangible_net_worth|inr }})</th><th class="n">{{ bs.net_worth|inr }}</th></tr>
+  </table>
+</div>
+<div class="tiles">
+  {{ tile("current_ratio", bs.current_ratio|ratio) }}
+  {{ tile("quick_ratio", bs.quick_ratio|ratio) }}
+  {{ tile("debt_tnw", bs.debt_equity|ratio) }}
+  {{ tile("tol_tnw", bs.tol_tnw|ratio) }}
+  {{ tile("icr", m.coverage.interest_coverage|ratio) }}
+  {{ tile("dscr", m.coverage.dscr|ratio) }}
+</div>
+<h3>Existing borrowings</h3>
+<div class="wrap"><table>
+  <tr><th>Lender / ledger</th><th>Type</th><th class="n">Outstanding</th><th class="n">Repaid (12m)</th><th class="n">Drawn (12m)</th></tr>
+  {% for l in m.loans.rows %}
+  <tr><td>{{ l.name }}</td><td>{{ l.type }}</td><td class="n">{{ l.outstanding|inr }}</td><td class="n">{{ l.repaid|inr }}</td><td class="n">{{ l.drawn|inr }}</td></tr>
+  {% else %}<tr><td colspan="5" class="sub">No loan ledgers found.</td></tr>{% endfor %}
+</table></div>
+<p class="note">DSCR = EBITDA ÷ (interest + principal repaid on term and unsecured loans in the last 12 months). Unsecured loans may include promoter funds that the bank may treat as quasi-equity.</p>
+
+<h2>Banking and cash</h2>
+{{ chart_purchases|safe }}
+<div class="wrap"><table>
+  <tr><td>Customer receipts through bank (12m)</td><td class="n">{{ m.cash.receipts_bank|inr }}</td></tr>
+  <tr><td>Customer receipts in cash (12m)</td><td class="n">{{ m.cash.receipts_cash|inr }} ({{ m.cash.cash_receipt_share|pct }})</td></tr>
+  <tr><td>Cash receipts of ₹2 L or more (s.269ST)</td><td class="n">{{ m.cash.big_cash_receipts|length }}</td></tr>
+  <tr><td>Cash payments above ₹10,000 (s.40A(3))</td><td class="n">{{ m.cash.big_cash_payments|length }}</td></tr>
+  <tr><td>Days with negative cash-in-hand</td><td class="n">{{ m.cash.negative_cash_days|length }}</td></tr>
+</table></div>
+<p class="note">Compare monthly bank credits with the bank statement to verify that the books reflect real flows.</p>
+
+<h2>GST and taxes</h2>
+<div class="wrap"><table>
+  <tr><td>Output tax on sales (12m)</td><td class="n">{{ m.tax.output_tax|inr }}</td></tr>
+  <tr><td>Effective output tax rate</td><td class="n">{{ (m.tax.output_tax / pl.sales)|pct if pl.sales else "n/a" }}</td></tr>
+  <tr><td>Tax paid from bank / cash (12m)</td><td class="n">{{ m.tax.tax_paid|inr }}</td></tr>
+  <tr><td>Taxes payable at period end</td><td class="n">{{ m.tax.tax_payable|inr }}</td></tr>
+</table></div>
+<p class="note">Reconcile with GSTR-1 / GSTR-3B turnover before relying on revenue figures.</p>
+
+<h2>Data coverage</h2>
+{% set dq = r.data_quality %}
+<div class="wrap"><table>
+  <tr><td>Accounting vouchers analysed</td><td class="n">{{ dq.vouchers }}</td></tr>
+  <tr><td>Voucher date range</td><td class="n">{{ dq.first_voucher|dmy if dq.first_voucher else "n/a" }} – {{ dq.last_voucher|dmy if dq.last_voucher else "n/a" }}</td></tr>
+  <tr><td>Ledgers / customers / suppliers</td><td class="n">{{ dq.ledgers }} / {{ dq.customers }} / {{ dq.suppliers }}</td></tr>
+  <tr><td>Cancelled / non-accounting vouchers skipped</td><td class="n">{{ dq.cancelled }} / {{ dq.excluded }}</td></tr>
+  <tr><td>Outstanding bills (bill-wise)</td><td class="n">{{ dq.bills }}</td></tr>
+  <tr><td>Connector version</td><td class="n">{{ r.connector_version or "n/a" }}</td></tr>
+</table></div>
+{% for w in dq.warnings %}<p class="note">⚠ {{ w }}</p>{% endfor %}
+
+<h2>Glossary</h2>
+<div class="wrap"><table class="glossary">
+  <tr><th>Term</th><th>Stands for</th><th>In plain English</th><th>How this report computes it</th></tr>
+  {% for t in glossary %}<tr><td>{{ t.abbr }}</td><td>{{ t.name }}</td><td>{{ t.plain }}</td><td class="note">{{ t.formula }}</td></tr>{% endfor %}
+</table></div>
+
+<p class="disclaimer">
+  This report is computed automatically from the applicant's Tally books as extracted on the date above. It has not been audited
+  and does not replace financial statements, bank statements, GST returns or a credit officer's judgement. Figures are only as
+  accurate as the underlying bookkeeping.
+</p>
+</main>
+</body>
+</html>
