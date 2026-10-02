@@ -432,6 +432,36 @@ def previous_ready_report(app_id: str, before: str) -> dict | None:
     return _report_row(row) if row else None
 
 
+def latest_ready_report(app_id: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM reports WHERE application_id = ? AND status = 'ready' ORDER BY created_at DESC LIMIT 1",
+            (app_id,),
+        ).fetchone()
+    return _report_row(row) if row else None
+
+
+def load_report_json(app_id: str, report_id: str) -> dict | None:
+    """The full report dict (metrics, indicators, flags, alerts) written to disk
+    by `report.builder.build_report`/`process_report` — not duplicated in SQLite.
+    Returns None if the file isn't there yet (report still processing/failed)."""
+    path = report_dir(app_id, report_id) / "report.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
+def applications_with_latest_report(tenant_id: str) -> list[tuple[dict, dict | None]]:
+    """One (application, latest ready report's full dict-or-None) pair per
+    application for a tenant's portfolio view (`report.dashboard.portfolio_view`)."""
+    out = []
+    for app in list_applications(tenant_id):
+        latest = latest_ready_report(app["id"])
+        report = load_report_json(app["id"], latest["id"]) if latest else None
+        out.append((app, report))
+    return out
+
+
 def _report_row(row) -> dict:
     r = dict(row)
     for k in ("indicators_json", "snapshot_json", "alerts_json"):

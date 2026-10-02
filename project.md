@@ -74,11 +74,11 @@ backend behind its own TLS, but that's out of date — see "Product direction" b
   potential areas of concern.
 
 Gaps between that and the code today (checked 2026-10-02):
-- **MSME dashboard exists now, but is basic** (2026-10-02): `/msme` shows the applicant's own
-  reports/indicator trend (`msme.html`), scoped to their one application. It doesn't yet
-  surface "sales, growth and potential areas of concern" as its own narrative the way
-  `project.md`'s product direction describes — it reuses the bank's trend table/report links
-  rather than a dedicated MSME-oriented summary.
+- **MSME dashboard resolved** (2026-10-02, ticket 7485bcfc phase 2): `/msme` is now its own
+  plain-language, tabbed dashboard (Home/Sales/Customers/Money/Dues, `report/dashboard.py`'s
+  `msme_view`) — sales trend, what's due, who's slow to pay, busy months — with no ratings,
+  thresholds or lending language anywhere. `/msme/report` no longer serves the bank's credit
+  report (redirects to `/msme`); `/msme/report.json` returns the MSME view-model instead.
 - **Multi-tenant accounts exist now** (2026-10-02): `store.py` has `tenants` and `users`
   tables, every `applications` row carries a `tenant_id`, bank logins are per-tenant accounts
   (`/bank`, scoped by `tenant_id`), and each application can have its own MSME login

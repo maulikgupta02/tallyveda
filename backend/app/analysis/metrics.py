@@ -7,6 +7,8 @@ carries a note so the credit officer knows how it was produced.
 
 from __future__ import annotations
 
+import calendar
+import re
 from collections import defaultdict
 from datetime import date, timedelta
 
@@ -324,6 +326,7 @@ def balance_sheet(book: Book) -> dict:
     return dict(b) | {
         "current_assets": current_assets,
         "current_liabilities": current_liabilities,
+        "nwc": current_assets - current_liabilities,
         "total_assets": total_assets,
         "total_debt": debt,
         "outside_liabilities": outside_liabilities,
@@ -514,15 +517,171 @@ def monthly_series(book: Book, sales_rows, purchase_rows, cash) -> list[dict]:
 
 
 def seasonality(series: list[dict], start_key: str) -> dict:
-    values = [r["sales"] for r in series if r["month"] >= start_key]
+    ltm_rows = [r for r in series if r["month"] >= start_key]
+    values = [r["sales"] for r in ltm_rows]
     if len(values) < 3:
-        return {"cv": None, "peak": None, "trough": None}
+        return {"cv": None, "peak": None, "trough": None, "average": None, "low": None, "high": None}
     mean = sum(values) / len(values)
     var = sum((x - mean) ** 2 for x in values) / len(values)
-    ltm_rows = [r for r in series if r["month"] >= start_key]
     peak = max(ltm_rows, key=lambda r: r["sales"])
     trough = min(ltm_rows, key=lambda r: r["sales"])
-    return {"cv": _ratio(var ** 0.5, mean), "peak": peak["month"], "trough": trough["month"]}
+    return {
+        "cv": _ratio(var ** 0.5, mean),
+        "peak": peak["month"],
+        "trough": trough["month"],
+        "average": mean,
+        "low": min(values),
+        "high": max(values),
+    }
+
+
+def same_month_last_year(series: list[dict]) -> dict | None:
+    """Latest month's sales vs the same calendar month a year earlier."""
+    if not series:
+        return None
+    latest = series[-1]
+    y, mo = int(latest["month"][:4]), int(latest["month"][5:7])
+    prior_key = f"{y - 1:04d}-{mo:02d}"
+    prior = next((r for r in series if r["month"] == prior_key), None)
+    if not prior:
+        return None
+    return {
+        "month": latest["month"],
+        "value": latest["sales"],
+        "prior_value": prior["sales"],
+        "growth": _ratio(latest["sales"] - prior["sales"], prior["sales"]),
+    }
+
+
+def credit_notes(book: Book, start: date, end: date) -> dict:
+    """Credit notes / sales returns, by the reserved "Credit Note" voucher type."""
+    total = 0.0
+    for v in book.entries_between(start, end):
+        if v.base_type == "Credit Note":
+            total += v.total("sales")
+    return {"total": total}
+
+
+def _month_end(year: int, month: int) -> date:
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
+def bank_balance_series(book: Book, start: date, end: date) -> dict:
+    """Month-end balance of bank + bank OD/CC ledgers, reconstructed from each
+    ledger's known closing balance by subtracting later movements."""
+    bank_cats = ("bank", "bank_od")
+    ledgers = book.by_category(*bank_cats)
+    ledger_ids = {id(l) for l in ledgers}
+    total_closing = sum(l.closing for l in ledgers)
+    events = sorted(
+        (v.date, e.amount) for v in book.vouchers for e in v.entries if id(e.ledger) in ledger_ids
+    )
+    months = month_range(start, end)
+    series = []
+    for m in months:
+        y, mo = int(m[:4]), int(m[5:7])
+        as_of = min(_month_end(y, mo), end)
+        after = sum(a for d, a in events if d > as_of)
+        series.append((m, total_closing - after))
+    values = [v for _, v in series]
+    if not values:
+        return {"series": [], "average": None, "low": None, "low_month": None, "volatility": None}
+    average = sum(values) / len(values)
+    low_i = min(range(len(values)), key=lambda i: values[i])
+    swings = [abs(values[i] - values[i - 1]) / abs(values[i - 1]) for i in range(1, len(values)) if values[i - 1]]
+    volatility = sum(swings) / len(swings) if swings else None
+    return {
+        "series": series,
+        "average": average,
+        "low": values[low_i],
+        "low_month": series[low_i][0],
+        "volatility": volatility,
+    }
+
+
+def gst_monthly(book: Book, start: date, end: date) -> dict:
+    """Monthly GST output tax collected on sales, and whether the effective
+    rate (tax / sales) stays consistent month to month."""
+    months = month_range(start, end)
+    collected = defaultdict(float)
+    sales = defaultdict(float)
+    for v in book.entries_between(start, end):
+        if v.total("sales") < 0:
+            key = month_key(v.date)
+            collected[key] += -v.total("tax")
+            sales[key] += -v.total("sales")
+    series = [(m, collected[m]) for m in months]
+    rates = [collected[m] / sales[m] for m in months if sales[m] > 0]
+    consistency = None
+    if rates:
+        consistency = {"low": min(rates), "high": max(rates), "consistent": (max(rates) - min(rates)) <= 0.03}
+    return {"series": series, "rate_range": consistency}
+
+
+_GST_WORDS = ("gst", "cgst", "sgst", "igst", "utgst", "vat")
+_TDS_WORDS = ("tds", "tax deducted")
+
+
+def statutory_split(book: Book) -> dict:
+    """GST vs TDS vs other, within the 'tax' category payable, by ledger name
+    (same name-matching approach as redflags.py's INTEREST_WORDS)."""
+    gst = tds = other = 0.0
+    for l in book.by_category("tax"):
+        payable = max(-l.closing, 0)
+        if payable <= 0.5:
+            continue
+        name = l.name.lower()
+        if any(w in name for w in _GST_WORDS):
+            gst += payable
+        elif any(w in name for w in _TDS_WORDS):
+            tds += payable
+        else:
+            other += payable
+    return {"gst_payable": gst, "tds_payable": tds, "other_payable": other}
+
+
+def emi_regularity(book: Book, start: date, end: date) -> list[dict]:
+    """Repayment regularity per term loan: repayments in the window, and how
+    many followed a gap of more than 35 days (a late/missed instalment)."""
+    out = []
+    for l in book.by_category("secured_loan", "unsecured_loan", "loan"):
+        dates = sorted(
+            v.date for v in book.entries_between(start, end)
+            for e in v.entries if e.ledger is l and e.amount > 0
+        )
+        if len(dates) < 3:
+            continue
+        gaps = [(dates[i] - dates[i - 1]).days for i in range(1, len(dates))]
+        late = sum(1 for g in gaps if g > 35)
+        out.append({"name": l.name, "payments": len(dates), "late": late, "dates": dates})
+    return out
+
+
+_LEGAL_SUFFIXES = re.compile(
+    r"\b(private|pvt|limited|ltd|llp|co|company|and|&|m/s|ms|the|enterprises?|traders?)\b"
+)
+
+
+def _norm_name(name: str) -> str:
+    n = _LEGAL_SUFFIXES.sub(" ", name.lower())
+    return re.sub(r"[^a-z0-9]", "", n)
+
+
+def related_party_candidates(book: Book) -> list[dict]:
+    """Low-confidence related-party heuristic: a debtor/creditor whose name
+    overlaps with the company's own name. Tally's bundle carries no address or
+    director field, only ledger names, so this cannot be more than a name
+    match — explicitly weaker than the GSTIN+name circular-trading check in
+    redflags.py, and shown as "low confidence" rather than a red flag."""
+    company = _norm_name(book.company.get("name", ""))
+    if len(company) < 4:
+        return []
+    out = []
+    for l in book.by_category("debtor", "creditor"):
+        n = _norm_name(l.name)
+        if len(n) >= 4 and (n in company or company in n):
+            out.append({"name": l.name, "category": l.category})
+    return out
 
 
 def compute_all(book: Book) -> dict:
@@ -560,13 +719,21 @@ def compute_all(book: Book) -> dict:
     debt_service = pl["interest"] + loan["principal_repaid"]
     cash_sales = ltm_sales.get(CASH_SALES, 0.0)
 
+    notes = credit_notes(book, ltm_start, ltm_end)
+    bank_balance = bank_balance_series(book, ltm_start, ltm_end)
+    gst_monthly_series = gst_monthly(book, ltm_start, ltm_end)
+
     return {
         "windows": {"ltm": (ltm_start, ltm_end), "prior": (prior_start, prior_end), "has_prior": has_prior},
         "pl": pl,
         "pl_prior": pl_prior,
         "revenue_growth": _ratio(pl["sales"] - pl_prior["sales"], pl_prior["sales"]) if pl_prior else None,
+        "purchases_growth": _ratio(pl["purchases"] - pl_prior["purchases"], pl_prior["purchases"]) if pl_prior else None,
         "monthly": series,
         "seasonality": seasonality(series, month_key(ltm_start)),
+        "same_month_last_year": same_month_last_year(series),
+        "credit_notes": notes,
+        "credit_notes_ratio": _ratio(notes["total"], credit_billing),
         "customers": customers,
         "cash_sales_share": _ratio(cash_sales, customers["total"]),
         "retention": retention(ltm_sales, prior_sales) if has_prior else None,
@@ -574,6 +741,7 @@ def compute_all(book: Book) -> dict:
         "suppliers": suppliers,
         "receivables": recv,
         "payables": pay,
+        "customers_owing": sum(1 for p in recv["per_party"].values() if p["outstanding"] > 0),
         "working_capital": {
             "dso": dso,
             "dpo": dpo,
@@ -585,8 +753,13 @@ def compute_all(book: Book) -> dict:
         },
         "bs": bs,
         "cash": cash,
+        "bank_balance": bank_balance,
         "loans": loan,
+        "emi_regularity": emi_regularity(book, ltm_start, ltm_end),
         "tax": tax,
+        "gst_monthly": gst_monthly_series,
+        "statutory_split": statutory_split(book),
+        "related_party": related_party_candidates(book),
         "coverage": {
             "interest_coverage": _ratio(pl["ebitda"], pl["interest"]) if pl["interest"] > 0 else None,
             "dscr": _ratio(pl["ebitda"], debt_service) if debt_service > 0 else None,

@@ -158,3 +158,93 @@ def test_empty_bundle_does_not_crash():
                            "voucher_types": [], "vouchers": []})
     assert any(f["title"] == "No vouchers found" for f in report["flags"])
     render_html(report)
+
+
+# ------------------------------------------------------------- new metrics (ticket 7485bcfc)
+
+
+def test_same_month_last_year(metrics):
+    smly = metrics["same_month_last_year"]
+    assert smly["month"] == "2026-09"
+    series = {r["month"]: r["sales"] for r in metrics["monthly"]}
+    assert smly["value"] == pytest.approx(series["2026-09"])
+    assert smly["prior_value"] == pytest.approx(series["2025-09"])
+    assert smly["growth"] == pytest.approx((smly["value"] - smly["prior_value"]) / smly["prior_value"])
+
+
+def test_seasonality_has_average_and_range(metrics):
+    s = metrics["seasonality"]
+    assert s["low"] <= s["average"] <= s["high"]
+
+
+def test_credit_notes_ratio(metrics):
+    # The mock model books a Credit Note every April (window-dressing reversal).
+    assert metrics["credit_notes"]["total"] > 0
+    assert 0 < metrics["credit_notes_ratio"] < 0.2
+
+
+def test_purchases_growth(metrics):
+    assert metrics["purchases_growth"] is not None
+
+
+def test_nwc_equals_current_assets_minus_liabilities(metrics):
+    bs = metrics["bs"]
+    assert bs["nwc"] == pytest.approx(bs["current_assets"] - bs["current_liabilities"])
+
+
+def test_bank_balance_series_matches_closing(model, metrics):
+    bb = metrics["bank_balance"]
+    ltm_start, ltm_end = metrics["windows"]["ltm"]
+    from app.analysis.book import month_range
+
+    assert len(bb["series"]) == len(month_range(ltm_start, ltm_end))
+    closing = sum(model.closing(n, AS_OF) for n, l in model.ledgers.items() if l["parent"] in ("Bank Accounts", "Bank OD A/c"))
+    assert bb["series"][-1][1] == pytest.approx(closing, abs=1)
+    assert bb["low"] <= bb["average"]
+
+
+def test_gst_monthly_matches_output_tax(metrics):
+    series_total = sum(v for _, v in metrics["gst_monthly"]["series"])
+    assert series_total == pytest.approx(metrics["tax"]["output_tax"], rel=1e-6)
+
+
+def test_statutory_split_totals_tax_payable(metrics):
+    split = metrics["statutory_split"]
+    total = split["gst_payable"] + split["tds_payable"] + split["other_payable"]
+    assert total == pytest.approx(metrics["tax"]["tax_payable"], abs=1)
+
+
+def test_emi_regularity_tracks_term_loan(metrics):
+    loans = {l["name"]: l for l in metrics["emi_regularity"]}
+    assert "ICICI Term Loan" in loans
+    assert loans["ICICI Term Loan"]["payments"] >= 11
+
+
+def test_customers_owing_counts_outstanding_debtors(metrics):
+    assert metrics["customers_owing"] == sum(1 for p in metrics["receivables"]["per_party"].values() if p["outstanding"] > 0)
+
+
+def test_related_party_only_matches_company_name(metrics, model):
+    # None of the mock's unrelated customers/suppliers should match the company's own name.
+    names = {c["name"] for c in metrics["related_party"]}
+    assert names <= {l for l in model.ledgers}
+
+
+def test_indicator_bands_agree_with_status(metrics):
+    from app.analysis.indicators import rate
+
+    for i in rate(metrics):
+        if i["value"] is None or i["status"] == "na":
+            continue
+        clamped = min(max(i["value"], i["lo"]), i["hi"])
+        matched = next((s for a, b, s in i["bands"] if a <= clamped <= b), None)
+        assert matched == i["status"], i
+
+
+def test_net_margin_zero_is_red():
+    from app.analysis.indicators import rate
+
+    status = lambda v: next(i["status"] for i in rate({"pl": {"net_margin": v}}) if i["key"] == "net_margin")
+    assert status(0.0) == "red"
+    assert status(0.001) == "amber"
+    assert status(0.05) == "green"

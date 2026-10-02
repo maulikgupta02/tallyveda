@@ -8,16 +8,17 @@ Connector endpoints (called by TallyConnector.exe):
     POST /api/connector/monitor/stop     Bearer token           client withdraws consent
 
 Bank endpoints (HTTP Basic auth, per-tenant bank user — see store.py's `users` table):
-    GET  /bank                                  dashboard (this tenant's applications only)
-    GET  /bank/applications/{id}                history, alerts, monitoring controls
+    GET  /bank[?filter=attention|watch|alerts|overdue]   portfolio dashboard (this tenant only)
+    GET  /bank/applications/{id}[?tab=<group key>]       company page: tabs, Manage panel
     GET  /bank/applications/{id}/report[.json]  latest report
     GET  /bank/reports/{report_id}[.json]       a specific report
     POST /bank/applications/{id}/msme-login     issue/reset this applicant's MSME login
     POST /api/bank/applications                 create request (JSON, for LOS integration)
 
 MSME endpoints (HTTP Basic auth, a login tied to exactly one application):
-    GET  /msme                                  that company's own dashboard
-    GET  /msme/report[.json]                     that company's latest report
+    GET  /msme[?tab=home|sales|cust|money|dues] that company's own plain-language dashboard
+    GET  /msme/report                           redirects to /msme (no bank report here)
+    GET  /msme/report.json                      the MSME view-model, not the bank's report.json
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ from pydantic import BaseModel, Field
 
 from . import config, store
 from .analysis.alerts import compare, snapshot
+from .report import dashboard as dashboard_views, dashboard_charts as dc
+from .report import format as fmt
 from .report.builder import build_report, render_html, report_json
 
 log = logging.getLogger("tally_connector")
@@ -50,6 +53,23 @@ templates = Environment(
 templates.filters["code"] = store.display_code
 templates.filters["when"] = lambda s: s[:16].replace("T", " ") if s else ""
 templates.filters["day"] = lambda s: s[:10] if s else ""
+templates.filters["inr"] = fmt.inr
+templates.filters["pct"] = fmt.pct
+templates.filters["days"] = fmt.days
+templates.filters["ratio"] = fmt.ratio
+templates.globals.update(
+    health_pill=dc.health_pill,
+    spark=dc.sparkline,
+    monthly_chart=dc.monthly_columns_responsive,
+    stacked_bar=dc.stacked_bar,
+    bullet_gauge=dc.bullet_gauge,
+    hbars=dc.horizontal_bars,
+    ageing_stack=dc.ageing_stack,
+    emi_grid=dc.emi_grid,
+    month_label=dc.month_label,
+    STATUS_WORD=dc.STATUS_WORD,
+    inr=fmt.inr,
+)
 
 MONITORING_LABELS = {
     "off": "Off",
@@ -257,14 +277,26 @@ def root():
 
 
 @app.get("/bank", response_class=HTMLResponse)
-def dashboard(request: Request, user: dict = Depends(bank_user)):
-    apps = store.list_applications(user["tenant_id"])
-    for a in apps:
-        a["overdue"] = store.monitoring_overdue(a)
-        latest = store.get_report(a["latest_report_id"]) if a["latest_report_id"] else None
-        a["alert_count"] = len(latest["alerts"]) if latest else 0
+def dashboard(request: Request, filter: str = "", user: dict = Depends(bank_user)):
+    pairs = store.applications_with_latest_report(user["tenant_id"])
+    apps_by_id = {a["id"]: a for a, _ in pairs}
+    entries = [
+        {"application": a, "report": report, "overdue": store.monitoring_overdue(a),
+         "new_alerts": report.get("alerts", []) if report else []}
+        for a, report in pairs
+    ]
+    portfolio = dashboard_views.portfolio_view(entries)
+    overdue_ids = {d["id"] for d in portfolio["data_overdue"]}
+    rows = portfolio["rows"]
+    if filter in ("attention", "watch"):
+        rows = [r for r in rows if r["status"] == filter]
+    elif filter == "alerts":
+        rows = [r for r in rows if r["alert_count"] > 0]
+    elif filter == "overdue":
+        rows = [r for r in rows if r["id"] in overdue_ids]
     return templates.get_template("dashboard.html").render(
-        apps=apps,
+        portfolio=portfolio, rows=rows, active_filter=filter,
+        apps_by_id=apps_by_id,
         bank_name=config.BANK_NAME,
         default_months=config.DEFAULT_MONTHS,
         monitoring_labels=MONITORING_LABELS,
@@ -282,11 +314,20 @@ def create_application_form(
     return RedirectResponse("/bank", status_code=303)
 
 
+COMPANY_TABS = ["overview", "sales", "profit", "recv", "pay", "wc", "debt", "bank", "tax", "data"]
+
+
 @app.get("/bank/applications/{app_id}", response_class=HTMLResponse)
-def application_detail(app_id: str, user: dict = Depends(bank_user)):
+def application_detail(app_id: str, tab: str = "overview", user: dict = Depends(bank_user)):
     a = _get_or_404(app_id, user["tenant_id"])
+    company = None
+    if a["latest_report_id"]:
+        report = store.load_report_json(app_id, a["latest_report_id"])
+        if report:
+            company = dashboard_views.company_view(report)
     return _render_application(a, "application.html", bank_name=config.BANK_NAME,
-                                msme_login=store.msme_login_for(app_id))
+                                msme_login=store.msme_login_for(app_id),
+                                company=company, active_tab=tab if tab in COMPANY_TABS else "overview")
 
 
 @app.post("/bank/applications/{app_id}/code")
@@ -359,20 +400,35 @@ def bundle_download(report_id: str, user: dict = Depends(bank_user)):
 # ------------------------------------------------------------------ MSME UI
 
 
+MSME_TABS = ["home", "sales", "cust", "money", "dues"]
+
+
 @app.get("/msme", response_class=HTMLResponse)
-def msme_dashboard(user: dict = Depends(msme_user)):
+def msme_dashboard(tab: str = "home", user: dict = Depends(msme_user)):
     a = _get_or_404(user["application_id"])
-    return _render_application(a, "msme.html", bank_name=config.BANK_NAME)
+    msme = None
+    if a["latest_report_id"]:
+        report = store.load_report_json(a["id"], a["latest_report_id"])
+        if report:
+            msme = dashboard_views.msme_view(report)
+    return _render_application(a, "msme.html", bank_name=config.BANK_NAME,
+                                msme=msme, active_tab=tab if tab in MSME_TABS else "home")
 
 
-@app.get("/msme/report", response_class=HTMLResponse)
+@app.get("/msme/report", include_in_schema=False)
 def msme_latest_report_html(user: dict = Depends(msme_user)):
-    return _report_file(_latest_report_id(user["application_id"]), "report.html", "text/html; charset=utf-8")
+    """The MSME no longer gets the bank's full credit report — /msme already
+    surfaces the analysis relevant to them (see design.md's msme_view)."""
+    return RedirectResponse("/msme")
 
 
 @app.get("/msme/report.json")
 def msme_latest_report_json(user: dict = Depends(msme_user)):
-    return _report_file(_latest_report_id(user["application_id"]), "report.json", "application/json")
+    """MSME-safe JSON: the view-model (no ratings/thresholds/bank language),
+    not the bank's full report.json."""
+    report_id = _latest_report_id(user["application_id"])
+    report = store.load_report_json(user["application_id"], report_id)
+    return JSONResponse(dashboard_views.msme_view(report) if report else {})
 
 
 def _render_application(a: dict, template_name: str, **extra) -> str:

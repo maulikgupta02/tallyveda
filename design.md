@@ -87,6 +87,243 @@ anywhere in this repo. The small amount of interactivity on the connector's wiza
 plain inline/vanilla JS polling the local backend (not shown above the first 60 lines, but
 consistent with "no framework" throughout).
 
+## Dashboard directions (ticket 7485bcfc, pending pick)
+
+Three static HTML directions for the bank's two dashboard screens (portfolio overview,
+one-company view) and the MSME's own dashboard were produced at
+`docs/agents/mockups/7485bcfc/direction-{1,2,3}.html` (gitignored, local only), with
+`-desktop.png`/`-mobile.png` screenshots alongside each. All three use the exact shared
+`:root` token block unchanged — no new tokens were needed; differences are purely layout,
+density and component choice. None is picked yet.
+
+**Direction 1 — Dense Grid Console.** A spreadsheet-density direction for the bank screens:
+screen A is a single sortable/filterable table (filter chips above it) with a compact
+per-row "indicator health" strip — 14 small coloured squares, one per bank indicator,
+giving an at-a-glance shape without taking table width. Screen B is a two-column dense
+layout: a wide left column with a full indicator table (value + a tiny inline SVG
+sparkline + rating per row) and the red-flags list, and a narrower right rail with data
+freshness, a "what changed" timeline and the reports list. Typography and row height stay
+close to the existing `dashboard.html`/`application.html` tables — a credit officer scanning
+many rows a day. Screen C breaks sharply from that density: large rounded cards, one big
+hero number with a trend line, and short plain-language notes — deliberately not using the
+dense table style at all, so the MSME owner never sees anything that reads like a ledger.
+
+**Direction 2 — Priority Feed.** Card/feed-based, organised around triage rather than an
+alphabetical or table listing. Screen A groups applicant cards into three sections —
+"Needs attention now", "Watch", "Up to date" — each card carrying an inline sparkline,
+a couple of key metrics, and badges for new alerts/overdue data; a KPI strip above gives the
+portfolio-level counts. Screen B keeps a horizontal strip of headline tiles (closest of the
+three to the current `report.html` tile pattern) then splits into a "what changed" feed of
+icon cards on the left and an indicator list rendered as individual rated cards (not a table)
+on the right — every indicator is its own small card with a coloured pill. Screen C mirrors
+the same card/pill language in a warmer tone: a centered hero card, customer-share bars
+instead of a table, and "watch" cards using the same visual shape as the bank's alert cards
+but without any colour grading or bank language — just plain-text notes.
+
+**Direction 3 — Split-Pane Console.** An information-architecture-led direction. Screen A is
+a master-detail split: a persistent left rail lists every applicant (name, health dot, new/
+overdue badges) with a search box, and the right pane shows portfolio KPIs plus a quick-read
+summary of whichever applicant is selected, before linking into the full screen B. Screen B is
+a long-form single document with a sticky left-hand section nav (Headline / Indicators / Red
+flags / What changed / Data freshness / Reports) — closest to a static version of a filed
+credit report, good for a reviewer who wants to read top-to-bottom rather than scan a grid; on
+narrow widths the side nav collapses into a horizontal scrollable tab strip. Screen C is a
+full-bleed narrative, mobile-first: large section headings ("How you're doing", "Your
+customers", "Money coming in", "Your cash", "Things to keep an eye on"), a bottom quick-link
+bar for jumping between sections (intended as `position: sticky; bottom: 0` once embedded in
+a real scrolling page — screenshotting it that way produced a full-page-capture artifact, so
+the mockup renders it as a plain static bar instead; the sticky behaviour itself is a safe
+CSS-only interaction that fits the no-JS-framework constraint).
+
+Directions 1-3 were screenshotted at 1440×900 (desktop) and 390×844 (mobile) and visually
+reviewed; two markup bugs (a missing space producing run-together text in direction 2's
+MSME notes, and un-blocked `<b>` tags in direction 3's timeline causing the same issue) were
+found and fixed before finishing.
+
+**Direction 4 — Merged Split-Pane Feed (owner-requested merge of 2 + 3, 2026-10-02).** Per
+owner feedback, this direction is not a fourth independent option but a deliberate merge:
+screen A takes direction 3's master-detail split pane and groups the left rail using
+direction 2's urgency buckets (Needs attention now / Watch / Up to date / No data), each row
+carrying new-alert/overdue badges, plus a search box and a sort control; the right pane opens
+with direction 2's portfolio KPI strip and closes with the selected company's quick-read as
+direction-2-style cards with sparklines. Two new portfolio-level panels were added per the
+brief: an exposure-by-region breakdown and an alerts-since-yesterday feed across all
+borrowers, plus a data-freshness summary panel. Screen B keeps direction 3's long-form page
+with a sticky section nav (collapsing to a horizontal tab strip on mobile) but now opens with
+direction 2's "what changed since last refresh" feed before the headline tiles, and every
+indicator is rendered as a direction-2-style rated card with a sparkline, grouped into named
+sections (Revenue & growth, Profitability & concentration, Receivables, Payables & suppliers,
+Working capital & liquidity, Banking & debt service, Statutory & data integrity) instead of
+one flat table. Screen C keeps direction 3's mobile-first narrative flow and bottom quick-link
+bar, with direction 2's bar charts and warm card tone throughout; still no ratings, traffic
+lights, bank thresholds or lending language anywhere on screen C.
+
+*Visual polish applied beyond 1-3*: a shared `.card` component (consistent border, radius,
+and a subtle `box-shadow: 0 1px 2px rgba(11,11,11,0.04)` — a literal CSS value, not a new
+token, since it is only ever used at that one opacity) for every panel; a consistent
+`.section-head` pattern; indicator and sparkline charts now draw a baseline axis and mark the
+latest data point with a filled circle in the status colour; numbers use
+`font-variant-numeric: tabular-nums` globally for alignment; explicit empty/stale states
+("No data yet" rail row, "9 days overdue" badge, stale freshness panel). **No new design
+tokens were added** — the existing `:root` block (copied verbatim, unchanged) covered
+everything needed; `--accent`/status colours already provided a "highlighted latest point"
+colour and card backgrounds needed no new surface tint.
+
+*New parameters shown on screens B/C, split by what the backend already computes vs. what
+would need new work* (checked against `backend/app/analysis/{metrics,indicators,redflags,alerts}.py`,
+`report/glossary.py` and the connector's `internal/extract/extract.go` /
+`internal/tally/requests.go`, which is the ceiling on what Tally data is actually available —
+nothing below was invented beyond what the extracted Ledgers/Vouchers/Bills/StockSnapshots can
+support):
+
+- **Computed today, just not surfaced in any existing template:** DPO and payables ageing
+  (`metrics.ageing(book, "creditor")`), supplier concentration (`metrics.concentration` on
+  purchase flows, already returned as `suppliers` from `compute_all`), DIO/inventory days and
+  CCC (`working_capital`), current ratio, debt/TNW, TOL/TNW, interest coverage, DSCR, cash
+  receipts share, aggregate statutory dues payable (`bs["tax_payable"]`), books-lag red flag.
+- **Computed now (backend, ticket 7485bcfc phase 1 — 2026-10-02):** same-month-last-year sales
+  comparison and monthly average/range (`metrics.same_month_last_year`, extended
+  `metrics.seasonality`); credit notes/returns ratio (`metrics.credit_notes`, by the reserved
+  "Credit Note" voucher type); purchases growth (`compute_all`'s `purchases_growth`); customers
+  billed/new/lost (already `customers`/`retention`), customers owing count
+  (`compute_all`'s `customers_owing`); current assets/liabilities and NWC (`balance_sheet`'s
+  `nwc`); TOL/TNW and net worth (already in `bs`); a reconstructed month-end bank balance series
+  with average/low(+month)/volatility (`metrics.bank_balance_series`); a monthly GST-collected
+  series with a sales-consistency check (`metrics.gst_monthly`); a GST-vs-TDS split of statutory
+  dues by ledger-name heuristic (`metrics.statutory_split`); EMI/loan repayment regularity from
+  loan-ledger voucher dates (`metrics.emi_regularity` — repayment count and a "late" count per
+  loan, on a >35-day-gap heuristic); voucher count (already in `report["data_quality"]`). All of
+  these are assembled into the three dashboards' tile/chart shape by the new
+  `report/dashboard.py` (`company_view`/`msme_view`/`portfolio_view` — see `architecture.md`).
+  Gross margin trend over time and per-customer payment-behaviour trend (best/slowest payers
+  over several quarters) were **not** built in this pass — still real candidates for a future
+  ticket, not ruled out, just not in phase 1's scope (phase 1 covers the parameters the direction
+  6 mockup's tiles/charts actually show; neither of those two is on a d6 screen).
+- **New but low-confidence, heuristic only:** related-party transactions
+  (`metrics.related_party_candidates`, built 2026-10-02) — Tally's bundle has **no address or
+  director field at all** (only ledger name, GSTIN, state), so this is narrower than the
+  mockup's "name/address match" framing: it is a name-overlap match against the company's own
+  name only, explicitly weaker than the GSTIN+name circular-trading check `redflags.py` already
+  does between debtors and creditors. Shown as low confidence, not a red flag.
+- **Portfolio-wide rollups (backend, 2026-10-02):** region/health-by-state breakdown from
+  `Company.State` (via `report["company"]["state"]`, which the connector already extracts in
+  `tally.Companies()`) and the alerts-since-yesterday feed are built in `report/dashboard.py`'s
+  `portfolio_view` from each application's latest report plus a caller-supplied `new_alerts`
+  list (the diff against the previous report, already computed by `analysis.alerts.compare` at
+  upload time) — no new per-company computation, a cross-application rollup only.
+- **Not computable from Tally data, excluded from scope:** GST filing regularity/GSTR status.
+  Tally's books have no record of whether or when a GST return was filed — that would require
+  a separate GSTN integration, which is out of scope for a Tally-only connector. Shown in the
+  mockup as "Not available" with that reasoning, not invented.
+- **Sector/industry breakdown** (asked for alongside region): Tally has no industry
+  classification field either. The mockup includes a region breakdown (by `Company.State`,
+  which *is* real) but explicitly notes sector would need a bank-entered tag at onboarding,
+  not something derivable from the books.
+
+Screenshotted at 1440×900 and 390×844 and reviewed; the mobile nav/tab strip was double-
+checked by cropping the full-page screenshot (the downscaled thumbnail made the horizontal
+scroll strip look like it had wrapped onto multiple lines — at full resolution it's a single
+scrollable row, as intended).
+
+**Open questions carried into direction 4:**
+- "Combined LTM sales monitored" (₹412.6 Cr) is a portfolio KPI invented for the mockup since
+  there is no stored "loan exposure/sanctioned amount" field anywhere in the current data model
+  (`dashboard.html`'s new-request form has no amount field) — worth deciding whether portfolio
+  KPIs should be framed around monitored sales (derivable today) or whether a loan-amount field
+  should be added to applications so exposure can be reported in lending terms.
+  - Gross margin trend, EMI regularity and bank-balance volatility all read as fairly
+  substantial new analysis modules, not small additions — worth scoping each as its own
+  backend ticket rather than one big "more indicators" ticket.
+- The related-party heuristic's low-confidence framing needs a product decision: should it be
+  a red flag (like circular trading), a separate "unverified" section, or dropped until a
+  better signal exists?
+
+### Direction 5: Visual dashboards (owner feedback on 1–4: too much text, poor use of space)
+`direction-5.html`, generated by `gen_d5.py` in the same folder, so every chart is real SVG
+built from one dataset, the way `report/charts.py` will render it server-side. It merges 2 and 3,
+replaces sentences with charts, and uses direction 4's parameter scoping (above) unchanged.
+- **Layout system:** 12-column CSS grid with 16px gaps (`.s3/.s4/.s5/.s6/.s7/.s8/.s12` spans).
+  Cards are white (`--card`) on `--surface` with a 1px `--line` border, 10px radius, 18px
+  padding and a header row (`h2` + optional legend/link). Breakpoints are 1180px (KPIs 2-up,
+  side panels full width), 900px (single column, tables become cards, bottom nav appears) and
+  640px (compact type, phone-sized charts). Each column chart is rendered twice (`.ch-d` and a
+  360-wide `.ch-m`), so axis text never shrinks below about 11px on a phone.
+- **Charts** follow the dataviz rules: columns at most 24px wide with a 4px rounded top and the
+  latest period in `--series-1` (others `--age-1`); last year as a 2px `--series-2` line with
+  ringed dots; hairline solid gridlines; one axis; a legend for two series and none for one; a
+  label only on the latest value; hover via SVG `<title>`. Stacked bars use 2px surface gaps.
+  Status colours appear only with a label or icon. `--series-1`/`--series-2` pass the palette
+  validator (normal ΔE 33.6, CVD ΔE 24.7).
+- **A, portfolio:** a KPI row of four tiles, each a number plus one visual (health mix stacked bar,
+  7-day alert columns, an overdue list, sales sparkline). Then today's alerts (severity icon,
+  company, one-line change, time) next to health by state (stacked bar per state). Then a
+  full-width borrower table: urgency stripe, health pill, 12-month sparkline, LTM + YoY,
+  meters for debtor days and owed > 90 d, alert count and data freshness. On phones the table
+  becomes one card per borrower.
+- **B, one borrower:** header (name, health pill, freshness, full report), tabs (Overview, Sales,
+  Receivables, Payables, Cash & debt, Statutory, History; only Overview is mocked), and a
+  "since yesterday" row of change chips. Then the cards:
+  - monthly sales: this year's columns against last year's line, plus a facts strip
+  - indicators: a green/amber/red mix bar, then one bullet gauge per indicator showing the
+    bank's threshold bands with a value marker
+  - receivables: an ageing stacked bar on the `--age-*` ramp, plus the largest overdue debtors
+  - cash cycle: a stock / collect / pay timeline that resolves to the cycle length, plus
+    supplier concentration
+  - customer concentration
+  - month-end bank balance
+  - red flags, EMI regularity (12 squares) and statutory dues
+- **C, MSME:** phone-first. Sales this month as the hero number over the same this-year/last-year
+  chart; four tiles (to collect, in the bank, stock, due in 30 days); a "to do this week" list
+  (call the stuck debtor, TDS/EMI/GST dates and amounts); who buys from you; how fast they pay
+  (days bars); busy months as a 12-cell heat strip on the `--age-*` ramp. Bottom nav on phones.
+  It shows no ratings, thresholds or lending language.
+- **Tokens:** the shared `:root` block, unchanged. Nothing new was added.
+
+### Direction 6: direction 5 + new theme + grouped detailed metrics (owner's pick)
+`direction-6.html`, generated by `gen_d6.py` (with `gen_d6_base.py` and `d6_screens.py`).
+- **Theme: navy and indigo.** The `:root` block changes in every page at once:
+  - surfaces: `--surface #f5f6f8`, `--surface-2 #eceef3`, `--line #e2e5eb`
+  - text: `--text #101828`, `--text-2 #475467`, `--muted #667085`
+  - accent: `--accent #3b5bdb`
+  - one new token, `--brand #111c3a`: the app bar background and the "cash tied up" bar
+  - status: `--good #12a150`, `--warning #f2a900`, `--serious #ea6b2d`, `--critical #d92d20`
+  - charts: `--series-1 #3b5bdb`, `--series-2 #0fa3a3`
+  - ramp: `--age-1..6` indigo, `#c5cff8 → #1b2c75`
+  
+  Series 2 moved from orange to teal so chart colours never look like the amber or orange status
+  colours. The series pair passes the dataviz palette validator (normal ΔE 23.2, CVD ΔE 20.8,
+  contrast ≥ 3:1). Health pills are tinted by status (10–16% fill, dark text).
+- **Bank company page, grouped into tabs** (radio-input tabs in the mockup; real routes or
+  `?tab=` in the build). Every metric is a `.mt` tile: label, value, a one-line context, and
+  optionally the bank rating (dot + word), a threshold bullet gauge or a sparkline. Each tab
+  has 4–8 tiles plus one or two charts.
+  - **Overview:** changes since yesterday, four headline tiles, monthly sales, indicator
+    gauges, red flags, reports.
+  - **Sales:** LTM, growth, latest month vs the same month last year, monthly average and
+    range, seasonality, credit notes / returns, cash sales, customers billed; sales chart and
+    customer retention (new / lost).
+  - **Profitability:** gross margin (approximate), EBITDA, net margin, interest, depreciation,
+    overheads, other income, COGS; margins last year vs this year, and "where each ₹100 goes".
+  - **Customers & receivables:** receivables, DSO, > 90 d, collection ratio, top customer,
+    top 5, customers owing, stuck debtors; ageing, largest balances, customer shares, days to
+    pay by customer.
+  - **Suppliers & payables:** payables, DPO, > 90 d, purchases, top supplier, top 5; payables
+    ageing and supplier shares.
+  - **Working capital:** CCC, DIO, current ratio, NWC, current assets and liabilities; the
+    cash-cycle timeline.
+  - **Debt:** debt/TNW, TOL/TNW, interest cover, DSCR, debt service, net worth; loans table and
+    EMI record.
+  - **Banking & cash:** month-end balance, average, lowest, swings, cash receipts share, large
+    cash receipts and payments, negative cash days; balance chart and bank vs cash receipts.
+  - **Tax:** GST collected, paid and payable, TDS payable, GST vs sales consistency, filing
+    status ("not available"); monthly GST chart.
+  - **Data & flags:** books lag, last upload, voucher count, Tally company; red flags, checks
+    with no findings, low-confidence related party.
+- **MSME page, tabs Home / Sales / Customers / Money / Dues.** On phones the tab bar is the
+  bottom nav. Home has the hero chart, four tiles, "to do this week" and "areas to watch".
+  Each other tab has plain-language tiles and charts. There are still no ratings or lending
+  terms.
+
 ## Navigation
 Flat, not a SPA: each bank page is its own server route (`/bank`, `/bank/applications/{id}`,
 `/bank/reports/{id}`), navigated via plain `<a>` links and HTML form `POST`s with a redirect
@@ -95,3 +332,62 @@ pattern at `/msme`, `/msme/report` — just a different (narrower) HTTP Basic-au
 no write actions, so no forms/redirects there, only links. The connector's wizard is the
 only multi-step flow, and it's steps within one page (`.card`/`.step` sections toggled via
 `.hidden`/`.off` classes), not multiple routes.
+
+
+## Approved direction (ticket 7485bcfc)
+Direction 6 chosen. 6 Owner approved direction 6 (owner said no further approval needed). Build: new theme in all six pages' :root, bank portfolio + company page with grouped metric tabs, MSME tabs. Build it on this device.
+
+**Phase 1 (backend, 2026-10-02): done.** Every metric the d6 tiles/charts need is now computed
+(see the parameter list above and `architecture.md`), and `report/dashboard.py` shapes it into
+the three view-models (`company_view`/`msme_view`/`portfolio_view`), including the borrower
+health rule. No routes or templates were touched — phase 2 wires these view-models into the new
+navy/indigo theme and the actual `dashboard.html`/`application.html`/`msme.html` markup.
+
+**Phase 2 (frontend, 2026-10-02): done.** All six pages' `:root` block is now direction 6's navy/
+indigo token set, copied verbatim (including the new `--brand` token). `report/dashboard_charts.py`
+holds the server-rendered SVG/HTML chart helpers used by the bank/MSME dashboards (sparkline,
+column chart with an optional last-year line and a narrower phone variant, stacked bar, bullet
+gauge, horizontal bars, an ageing-ramp stack, a health pill and an EMI repayment grid) — all pure
+functions, escaping every piece of free text, registered as Jinja globals in `main.py`. They are
+distinct from (and reuse the `_nice_max`/scale helpers of) `report/charts.py`, which still renders
+`report.html`'s own charts unchanged.
+- `/bank` (`dashboard.html`) is now the portfolio view built from `dashboard.portfolio_view` —
+  KPI tiles, today's alerts feed, health-by-state, and the borrower table/cards with server-side
+  `?filter=attention|watch|alerts|overdue` chips. The old "new request" form is unchanged, now
+  behind a "+ New request" toggle.
+- `/bank/applications/{id}` (`application.html`) is `dashboard.company_view`'s ten tabs, navigated
+  by real `?tab=<key>` links (no JS). Every existing bank control (code issue/reset, monitoring
+  refresh/stop, MSME login issue/reset, report history/recompute/view, bundle download) lives in a
+  collapsible "Manage" panel above the tabs, unchanged in behaviour. An application with no ready
+  report yet shows an empty state instead of the tabs.
+- `/msme` (`msme.html`) is `dashboard.msme_view`'s five tabs (Home/Sales/Customers/Money/Dues),
+  same `?tab=` pattern, bottom tab bar on phones. `/msme/report` now redirects to `/msme`;
+  `/msme/report.json` returns the MSME view-model instead of the bank's report.json.
+- **Deviations from the mockup**, all low-risk simplifications given real (not fabricated) data
+  constraints:
+  - The portfolio's "new alerts, last 7 days" mini bar chart and the sales-monitored sparkline
+    were dropped — there's no stored day-by-day alert-count or portfolio-sales history to chart
+    from, only the current snapshot. Shown as a plain number instead of inventing a trend.
+  - The mockup's per-alert icon set (flag/up/down/clock...) was replaced by the existing plain
+    colored-dot status language (`.dot`/`.pill`) already used elsewhere in this app, rather than
+    introducing a new icon set outside this doc's component list.
+  - Overview's full per-indicator `.ind` list (name + gauge + value for all ten indicators) was
+    simplified to the green/amber/red mix bar plus four headline tiles; the other nine tabs each
+    surface their own relevant indicators as gauges on their own tiles, so nothing is lost, just
+    not duplicated on Overview too.
+  - Receivables/Payables tabs show ageing + largest balances only (matching what
+    `report/dashboard.py`'s view-model carries) — the mockup's extra "who they sell/buy from" and
+    "days to pay by customer" panels on this tab were left for a future ticket rather than
+    threading more fields through the view-model for this pass.
+  - The cash-cycle timeline's day-0/day-N axis captions were dropped as a minor cosmetic
+    simplification; the per-stage day counts are already labelled on each bar.
+  - Column charts gained a proper negative-value axis (`vmin`/`vmax` both computed, bars rounding
+    whichever end is away from zero) beyond what the mockup needed, since a real borrower's
+    reconstructed bank balance can go negative (overdraft) — the mockup's all-positive sample data
+    never exercised this path.
+  - Wide tables (the loans table, legacy report-history table) scroll horizontally on phones via
+    the same `.scrollx` (`overflow-x: auto`) pattern this repo already used pre-direction-6, rather
+    than card-ifying every table.
+  - Screenshotted and visually reviewed at 1440×900 and 390×844 for the portfolio, every company
+    tab and every MSME tab, plus the empty states (no report yet, MSME with no data) and an
+    application with a negative bank balance.

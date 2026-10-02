@@ -67,7 +67,7 @@ def test_daily_monitoring_flow(client, model):
     # Refresh flag cleared by the new report.
     assert not client.post("/api/connector/monitor/status", headers=bearer).json()["due"]
     page = client.get(f"/bank/applications/{a['id']}", auth=AUTH).text
-    assert "Indicator trend" in page and "customers who have stopped paying" in page
+    assert "Since yesterday" in page and "customers who have stopped paying" in page
     html = client.get(f"/bank/reports/{reports[0]['id']}", auth=AUTH).text
     assert "Changes since previous report" in html
     assert client.get(f"/bank/reports/{reports[0]['id']}.json", auth=AUTH).json()["alerts"]
@@ -119,6 +119,66 @@ def test_msme_login_is_tenant_isolated(client, model):
     assert password2 != password
     assert client.get("/msme", auth=MSME).status_code == 401
     assert client.get("/msme", auth=(username, password2)).status_code == 200
+
+
+COMPANY_TABS = ["overview", "sales", "profit", "recv", "pay", "wc", "debt", "bank", "tax", "data"]
+MSME_TABS = ["home", "sales", "cust", "money", "dues"]
+
+
+def test_portfolio_page_renders(client, model):
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Portfolio Co"}).json()
+    client.post("/api/connector/upload", content=gz(bundle_from_model(model)), headers={"X-Link-Code": a["link_code"]})
+    page = client.get("/bank", auth=AUTH)
+    assert page.status_code == 200 and "Portfolio Co" in page.text
+    assert client.get("/bank?filter=attention", auth=AUTH).status_code == 200
+    assert client.get("/bank?filter=overdue", auth=AUTH).status_code == 200
+
+
+def test_company_page_tabs_render_and_are_tenant_isolated(client, model):
+    from app import store
+
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Tabbed Co"}).json()
+    client.post("/api/connector/upload", content=gz(bundle_from_model(model)), headers={"X-Link-Code": a["link_code"]})
+    for tab in COMPANY_TABS:
+        r = client.get(f"/bank/applications/{a['id']}?tab={tab}", auth=AUTH)
+        assert r.status_code == 200, tab
+
+    other_tenant = store.create_tenant("Another Bank")
+    store.create_user(other_tenant["id"], "tabs_admin", "tabs_pw", "bank")
+    assert client.get(f"/bank/applications/{a['id']}", auth=("tabs_admin", "tabs_pw")).status_code == 404
+
+
+def test_msme_page_has_no_bank_language(client, model):
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Plain Language Co"}).json()
+    client.post("/api/connector/upload", content=gz(bundle_from_model(model)), headers={"X-Link-Code": a["link_code"]})
+    page = client.post(f"/bank/applications/{a['id']}/msme-login", auth=AUTH).text
+    username = re.search(r"Username</div><div class=\"v\">([^<]+)", page).group(1)
+    password = re.search(r"Password</div><div class=\"v\">([^<]+)", page).group(1)
+    MSME = (username, password)
+
+    for tab in MSME_TABS:
+        r = client.get(f"/msme?tab={tab}", auth=MSME)
+        assert r.status_code == 200
+        lowered = r.text.lower()
+        assert "amber" not in lowered and "red flag" not in lowered and "dscr" not in lowered
+
+
+def test_msme_report_no_longer_exposes_bank_report(client, model):
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Redirect Co"}).json()
+    client.post("/api/connector/upload", content=gz(bundle_from_model(model)), headers={"X-Link-Code": a["link_code"]})
+    page = client.post(f"/bank/applications/{a['id']}/msme-login", auth=AUTH).text
+    username = re.search(r"Username</div><div class=\"v\">([^<]+)", page).group(1)
+    password = re.search(r"Password</div><div class=\"v\">([^<]+)", page).group(1)
+    MSME = (username, password)
+
+    r = client.get("/msme/report", auth=MSME, follow_redirects=False)
+    assert r.status_code in (302, 303, 307, 308)
+    assert r.headers["location"] == "/msme"
+    assert client.get("/msme/report", auth=None).status_code == 401
+
+    body = client.get("/msme/report.json", auth=MSME).json()
+    assert body.get("groups") and [g["key"] for g in body["groups"]] == MSME_TABS
+    assert "indicators" not in body and "flags" not in body
 
 
 def test_bank_tenants_are_isolated(client, model):

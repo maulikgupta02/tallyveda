@@ -48,22 +48,51 @@ itself). They never share code or a process.
 - **`analysis/`** — owns turning a raw Bundle into numbers and judgments. No I/O.
   - `book.py` — classifies ledgers into semantic categories by walking the Tally group tree
     (so custom voucher types/groups need no special-casing).
-  - `metrics.py` (largest file, ~600 lines) — computes everything in the README's "What the
+  - `metrics.py` (largest file, ~750 lines) — computes everything in the README's "What the
     report computes" section: revenue, customer concentration/HHI, receivables/payables
     ageing (bill-wise where available, FIFO fallback), working capital (DSO/DPO/DIO/CCC),
-    balance sheet ratios, banking/cash behaviour.
+    balance sheet ratios, banking/cash behaviour. Also (added for ticket 7485bcfc, direction 6's
+    dashboard groups): same-month-last-year sales, monthly average/range (extends
+    `seasonality`), credit notes/returns ratio, purchases growth, NWC (`balance_sheet`'s
+    `current_assets - current_liabilities`), a reconstructed month-end bank balance series
+    with average/low(+month)/volatility (`bank_balance_series`), a monthly GST-collected
+    series with a sales-consistency check (`gst_monthly`), a GST-vs-TDS split of the tax
+    payable by ledger-name heuristic (`statutory_split`), per-loan EMI repayment regularity
+    from loan-ledger voucher dates (`emi_regularity`), and a low-confidence related-party
+    heuristic (`related_party_candidates` — name-overlap with the company's own name only;
+    Tally's bundle has no address/director field, so this cannot be more than a name match).
   - `redflags.py` — stale books, back-dated entries, year-end sales spikes reversed in
     April, round-figure invoices, dual customer/supplier parties, cash-handling thresholds
     (s.269ST/s.40A(3)), suspense balances, negative net worth.
   - `indicators.py` — **the bank's editable policy**: green/amber/red thresholds per metric.
     Explicitly commented as "edit freely" — this is the one file meant to be tuned by a bank,
-    not a bug surface.
+    not a bug surface. Each rule carries `lo`/`hi`/a derived `bands` list alongside the
+    green/amber cutoffs (same numbers, no threshold changed) so `report/dashboard.py`'s gauge
+    widgets and the red/amber/green status can never disagree about where a threshold sits.
   - `alerts.py` — compares two reports' indicators/snapshots to flag deterioration between
     monitoring cycles.
 - **`report/`** — owns presentation of the computed numbers. `builder.py` assembles the
   final report dict + calls analysis; `charts.py` renders inline SVGs (no JS chart library);
   `glossary.py` is the single source of every credit term's name/plain-English line/formula;
-  `format.py` has small formatters (days/pct/ratio).
+  `format.py` has small formatters (days/pct/ratio); `dashboard.py` (added for ticket 7485bcfc,
+  direction 6) is the view-model layer between a built report and the three dashboards —
+  `company_view` (bank, one borrower, 10 tabbed groups: overview/sales/profitability/
+  receivables/payables/working_capital/debt/banking/tax/data), `msme_view` (home/sales/
+  customers/money/dues, plain language, no ratings or thresholds), and `portfolio_view`
+  (bank portfolio: KPI counts, alerts-since-yesterday feed, data-overdue list, sales monitored
+  with YoY, health by state, one row per borrower). Pure functions only — no I/O, no template
+  rendering; callers pass in an already-built `report` dict (and, for the portfolio, a list of
+  `{application, report, overdue, new_alerts}` per borrower, built from `store.applications_with_latest_report`/
+  `store.load_report_json`). `main.py` wires these into `dashboard.html`/`application.html`/
+  `msme.html` (ticket 7485bcfc phase 2); chart/widget rendering itself (SVG columns, sparklines,
+  bullet gauges, stacked bars, ageing ramps, an EMI grid) lives in `report/dashboard_charts.py`,
+  registered as Jinja globals in `main.py`, separate from `report/charts.py` (which still renders
+  only `report.html`'s own charts).
+  **Borrower health rule** (`dashboard.borrower_status`, one function, used everywhere a
+  borrower's traffic-light status is needed): `attention` if any indicator is red, or a
+  high-severity red flag is present, or the borrower's data is overdue; `watch` if 3 or more
+  indicators are amber, or there's a new alert since the last refresh; else `healthy`
+  (`nodata` is a separate state in `portfolio_view` for applications with no ready report yet).
 - **`templates/`** — Jinja2 HTML, inline `<style>` per page, no shared CSS file or JS
   framework. See `design.md`.
 
@@ -145,7 +174,10 @@ never talks to Tally directly.
 - `reports` — one row per upload (initial or refresh): status (processing | ready | failed),
   computed `indicators_json`/`snapshot_json`/`alerts_json`, `high_flags` count. Report
   artifacts themselves (the gzip bundle, `report.json`, `report.html`) live on disk under
-  `DATA_DIR/applications/<app_id>/reports/<report_id>/`, not in SQLite.
+  `DATA_DIR/applications/<app_id>/reports/<report_id>/`, not in SQLite. `store.latest_ready_report`/
+  `store.load_report_json`/`store.applications_with_latest_report` read the full report dict
+  (metrics, indicators, flags, alerts) back off disk for `report/dashboard.py`'s view-models —
+  the DB columns alone aren't enough for those, they only carry the indicator/snapshot summary.
 
 No other datastore, queue, or cache exists in this repo.
 
