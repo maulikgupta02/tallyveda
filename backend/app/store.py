@@ -1,4 +1,13 @@
-"""SQLite store for loan applications, link codes, monitoring and reports.
+"""SQLite store for tenants, users, loan applications, link codes, monitoring
+and reports.
+
+We host one backend for many banks and MSMEs. A `tenant` is a bank (the
+customer who pays for and uses the dashboard); every application belongs to
+exactly one tenant, and all bank-facing queries are scoped by `tenant_id` so
+one bank never sees another's applicants. A `user` is either a bank login
+(role `bank`, sees every application for its tenant) or an MSME login (role
+`msme`, tied to exactly one `application_id` — the MSME only ever sees its
+own company's data).
 
 An application is one borrower. Every upload (the first one via a one-time
 code, later ones via the monitoring token) creates a row in `reports`, so the
@@ -21,8 +30,23 @@ from . import config
 CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS tenants (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL REFERENCES tenants(id),
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,            -- bank | msme
+    application_id TEXT,           -- set for role = msme: the one application this login sees
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS applications (
     id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
     applicant_name TEXT NOT NULL,
     reference TEXT,
     months INTEGER NOT NULL,
@@ -56,6 +80,9 @@ CREATE INDEX IF NOT EXISTS reports_by_app ON reports(application_id, created_at)
 # Columns added after the first release; applied to existing databases.
 MIGRATIONS = {
     "applications": {
+        # Added for multi-tenancy. Pre-existing rows get '' (no tenant) — a hosted
+        # deploy with real tenants is expected to start from a fresh database.
+        "tenant_id": "TEXT NOT NULL DEFAULT ''",
         "monitoring_offered": "INTEGER NOT NULL DEFAULT 0",
         "monitoring_status": "TEXT NOT NULL DEFAULT 'off'",  # off | active | stopped_by_bank | stopped_by_client
         "monitor_token_hash": "TEXT",
@@ -82,6 +109,9 @@ def _connect():
         for col, ddl in cols.items():
             if col not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+    # Created here, not in SCHEMA, because it's on a column added by MIGRATIONS above
+    # (older databases don't have it until the ALTER TABLE just ran).
+    conn.execute("CREATE INDEX IF NOT EXISTS applications_by_tenant ON applications(tenant_id, created_at)")
     return conn
 
 
@@ -111,22 +141,120 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# A per-user random salt plus PBKDF2 is enough here (no third-party deps like
+# bcrypt/argon2 — see project.md's "stdlib only" constraint) since logins are
+# low-volume, human-typed passwords, not a high-throughput public API.
+_PBKDF2_ITERATIONS = 200_000
+
+
+def _hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERATIONS)
+    return f"{salt.hex()}:{dk.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt_hex, hash_hex = stored.split(":")
+    except ValueError:
+        return False
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), _PBKDF2_ITERATIONS)
+    return secrets.compare_digest(dk.hex(), hash_hex)
+
+
 def report_dir(app_id: str, report_id: str):
     d = config.DATA_DIR / "applications" / app_id / "reports" / report_id
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
+# ----------------------------------------------------------- tenants & users
+
+
+SEED_TENANT_ID = "seed-tenant"  # fixed id so _ensure_seed_tenant is idempotent across restarts
+
+
+def seed_tenant_id() -> str:
+    return SEED_TENANT_ID
+
+
+def create_tenant(name: str, tenant_id: str | None = None) -> dict:
+    tenant_id = tenant_id or uuid.uuid4().hex
+    with db() as conn:
+        conn.execute("INSERT INTO tenants (id, name, created_at) VALUES (?, ?, ?)", (tenant_id, name, now().isoformat()))
+    return get_tenant(tenant_id)
+
+
+def get_tenant(tenant_id: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def create_user(tenant_id: str, username: str, password: str, role: str, application_id: str | None = None) -> dict:
+    """role is 'bank' (sees every application for tenant_id) or 'msme' (sees only application_id)."""
+    user_id = uuid.uuid4().hex
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO users (id, tenant_id, username, password_hash, role, application_id, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, tenant_id, username, _hash_password(password), role, application_id, now().isoformat()),
+        )
+    return get_user(user_id)
+
+
+def set_password(user_id: str, password: str) -> None:
+    with db() as conn:
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (_hash_password(password), user_id))
+
+
+def get_user(user_id: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def authenticate(username: str, password: str, role: str) -> dict | None:
+    """Constant-shape lookup for Basic auth: always hashes, even on an unknown
+    username, so a wrong username and a wrong password fail in the same time."""
+    with db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE username = ? AND role = ?", (username, role)).fetchone()
+    user = dict(row) if row else None
+    if _verify_password(password, user["password_hash"] if user else _hash_password("")):
+        return user
+    return None
+
+
+def msme_login_for(app_id: str) -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE application_id = ? AND role = 'msme'", (app_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def create_or_reset_msme_login(app_id: str, tenant_id: str) -> tuple[str, str]:
+    """Issue (or rotate the password of) the MSME login for one application.
+    Returns (username, password) — the password is shown to the bank once."""
+    password = secrets.token_urlsafe(9)
+    existing = msme_login_for(app_id)
+    if existing:
+        set_password(existing["id"], password)
+        return existing["username"], password
+    username = f"msme-{app_id[:10]}"
+    user = create_user(tenant_id, username, password, "msme", application_id=app_id)
+    return user["username"], password
+
+
 # ------------------------------------------------------------ applications
 
 
-def create_application(applicant_name: str, reference: str, months: int, monitoring_offered: bool = False) -> dict:
+def create_application(tenant_id: str, applicant_name: str, reference: str, months: int,
+                        monitoring_offered: bool = False) -> dict:
     app_id = uuid.uuid4().hex
     with db() as conn:
         conn.execute(
-            "INSERT INTO applications (id, applicant_name, reference, months, code, code_expires_at, status, created_at,"
-            " monitoring_offered) VALUES (?, ?, ?, ?, ?, ?, 'awaiting_data', ?, ?)",
-            (app_id, applicant_name, reference, months, new_code(),
+            "INSERT INTO applications (id, tenant_id, applicant_name, reference, months, code, code_expires_at, status,"
+            " created_at, monitoring_offered) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_data', ?, ?)",
+            (app_id, tenant_id, applicant_name, reference, months, new_code(),
              (now() + timedelta(hours=config.CODE_TTL_HOURS)).isoformat(), now().isoformat(), int(monitoring_offered)),
         )
     return get_application(app_id)
@@ -140,15 +268,23 @@ def regenerate_code(app_id: str) -> None:
         )
 
 
-def get_application(app_id: str) -> dict | None:
+def get_application(app_id: str, tenant_id: str | None = None) -> dict | None:
+    """tenant_id is None for connector-side lookups (already scoped by a code/token
+    that uniquely identifies the application); bank/MSME routes must always pass it
+    so one tenant can never fetch another tenant's application by guessing an id."""
     with db() as conn:
         row = conn.execute("SELECT * FROM applications WHERE id = ?", (app_id,)).fetchone()
-    return dict(row) if row else None
+    app = dict(row) if row else None
+    if app and tenant_id is not None and app["tenant_id"] != tenant_id:
+        return None
+    return app
 
 
-def list_applications() -> list[dict]:
+def list_applications(tenant_id: str) -> list[dict]:
     with db() as conn:
-        rows = conn.execute("SELECT * FROM applications ORDER BY created_at DESC").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM applications WHERE tenant_id = ? ORDER BY created_at DESC", (tenant_id,)
+        ).fetchall()
     return [dict(r) for r in rows]
 
 

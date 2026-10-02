@@ -7,12 +7,17 @@ Connector endpoints (called by TallyConnector.exe):
     POST /api/connector/monitor/upload   Bearer token + gzip JSON  monthly refresh
     POST /api/connector/monitor/stop     Bearer token           client withdraws consent
 
-Bank endpoints (HTTP Basic auth):
-    GET  /bank                                  dashboard
+Bank endpoints (HTTP Basic auth, per-tenant bank user — see store.py's `users` table):
+    GET  /bank                                  dashboard (this tenant's applications only)
     GET  /bank/applications/{id}                history, alerts, monitoring controls
     GET  /bank/applications/{id}/report[.json]  latest report
     GET  /bank/reports/{report_id}[.json]       a specific report
+    POST /bank/applications/{id}/msme-login     issue/reset this applicant's MSME login
     POST /api/bank/applications                 create request (JSON, for LOS integration)
+
+MSME endpoints (HTTP Basic auth, a login tied to exactly one application):
+    GET  /msme                                  that company's own dashboard
+    GET  /msme/report[.json]                     that company's latest report
 """
 
 from __future__ import annotations
@@ -20,7 +25,6 @@ from __future__ import annotations
 import gzip
 import json
 import logging
-import secrets
 import time
 import zlib
 from collections import defaultdict, deque
@@ -55,13 +59,30 @@ MONITORING_LABELS = {
 }
 
 
-def bank_user(creds: HTTPBasicCredentials = Depends(security)) -> str:
-    ok = secrets.compare_digest(creds.username, config.ADMIN_USER) and secrets.compare_digest(
-        creds.password, config.ADMIN_PASSWORD
-    )
-    if not ok:
+def _ensure_seed_tenant() -> None:
+    """On a brand-new database, turn TC_ADMIN_USER/TC_ADMIN_PASSWORD into the first
+    real tenant + bank user, so a fresh deploy still gets a working login without a
+    separate provisioning step. Once any tenant exists this is a no-op — onboarding
+    a second bank is done via `python -m app.manage` (see docs/agents/architecture.md)."""
+    if store.get_tenant(store.seed_tenant_id()) is not None:
+        return
+    tenant = store.create_tenant(config.BANK_NAME, tenant_id=store.seed_tenant_id())
+    store.create_user(tenant["id"], config.ADMIN_USER, config.ADMIN_PASSWORD, "bank")
+
+
+def bank_user(creds: HTTPBasicCredentials = Depends(security)) -> dict:
+    _ensure_seed_tenant()
+    user = store.authenticate(creds.username, creds.password, "bank")
+    if not user:
         raise HTTPException(401, "Unauthorised", headers={"WWW-Authenticate": "Basic"})
-    return creds.username
+    return user
+
+
+def msme_user(creds: HTTPBasicCredentials = Depends(security)) -> dict:
+    user = store.authenticate(creds.username, creds.password, "msme")
+    if not user:
+        raise HTTPException(401, "Unauthorised", headers={"WWW-Authenticate": "Basic"})
+    return user
 
 
 # ------------------------------------------------------------- connector API
@@ -237,8 +258,8 @@ def root():
 
 
 @app.get("/bank", response_class=HTMLResponse)
-def dashboard(request: Request, user: str = Depends(bank_user)):
-    apps = store.list_applications()
+def dashboard(request: Request, user: dict = Depends(bank_user)):
+    apps = store.list_applications(user["tenant_id"])
     for a in apps:
         a["overdue"] = store.monitoring_overdue(a)
         latest = store.get_report(a["latest_report_id"]) if a["latest_report_id"] else None
@@ -255,16 +276,108 @@ def dashboard(request: Request, user: str = Depends(bank_user)):
 @app.post("/bank/applications")
 def create_application_form(
     applicant_name: str = Form(...), reference: str = Form(""), months: int = Form(config.DEFAULT_MONTHS),
-    monitoring: str = Form(""), user: str = Depends(bank_user),
+    monitoring: str = Form(""), user: dict = Depends(bank_user),
 ):
-    store.create_application(applicant_name.strip(), reference.strip(), max(6, min(months, 60)), monitoring == "on")
+    store.create_application(user["tenant_id"], applicant_name.strip(), reference.strip(),
+                              max(6, min(months, 60)), monitoring == "on")
     return RedirectResponse("/bank", status_code=303)
 
 
 @app.get("/bank/applications/{app_id}", response_class=HTMLResponse)
-def application_detail(app_id: str, user: str = Depends(bank_user)):
-    a = _get_or_404(app_id)
-    reports = store.list_reports(app_id)
+def application_detail(app_id: str, user: dict = Depends(bank_user)):
+    a = _get_or_404(app_id, user["tenant_id"])
+    return _render_application(a, "application.html", bank_name=config.BANK_NAME,
+                                msme_login=store.msme_login_for(app_id))
+
+
+@app.post("/bank/applications/{app_id}/code")
+def regenerate(app_id: str, user: dict = Depends(bank_user)):
+    _get_or_404(app_id, user["tenant_id"])
+    store.regenerate_code(app_id)
+    return RedirectResponse("/bank", status_code=303)
+
+
+@app.post("/bank/applications/{app_id}/monitoring/refresh")
+def monitoring_refresh(app_id: str, user: dict = Depends(bank_user)):
+    _get_or_404(app_id, user["tenant_id"])
+    store.request_refresh(app_id)
+    return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
+
+
+@app.post("/bank/applications/{app_id}/monitoring/stop")
+def monitoring_stop_bank(app_id: str, user: dict = Depends(bank_user)):
+    _get_or_404(app_id, user["tenant_id"])
+    store.stop_monitoring(app_id, "bank")
+    return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
+
+
+@app.post("/bank/applications/{app_id}/msme-login", response_class=HTMLResponse)
+def issue_msme_login(app_id: str, user: dict = Depends(bank_user)):
+    """Issue (or rotate) the applicant's own login to their MSME dashboard. The
+    password is only ever shown here, once — store.py keeps only its hash."""
+    a = _get_or_404(app_id, user["tenant_id"])
+    username, password = store.create_or_reset_msme_login(app_id, user["tenant_id"])
+    return templates.get_template("msme_login.html").render(a=a, bank_name=config.BANK_NAME,
+                                                              username=username, password=password)
+
+
+@app.post("/bank/reports/{report_id}/recompute")
+def recompute(report_id: str, user: dict = Depends(bank_user)):
+    r = _report_or_404(report_id, user["tenant_id"])
+    process_report(report_id)
+    return RedirectResponse(f"/bank/applications/{r['application_id']}", status_code=303)
+
+
+@app.get("/bank/applications/{app_id}/report", response_class=HTMLResponse)
+def latest_report_html(app_id: str, user: dict = Depends(bank_user)):
+    return _report_file(_latest_report_id(app_id, user["tenant_id"]), "report.html", "text/html; charset=utf-8")
+
+
+@app.get("/bank/applications/{app_id}/report.json")
+def latest_report_json(app_id: str, user: dict = Depends(bank_user)):
+    return _report_file(_latest_report_id(app_id, user["tenant_id"]), "report.json", "application/json")
+
+
+# Declared before the HTML route, which would otherwise also match "<id>.json".
+@app.get("/bank/reports/{report_id}.json")
+def report_json_view(report_id: str, user: dict = Depends(bank_user)):
+    _report_or_404(report_id, user["tenant_id"])
+    return _report_file(report_id, "report.json", "application/json")
+
+
+@app.get("/bank/reports/{report_id}", response_class=HTMLResponse)
+def report_html(report_id: str, user: dict = Depends(bank_user)):
+    _report_or_404(report_id, user["tenant_id"])
+    return _report_file(report_id, "report.html", "text/html; charset=utf-8")
+
+
+@app.get("/bank/reports/{report_id}/bundle.json.gz")
+def bundle_download(report_id: str, user: dict = Depends(bank_user)):
+    _report_or_404(report_id, user["tenant_id"])
+    return _report_file(report_id, "bundle.json.gz", "application/gzip")
+
+
+# ------------------------------------------------------------------ MSME UI
+
+
+@app.get("/msme", response_class=HTMLResponse)
+def msme_dashboard(user: dict = Depends(msme_user)):
+    a = _get_or_404(user["application_id"])
+    return _render_application(a, "msme.html", bank_name=config.BANK_NAME)
+
+
+@app.get("/msme/report", response_class=HTMLResponse)
+def msme_latest_report_html(user: dict = Depends(msme_user)):
+    return _report_file(_latest_report_id(user["application_id"]), "report.html", "text/html; charset=utf-8")
+
+
+@app.get("/msme/report.json")
+def msme_latest_report_json(user: dict = Depends(msme_user)):
+    return _report_file(_latest_report_id(user["application_id"]), "report.json", "application/json")
+
+
+def _render_application(a: dict, template_name: str, **extra) -> str:
+    reports = store.list_reports(a["id"])
     ready = [r for r in reports if r["status"] == "ready"]
     # Indicator trend table: rows = indicators, columns = reports (oldest first, last 12).
     columns = list(reversed(ready[:12]))
@@ -274,91 +387,42 @@ def application_detail(app_id: str, user: str = Depends(bank_user)):
             "label": ind["label"],
             "cells": [next((i for i in c["indicators"] if i["key"] == ind["key"]), None) for c in columns],
         })
-    return templates.get_template("application.html").render(
-        a=a, reports=reports, columns=columns, rows=rows, bank_name=config.BANK_NAME,
+    return templates.get_template(template_name).render(
+        a=a, reports=reports, columns=columns, rows=rows,
         monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
         due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
         monitor_day=config.MONITOR_DAY, overdue_days=config.MONITOR_OVERDUE_DAYS,
+        **extra,
     )
 
 
-@app.post("/bank/applications/{app_id}/code")
-def regenerate(app_id: str, user: str = Depends(bank_user)):
-    _get_or_404(app_id)
-    store.regenerate_code(app_id)
-    return RedirectResponse("/bank", status_code=303)
-
-
-@app.post("/bank/applications/{app_id}/monitoring/refresh")
-def monitoring_refresh(app_id: str, user: str = Depends(bank_user)):
-    _get_or_404(app_id)
-    store.request_refresh(app_id)
-    return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
-
-
-@app.post("/bank/applications/{app_id}/monitoring/stop")
-def monitoring_stop_bank(app_id: str, user: str = Depends(bank_user)):
-    _get_or_404(app_id)
-    store.stop_monitoring(app_id, "bank")
-    return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
-
-
-@app.post("/bank/reports/{report_id}/recompute")
-def recompute(report_id: str, user: str = Depends(bank_user)):
-    r = _report_or_404(report_id)
-    process_report(report_id)
-    return RedirectResponse(f"/bank/applications/{r['application_id']}", status_code=303)
-
-
-@app.get("/bank/applications/{app_id}/report", response_class=HTMLResponse)
-def latest_report_html(app_id: str, user: str = Depends(bank_user)):
-    return _report_file(_latest_report_id(app_id), "report.html", "text/html; charset=utf-8")
-
-
-@app.get("/bank/applications/{app_id}/report.json")
-def latest_report_json(app_id: str, user: str = Depends(bank_user)):
-    return _report_file(_latest_report_id(app_id), "report.json", "application/json")
-
-
-# Declared before the HTML route, which would otherwise also match "<id>.json".
-@app.get("/bank/reports/{report_id}.json")
-def report_json_view(report_id: str, user: str = Depends(bank_user)):
-    return _report_file(report_id, "report.json", "application/json")
-
-
-@app.get("/bank/reports/{report_id}", response_class=HTMLResponse)
-def report_html(report_id: str, user: str = Depends(bank_user)):
-    return _report_file(report_id, "report.html", "text/html; charset=utf-8")
-
-
-@app.get("/bank/reports/{report_id}/bundle.json.gz")
-def bundle_download(report_id: str, user: str = Depends(bank_user)):
-    return _report_file(report_id, "bundle.json.gz", "application/gzip")
-
-
-def _get_or_404(app_id: str) -> dict:
-    a = store.get_application(app_id)
+def _get_or_404(app_id: str, tenant_id: str | None = None) -> dict:
+    a = store.get_application(app_id, tenant_id)
     if not a:
         raise HTTPException(404, "No such application")
     return a
 
 
-def _report_or_404(report_id: str) -> dict:
+def _report_or_404(report_id: str, tenant_id: str | None = None) -> dict:
+    """tenant_id=None skips the tenant check (used for MSME routes, which are
+    already scoped to a single application_id by the msme_user dependency)."""
     r = store.get_report(report_id)
-    if not r:
+    if not r or not store.get_application(r["application_id"], tenant_id):
         raise HTTPException(404, "No such report")
     return r
 
 
-def _latest_report_id(app_id: str) -> str:
-    a = _get_or_404(app_id)
+def _latest_report_id(app_id: str, tenant_id: str | None = None) -> str:
+    a = _get_or_404(app_id, tenant_id)
     if not a["latest_report_id"]:
         raise HTTPException(404, f"No report yet (status: {a['status']})")
     return a["latest_report_id"]
 
 
 def _report_file(report_id: str, name: str, media_type: str):
-    r = _report_or_404(report_id)
+    r = store.get_report(report_id)
+    if not r:
+        raise HTTPException(404, "No such report")
     path = store.report_dir(r["application_id"], report_id) / name
     if not path.exists():
         raise HTTPException(404, f"Report not available (status: {r['status']})")
@@ -396,18 +460,19 @@ def _public(a: dict) -> dict:
 
 
 @app.post("/api/bank/applications")
-def api_create(body: ApplicationIn, user: str = Depends(bank_user)):
-    return _public(store.create_application(body.applicant_name, body.reference, body.months, body.monitoring))
+def api_create(body: ApplicationIn, user: dict = Depends(bank_user)):
+    return _public(store.create_application(user["tenant_id"], body.applicant_name, body.reference,
+                                             body.months, body.monitoring))
 
 
 @app.get("/api/bank/applications/{app_id}")
-def api_get(app_id: str, user: str = Depends(bank_user)):
-    return _public(_get_or_404(app_id))
+def api_get(app_id: str, user: dict = Depends(bank_user)):
+    return _public(_get_or_404(app_id, user["tenant_id"]))
 
 
 @app.get("/api/bank/applications/{app_id}/reports")
-def api_reports(app_id: str, user: str = Depends(bank_user)):
-    _get_or_404(app_id)
+def api_reports(app_id: str, user: dict = Depends(bank_user)):
+    _get_or_404(app_id, user["tenant_id"])
     return [
         {k: r[k] for k in ("id", "source", "created_at", "status", "error", "period_to", "high_flags", "alerts", "indicators")}
         for r in store.list_reports(app_id)
@@ -415,10 +480,10 @@ def api_reports(app_id: str, user: str = Depends(bank_user)):
 
 
 @app.post("/api/bank/applications/{app_id}/monitoring/refresh")
-def api_refresh(app_id: str, user: str = Depends(bank_user)):
-    _get_or_404(app_id)
+def api_refresh(app_id: str, user: dict = Depends(bank_user)):
+    _get_or_404(app_id, user["tenant_id"])
     store.request_refresh(app_id)
-    return _public(store.get_application(app_id))
+    return _public(store.get_application(app_id, user["tenant_id"]))
 
 
 # ------------------------------------------------------------------ misc

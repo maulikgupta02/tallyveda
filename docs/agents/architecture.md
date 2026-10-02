@@ -15,13 +15,20 @@ Python backend (runs on the bank's infrastructure, has no knowledge of how to ta
 itself). They never share code or a process.
 
 ## Backend (`backend/app/`) — who owns what
-- **`main.py`** — single FastAPI app, owns all HTTP routing. Three route groups:
+- **`main.py`** — single FastAPI app, owns all HTTP routing. Four route groups:
   - Connector API (`/api/connector/...`): `verify` (check a one-time code), `upload` (first
     upload, authenticated by the one-time code in `X-Link-Code`), `monitor/status`,
     `monitor/upload`, `monitor/stop` (all authenticated by a bearer monitoring token).
-  - Bank UI (`/bank`, `/bank/applications/{id}`, report views) — HTTP Basic auth
-    (`bank_user` dependency), server-rendered Jinja2.
-  - Bank JSON API (`/api/bank/applications...`) — same Basic auth, for LOS integration.
+  - Bank UI (`/bank`, `/bank/applications/{id}`, report views) — HTTP Basic auth against a
+    per-tenant bank account (`bank_user` dependency, backed by `store.authenticate`),
+    server-rendered Jinja2. Every query is scoped to `user["tenant_id"]`, so one bank can
+    never see another bank's applications (`_get_or_404`/`_report_or_404` check this).
+  - MSME UI (`/msme`, `/msme/report[.json]`) — HTTP Basic auth against an MSME account
+    (`msme_user` dependency), scoped to exactly the one `application_id` the account was
+    issued for (a bank creates/resets this login from an application's page). A trimmed,
+    read-only view of that one company's own analysis (`msme.html`) — no monitoring
+    controls, no other applicants' data.
+  - Bank JSON API (`/api/bank/applications...`) — same bank Basic auth, for LOS integration.
   - Also owns upload-size/gzip-bomb guarding (`_read_bundle`, `_gunzip_json`) and a simple
     in-memory per-IP throttle (`_failed_attempts`, 20/hour) on code/token checks.
 - **`store.py`** — owns all persistence (SQLite, stdlib `sqlite3`, one file at
@@ -29,7 +36,15 @@ itself). They never share code or a process.
   Schema is created and migrated idempotently on every connection (`SCHEMA` + `MIGRATIONS`
   dict — new columns are added via `ALTER TABLE` if missing, never a separate migration
   runner/tool). Owns code generation/expiry, monitoring-token hashing (SHA-256, token itself
-  is returned once and never stored), and the due/overdue date math.
+  is returned once and never stored), the due/overdue date math, and multi-tenancy: a
+  `tenants` table (one row per bank) and a `users` table (role `bank` — sees every
+  application for its tenant — or `msme` — sees only its one `application_id`; passwords are
+  salted PBKDF2-SHA256, stdlib only, never stored or logged in the clear). Every
+  `applications` row carries a `tenant_id`.
+- **`manage.py`** — the only tenant/user provisioning tool (no admin web UI yet):
+  `python -m app.manage create-tenant "Bank name"` / `create-bank-user <tenant_id> <username>`.
+  `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` only seed the very first tenant + bank user, the first
+  time the backend runs against an empty database (`main._ensure_seed_tenant`).
 - **`analysis/`** — owns turning a raw Bundle into numbers and judgments. No I/O.
   - `book.py` — classifies ledgers into semantic categories by walking the Tally group tree
     (so custom voucher types/groups need no special-casing).
@@ -114,10 +129,14 @@ see the doc comment at the top of `bundle.go`). The backend only ever receives t
 never talks to Tally directly.
 
 **SQLite schema** (`backend/app/store.py`, `backend/data/tally_connector.db` by default):
-- `applications` — one row per borrower/loan request: identity, one-time code + expiry,
-  `status` (awaiting_data | processing | ready | failed), monitoring fields added via
-  `MIGRATIONS` (offered flag, status, hashed token, started/last-seen timestamps, a manual
-  `force_refresh` flag, pointer to the latest report).
+- `tenants` — one row per bank: `id`, `name`, `created_at`.
+- `users` — one row per login: `tenant_id`, `username` (unique), `password_hash` (salted
+  PBKDF2-SHA256), `role` (`bank` | `msme`), `application_id` (set only for `msme` — the one
+  application that login can see).
+- `applications` — one row per borrower/loan request: `tenant_id` (which bank owns it),
+  identity, one-time code + expiry, `status` (awaiting_data | processing | ready | failed),
+  monitoring fields added via `MIGRATIONS` (offered flag, status, hashed token,
+  started/last-seen timestamps, a manual `force_refresh` flag, pointer to the latest report).
 - `reports` — one row per upload (initial or monthly): status (processing | ready | failed),
   computed `indicators_json`/`snapshot_json`/`alerts_json`, `high_flags` count. Report
   artifacts themselves (the gzip bundle, `report.json`, `report.html`) live on disk under
@@ -140,6 +159,8 @@ this repo). PyPI/Go-stdlib dependencies only (`fastapi`, `uvicorn`, `jinja2`,
 monitoring settings are persisted, default `%AppData%\TallyConnector`). None are secrets files or `.env`-loaded — they're plain OS environment variables. All have
 defaults except `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`: `config.py` raises at import if either
 is unset, unless `TC_DEV=1` (which falls back to `admin`/`admin` for local runs and tests).
+These two only *seed* the first tenant/bank user on an empty database (`main._ensure_seed_tenant`)
+— real accounts live in `store.py`'s `users` table from then on, provisioned via `manage.py`.
 
 ## Entry points
 - Backend: `uvicorn app.main:app` (from `backend/`), app object is `app.main:app`.

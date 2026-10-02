@@ -96,8 +96,8 @@ This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PC
 | Variable | Default | |
 |---|---|---|
 | `TC_BANK_NAME` | Demo Bank | Shown to applicants in the connector |
-| `TC_ADMIN_USER` / `TC_ADMIN_PASSWORD` | none | Dashboard login. Required: the backend won't start without them |
-| `TC_DEV` | unset | `1` allows the `admin`/`admin` login for local runs. Never set it in production |
+| `TC_ADMIN_USER` / `TC_ADMIN_PASSWORD` | none | Required (backend won't start without them). Seed the first bank tenant + its first bank user on first startup of an empty database only; every login after that is a real per-tenant account in `store.py`'s `users` table — see "Accounts" below |
+| `TC_DEV` | unset | `1` allows the `admin`/`admin` seed login for local runs. Never set it in production |
 | `TC_DATA_DIR` | `backend/data` | SQLite database and uploaded bundles |
 | `TC_CODE_TTL_HOURS` | 72 | How long a code stays valid |
 | `TC_DEFAULT_MONTHS` | 24 | Months of data requested |
@@ -107,6 +107,20 @@ This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PC
 | `TC_MONITOR_OVERDUE_DAYS` | 40 | Monitored clients with no data for longer are shown as overdue |
 
 Run the backend behind TLS (nginx, a load balancer, or similar). The connector sends financial data, so the server URL must be `https://` in production.
+
+## Accounts
+
+One backend hosts several banks (tenants) and their applicants' MSME logins. `TC_ADMIN_USER`/
+`TC_ADMIN_PASSWORD` only seed the first bank tenant and its first bank user, the first time the
+backend runs against an empty database. After that:
+- Onboard another bank with `python -m app.manage create-tenant "Bank name"`, then
+  `python -m app.manage create-bank-user <tenant_id> <username>` (prints a one-time password).
+  A bank user only ever sees applications created under their own tenant (`/bank`).
+- An MSME login is tied to exactly one application: from that application's page, the bank
+  clicks "Create login" (or "Reset password" to rotate it) under "MSME dashboard login". The
+  applicant then signs in at `/msme` to see their own analysis — never another company's.
+
+There's no admin web UI for tenant/user management yet; `python -m app.manage` is it.
 
 ## What the report computes
 

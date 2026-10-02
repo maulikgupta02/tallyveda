@@ -3,6 +3,7 @@
 import gzip
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -95,6 +96,44 @@ def test_due_schedule():
     assert not store.monitoring_due(early, utc(2026, 9, 3))  # 33 days, but before the 5th
     assert store.monitoring_due(early | {"force_refresh": 1}, utc(2026, 8, 2))
     assert not store.monitoring_due(app | {"monitoring_status": "stopped_by_bank"}, utc(2026, 12, 1))
+
+
+def test_msme_login_is_tenant_isolated(client, model):
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Isolated Co"}).json()
+    page = client.post(f"/bank/applications/{a['id']}/msme-login", auth=AUTH).text
+    username = re.search(r"Username</div><div class=\"v\">([^<]+)", page).group(1)
+    password = re.search(r"Password</div><div class=\"v\">([^<]+)", page).group(1)
+    MSME = (username, password)
+
+    r = client.get("/msme", auth=MSME)
+    assert r.status_code == 200 and "Isolated Co" in r.text
+
+    # The MSME login never sees the bank dashboard or another applicant's data.
+    other = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Other Co"}).json()
+    assert client.get("/bank", auth=MSME).status_code == 401
+    assert client.get(f"/bank/applications/{other['id']}", auth=MSME).status_code == 401
+    assert client.get(f"/bank/applications/{a['id']}", auth=MSME).status_code == 401
+
+    # Resetting rotates the password; the old one stops working.
+    page2 = client.post(f"/bank/applications/{a['id']}/msme-login", auth=AUTH).text
+    password2 = re.search(r"Password</div><div class=\"v\">([^<]+)", page2).group(1)
+    assert password2 != password
+    assert client.get("/msme", auth=MSME).status_code == 401
+    assert client.get("/msme", auth=(username, password2)).status_code == 200
+
+
+def test_bank_tenants_are_isolated(client, model):
+    from app import store
+
+    other_tenant = store.create_tenant("Other Bank")
+    store.create_user(other_tenant["id"], "other_admin", "other_pw", "bank")
+    OTHER_AUTH = ("other_admin", "other_pw")
+
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Tenant A Co"}).json()
+    assert client.get(f"/bank/applications/{a['id']}", auth=OTHER_AUTH).status_code == 404
+    assert client.get(f"/api/bank/applications/{a['id']}", auth=OTHER_AUTH).status_code == 404
+    dash = client.get("/bank", auth=OTHER_AUTH).text
+    assert "Tenant A Co" not in dash
 
 
 def test_login_required_outside_dev():

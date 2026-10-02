@@ -2,24 +2,28 @@
 
 There is no shared component library, CSS framework, or build step for styling — every
 surface is a single server-rendered HTML file with its own inline `<style>` block using CSS
-custom properties. Four such pages exist, and they should stay visually consistent with each
+custom properties. Six such pages exist, and they should stay visually consistent with each
 other even though nothing enforces that automatically:
 
 - `backend/app/templates/dashboard.html` — bank's list of applications
 - `backend/app/templates/application.html` — one application's history/alerts/monitoring controls
+  (bank-only; also where a bank issues/resets an applicant's MSME login)
+- `backend/app/templates/msme.html` — an MSME's own read-only view of the same application's
+  history/trend (same visual language as `application.html`, minus any bank-only controls)
+- `backend/app/templates/msme_login.html` — the one-time "here is the username/password"
+  confirmation shown to the bank right after creating/resetting an MSME login
 - `backend/app/templates/report.html` — the credit report itself (largest, most visual: charts, tables)
 - `connector/internal/app/index.html` — the local 127.0.0.1 page the *applicant* sees on their
-  own PC (different audience/tone from the other three, which are bank-internal)
+  own PC (different audience/tone from the other bank/MSME-facing pages)
 
 **When adding or changing UI, reuse the tokens and patterns below rather than inventing new
 ones.** There's no separate design-tokens file; the `:root` block at the top of each template
-*is* the token set — all four files share **one identical `:root` block, copied verbatim**.
+*is* the token set — all six files share **one identical `:root` block, copied verbatim**.
 When adding a new page, copy that block exactly rather than retyping it; when adding a token
-any page needs, add it to the block in all four files at once so they never diverge again.
+any page needs, add it to the block in all six files at once so they never diverge again.
 
 ## Colors
-The single `:root` block, identical in `dashboard.html`, `application.html`, `report.html`
-and `connector/internal/app/index.html`:
+The single `:root` block, identical across all six files above:
 ```
 --surface: #fcfcfb      page background
 --surface-2: #f3f2ef    panel/form background (e.g. the "new request" bar)
@@ -86,6 +90,8 @@ consistent with "no framework" throughout).
 ## Navigation
 Flat, not a SPA: each bank page is its own server route (`/bank`, `/bank/applications/{id}`,
 `/bank/reports/{id}`), navigated via plain `<a>` links and HTML form `POST`s with a redirect
-back (`RedirectResponse(..., status_code=303)` in `main.py`). The connector's wizard is the
+back (`RedirectResponse(..., status_code=303)` in `main.py`). The MSME side is the same
+pattern at `/msme`, `/msme/report` — just a different (narrower) HTTP Basic-auth account and
+no write actions, so no forms/redirects there, only links. The connector's wizard is the
 only multi-step flow, and it's steps within one page (`.card`/`.step` sections toggled via
 `.hidden`/`.off` classes), not multiple routes.

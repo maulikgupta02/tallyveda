@@ -3,8 +3,12 @@ from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("TC_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 BANK_NAME = os.environ.get("TC_BANK_NAME", "Demo Bank")
-# The dashboard login has no fallback outside dev, so a deploy that forgets to set it
-# fails at startup instead of serving every applicant's books behind admin/admin.
+# Bank/MSME logins are now real per-tenant accounts in store.py's `users` table, not a
+# single shared Basic-auth password. TC_ADMIN_USER/TC_ADMIN_PASSWORD only *seed* the
+# first bank tenant and its first bank user, on first startup of an empty database
+# (see main.py's _ensure_seed_tenant) — once any tenant exists they're ignored. This
+# keeps the old safety property: a deploy that forgets to set them fails at startup
+# instead of serving every applicant's books behind admin/admin.
 DEV = os.environ.get("TC_DEV") == "1"
 ADMIN_USER = os.environ.get("TC_ADMIN_USER", "admin" if DEV else "")
 ADMIN_PASSWORD = os.environ.get("TC_ADMIN_PASSWORD", "admin" if DEV else "")

@@ -28,7 +28,7 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # backend — run (verified: starts, /healthz returns {"ok": true})
 TC_DEV=1 .venv/bin/uvicorn app.main:app --port 8000   # dashboard at /bank, admin/admin (dev only)
 
-# backend — tests (verified: 14 passed)
+# backend — tests (verified: 17 passed)
 .venv/bin/python -m pytest -q
 
 # connector — vet/tests (verified: go vet clean, `go test ./...` passed — extract and tally packages have tests)
@@ -77,11 +77,18 @@ Gaps between that and the code today (checked 2026-10-02):
 - **Monthly, not daily.** The connector's scheduled task checks in daily, but a refresh is
   only *due* once a month after the monitoring day (`internal/monitor`, `application.html`).
   Daily feeds need the due-check and the backend's monitoring flow changed.
-- **No MSME dashboard.** Every UI route is under `/bank` (Basic auth). There's no MSME login,
-  route or view. The MSME only sees the connector's local setup page.
-- **Single-tenant.** One deployment serves one bank: `TC_BANK_NAME`, a single
-  `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`, no bank/tenant column in `store.py`. A hosted service
-  for several banks needs tenants, per-bank users and per-bank data isolation.
+- **MSME dashboard exists now, but is basic** (2026-10-02): `/msme` shows the applicant's own
+  reports/indicator trend (`msme.html`), scoped to their one application. It doesn't yet
+  surface "sales, growth and potential areas of concern" as its own narrative the way
+  `project.md`'s product direction describes — it reuses the bank's trend table/report links
+  rather than a dedicated MSME-oriented summary.
+- **Multi-tenant accounts exist now** (2026-10-02): `store.py` has `tenants` and `users`
+  tables, every `applications` row carries a `tenant_id`, bank logins are per-tenant accounts
+  (`/bank`, scoped by `tenant_id`), and each application can have its own MSME login
+  (`/msme`, scoped to one `application_id`) issued from the bank's application page.
+  `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` now only seed the first tenant + bank user; onboarding
+  another bank is `python -m app.manage create-tenant`/`create-bank-user` (no admin web UI
+  yet — see `docs/agents/risks.md`).
 - **Cloud installs.** Automatic scheduling only exists on Windows (`schedule_windows.go`).
   A Linux cloud host would have to run `-monitor-run` from cron by hand (`schedule_other.go`).
 - **Hosting.** No deploy config, TLS, backups or production storage are in the repo. SQLite plus
@@ -91,15 +98,17 @@ Gaps between that and the code today (checked 2026-10-02):
 ## Folder map
 ```
 backend/app/
-  main.py          FastAPI app: connector API, bank dashboard, bank JSON API (single file, ~440 lines)
+  main.py          FastAPI app: connector API, bank dashboard, MSME dashboard, bank JSON API
   config.py        env-var config (all with safe defaults)
-  store.py         SQLite access: applications, codes, monitoring, reports
+  store.py         SQLite access: tenants, users, applications, codes, monitoring, reports
+  manage.py        CLI to provision tenants/bank users (no admin web UI yet)
   analysis/        book.py (ledger classification), metrics.py (the actual numbers),
                    redflags.py, indicators.py (bank's traffic-light policy), alerts.py
                    (month-to-month comparison)
   report/          builder.py, charts.py (inline SVG), format.py, glossary.py (all report wording)
-  templates/       dashboard.html, application.html, report.html (server-rendered Jinja2)
-  tests/           test_analysis.py, test_monitoring.py (pytest, 14 tests, all passing)
+  templates/       dashboard.html, application.html, msme.html, msme_login.html, report.html
+                   (server-rendered Jinja2)
+  tests/           test_analysis.py, test_monitoring.py (pytest, all passing)
 connector/
   main.go          CLI entry: interactive UI mode, headless mode, -monitor-run/-monitor-stop
   internal/tally/   Tally XML/HTTP client (UTF-16, quirky response handling)

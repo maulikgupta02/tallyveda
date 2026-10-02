@@ -17,7 +17,12 @@
 - **Dashboard login**: `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` are required. `config.py` refuses
   to start without them, and only `TC_DEV=1` (tests, `dev/e2e.sh`, local runs) allows
   `admin`/`admin`. Never set `TC_DEV` on a hosted deployment, and don't reintroduce a
-  fallback. It's still one shared Basic-auth login, not per-bank accounts (see below).
+  fallback. These two env vars now only *seed* the first tenant + bank user on an empty
+  database (`main._ensure_seed_tenant`) — real logins are per-tenant rows in `store.py`'s
+  `users` table (bank users scoped to their tenant's applications, MSME users scoped to one
+  application), provisioned via `python -m app.manage`. There's still no password-reset flow,
+  no account lockout beyond the existing per-IP throttle, and no admin web UI for managing
+  users — only the CLI.
 - **`connector/dist/`** — prebuilt `.exe` binaries are committed-but-gitignored (per the task
   brief and `.gitignore`). Never rebuild into this path casually; a verification build should
   go to a throwaway path outside the repo (this onboarding pass did that).
@@ -71,10 +76,18 @@
 
 ## Gaps against the product direction
 The owner hosts the backend for many banks and MSMEs, with daily refreshes and an MSME-facing
-dashboard (see `project.md`, "Product direction"). The code is still a single-bank, monthly,
-bank-only tool. Hosting it as-is would put several customers' financial data in one
-unpartitioned SQLite DB behind one shared admin login. Don't onboard a second bank until
-tenancy and per-tenant access control exist.
+dashboard (see `project.md`, "Product direction"). Tenancy, per-bank accounts and a per-application
+MSME login now exist (`store.py`'s `tenants`/`users` tables, `/bank` scoped to `tenant_id`, `/msme`
+scoped to `application_id` — see `architecture.md`). Still open:
+- Monthly, not daily, refreshes (unchanged — see the connector/monitor gap below).
+- No admin web UI for tenant/user management — onboarding a bank or resetting a bank user's
+  password is a CLI-only operation (`python -m app.manage`), which doesn't scale past a handful
+  of banks and has no audit trail of who ran it.
+- No password-reset self-service for bank or MSME users, and no account lockout beyond the
+  existing per-IP throttle (20 failed attempts/hour) shared with the connector endpoints.
+- This pass has **not been run against a real second tenant in a shared production database** —
+  only against SQLite in tests and a local dev run. Treat the isolation as test-verified, not
+  field-verified, before onboarding a second paying bank.
 
 ## Known TODOs / explicitly-flagged gaps (from README "Before a pilot")
 - Replace Basic auth with the bank's SSO.
