@@ -1,0 +1,47 @@
+README.md
+  d5cdac50ea5e4f20 99-100,111-124
+project.md
+  d5cdac50ea5e4f20 31,80-91,101,103-104,109
+backend/tests/test_monitoring.py
+  d5cdac50ea5e4f20 6,101-138
+backend/app/templates/msme.html
+  d5cdac50ea5e4f20 1-88
+backend/app/store.py
+  d5cdac50ea5e4f20 1-10,33-46,49,83-85,112-114,144-164,171-244,250,255-257,271-274,277-280,283,286
+backend/app/config.py
+  d5cdac50ea5e4f20 6-11
+backend/app/templates/msme_login.html
+  d5cdac50ea5e4f20 1-41
+backend/app/main.py
+  d5cdac50ea5e4f20 10-11,15,17-20,62-83,85,261-262,279,281,287-290,294-295,301-302,308-309,314-321,323,325-326,332-333,337-338,343-344,349-350,355-356,360-371,374-380,388-400,406-408,410,415-416,423-425,463-464,469-470,474-475,483-484,486
+backend/app/templates/application.html
+  d5cdac50ea5e4f20 72-80
+docs/agents/architecture.md
+  d5cdac50ea5e4f20 18,22-31,39-47,132-136,162-163
+design.md
+  d5cdac50ea5e4f20 5,10-14,17,21,23,26,93-95
+backend/app/manage.py
+  d5cdac50ea5e4f20 1-54
+docs/agents/risks.md
+  d5cdac50ea5e4f20 20-25,79-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "a503c96dd3cafedf1545c3f625a5f4799e991c3b",
+  "prompts": {
+    "d5cdac50ea5e4f20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6378ab4d-e21b-456f-b058-3688c695fcfa",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 624,
+      "total_deletions": 125,
+      "accepted_lines": 588,
+      "overriden_lines": 0
+    }
+  }
+}
