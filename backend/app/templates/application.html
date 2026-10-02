@@ -324,6 +324,8 @@
   .empty-state .btn { margin-top: 10px; }
   .tbl .changes-cell { max-width: 320px; }
 
+  .share-code { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 12px 0 0; }
+  .share-code .code { font-size: 28px; font-weight: 700; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -344,7 +346,7 @@
     </div>
   </div>
 
-  <details class="manage">
+  <details class="manage"{% if not company %} open{% endif %}>
     <summary>Manage (code, monitoring, MSME login)</summary>
     <div class="manage-body">
       <div class="mpanel">
@@ -400,7 +402,12 @@
   {% if not company %}
   <div class="card empty-state">
     <h2>No report yet</h2>
-    <p class="muted">Waiting for the first upload from the connector. Share the one-time code above with the applicant.</p>
+    {% if a.code %}
+    <p class="muted">Send {{ a.applicant_name }} this code and the Tally Connector. They enter it in the connector to share their books.</p>
+    <p class="share-code"><span class="code">{{ a.code|code }}</span><span class="muted small">works once · valid until {{ a.code_expires_at|when }} UTC</span></p>
+    {% else %}
+    <p class="muted">Waiting for the first upload from the connector. The code has been used; use Manage → Request again for a new one.</p>
+    {% endif %}
   </div>
   {% else %}
   <nav class="tabs">
