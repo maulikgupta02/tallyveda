@@ -7,20 +7,21 @@
 <style>
   :root {
     color-scheme: light;
-    --surface: #fcfcfb; --surface-2: #f3f2ef; --line: #e2e1dc;
+    --surface: #fcfcfb; --surface-2: #f3f2ef; --card: #ffffff; --line: #e2e1dc;
     --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --accent: #2a78d6; --accent-ink: #ffffff;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
     --series-1: #2a78d6; --series-2: #eb6834;
     --age-1: #86b6ef; --age-2: #5598e7; --age-3: #2a78d6; --age-4: #1c5cab; --age-5: #104281; --age-6: #0d366b;
-    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--surface); color: var(--text);
-    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
   main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
   header.top { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
     border-bottom: 2px solid var(--text); padding-bottom: 12px; margin-bottom: 20px; }
-  h1 { font-size: 24px; margin: 0 0 4px; }
-  h2 { font-size: 17px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); break-after: avoid; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); break-after: avoid; }
   h3 { font-size: 14px; margin: 18px 0 6px; color: var(--text-2); }
   .sub, .note { color: var(--text-2); }
   .note { font-size: 12px; margin: 6px 0; }
@@ -58,7 +59,7 @@
   .disclaimer { margin-top: 40px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
   .toolbar { display: flex; gap: 8px; }
   .toolbar a, .toolbar button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none; cursor: pointer; }
+    border: 1px solid var(--line); background: #fff; color: var(--text); text-decoration: none; cursor: pointer; }
   @media print { .toolbar { display: none; } main { padding: 0; } h2 { break-before: auto; } }
 </style>
 </head>

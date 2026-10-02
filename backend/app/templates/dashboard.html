@@ -5,8 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ bank_name }} · Tally applications</title>
 <style>
-  :root { color-scheme: light; --surface: #fcfcfb; --surface-2: #f3f2ef; --line: #e2e1dc; --text: #0b0b0b; --text-2: #52514e;
-    --accent: #2a78d6; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; }
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --surface-2: #f3f2ef; --card: #ffffff; --line: #e2e1dc;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --accent: #2a78d6; --accent-ink: #ffffff;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+    --series-1: #2a78d6; --series-2: #eb6834;
+    --age-1: #86b6ef; --age-2: #5598e7; --age-3: #2a78d6; --age-4: #1c5cab; --age-5: #104281; --age-6: #0d366b;
+  }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--surface); color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
   main { max-width: 1040px; margin: 0 auto; padding: 24px 16px; }

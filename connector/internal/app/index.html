@@ -5,12 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tally Connector</title>
 <style>
-  :root { color-scheme: light; --surface: #f6f5f2; --card: #ffffff; --line: #e2e1dc; --text: #0b0b0b; --text-2: #52514e;
-    --accent: #2a78d6; --accent-ink: #ffffff; --good: #0ca30c; --critical: #d03b3b; }
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --surface-2: #f3f2ef; --card: #ffffff; --line: #e2e1dc;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --accent: #2a78d6; --accent-ink: #ffffff;
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+    --series-1: #2a78d6; --series-2: #eb6834;
+    --age-1: #86b6ef; --age-2: #5598e7; --age-3: #2a78d6; --age-4: #1c5cab; --age-5: #104281; --age-6: #0d366b;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--surface); color: var(--text); font: 15px/1.5 "Segoe UI", -apple-system, Roboto, Arial, sans-serif; }
+  body { margin: 0; background: var(--surface); color: var(--text); font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
   main { max-width: 560px; margin: 40px auto; padding: 0 16px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
   .sub { color: var(--text-2); margin: 0 0 20px; font-size: 13px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
   .card.off { opacity: .45; pointer-events: none; }

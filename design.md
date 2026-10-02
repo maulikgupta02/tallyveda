@@ -13,42 +13,39 @@ other even though nothing enforces that automatically:
 
 **When adding or changing UI, reuse the tokens and patterns below rather than inventing new
 ones.** There's no separate design-tokens file; the `:root` block at the top of each template
-*is* the token set, repeated per file (lightly diverged already — see Inconsistencies below).
+*is* the token set — all four files share **one identical `:root` block, copied verbatim**.
+When adding a new page, copy that block exactly rather than retyping it; when adding a token
+any page needs, add it to the block in all four files at once so they never diverge again.
 
 ## Colors
-Common `:root` custom properties across the bank-facing templates (`dashboard.html`,
-`application.html`, `report.html`):
+The single `:root` block, identical in `dashboard.html`, `application.html`, `report.html`
+and `connector/internal/app/index.html`:
 ```
 --surface: #fcfcfb      page background
 --surface-2: #f3f2ef    panel/form background (e.g. the "new request" bar)
+--card: #ffffff         card background (connector wizard steps; unused elsewhere)
 --line: #e2e1dc         borders, table rules, dividers
 --text: #0b0b0b         primary text
 --text-2: #52514e       secondary/muted text
+--muted: #7a7974        tertiary text (report tile captions, chart axis labels)
 --accent: #2a78d6       primary action color (buttons, links, chart series)
+--accent-ink: #ffffff   text/icon color on a solid --accent fill
 --good: #0ca30c         status: ready / green indicator
 --warning: #fab219      status: processing / amber indicator
+--serious: #ec835a      status: a fourth level between warning and critical
 --critical: #d03b3b     status: failed / red indicator
+--series-1 / --series-2: #2a78d6 / #eb6834   chart line colors (report.html)
+--age-1..--age-6: #86b6ef -> #0d366b          6-step ageing-bucket ramp, light to dark blue (report.html)
 ```
-`report.html` extends this with report-specific tokens: `--muted: #7a7974`,
-`--series-1`/`--series-2` (chart line colors, `#2a78d6`/`#eb6834`), a 6-step ageing-bucket
-ramp `--age-1`..`--age-6` (light to dark blue, `#86b6ef` → `#0d366b`), and `--serious:
-#ec835a` as a fourth status level between warning and critical.
-
-`connector/internal/app/index.html` (the applicant-facing page) uses a close but distinct
-palette: `--surface: #f6f5f2` (slightly warmer/darker than the bank pages' `#fcfcfb`), adds
-`--card: #ffffff` and `--accent-ink: #ffffff` (text-on-accent), and only carries `--good`/
-`--critical` forward — no `--warning`/`--surface-2`. **Inconsistency, not yet reconciled**:
-if unifying these two surfaces is ever in scope, confirm with a human first — it may be
-intentional (different product surface, different audience) rather than drift.
+Most tokens are only *used* by one or two pages (e.g. `--age-*`/`--series-*` only by
+`report.html`'s charts, `--card`/`--accent-ink` only by the connector wizard), but every page
+carries the full set so the block stays copy-paste identical. Don't trim a page's `:root` down
+to just what it uses.
 
 ## Typography
-System font stack everywhere, no webfonts: bank pages use
-`-apple-system, "Segoe UI", Roboto, Arial, sans-serif` (report.html adds `"Helvetica Neue"`);
-the connector page uses `"Segoe UI", -apple-system, Roboto, Arial, sans-serif` (same stack,
-different priority order — Windows-first, since that's the applicant's OS). Body text is
-`14px/1.45` on bank pages, `15px/1.5` on the connector page (slightly larger — single-purpose
-wizard, not a dense table view). Headings are plain `h1`/`h2` with manual `font-size`
-(22–24px for `h1`, 17px for `h2`), no heading scale/mixin.
+One system font stack everywhere, no webfonts: `-apple-system, "Segoe UI", Roboto, Arial,
+sans-serif`. Body text is `14px/1.45` on every page. Headings are plain `h1`/`h2` with manual
+`font-size` — `h1` is `22px`, `h2` (where used) is `16px` — no heading scale/mixin.
 
 ## Spacing / layout
 - Single-column, centered `main` with a `max-width` cap and `0 auto` margin: `1040px`
