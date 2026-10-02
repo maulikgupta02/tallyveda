@@ -1,0 +1,59 @@
+backend/app/templates/admin_credential.html
+  1eb726b0b7aadb53 1-40
+backend/app/manage.py
+  1eb726b0b7aadb53 8,10-13,38-48,56,71-74
+backend/tests/test_admin.py
+  1eb726b0b7aadb53 1-209,216-232
+backend/app/templates/admin_banks.html
+  1eb726b0b7aadb53 1-6,121-123,135-147,149-161,163-166
+backend/app/config.py
+  1eb726b0b7aadb53 22-29
+docs/agents/architecture.md
+  1eb726b0b7aadb53 18,21-25,32-33,36-38,55-65,189-192,194-202,217-223,231-287,323-324,334-339
+backend/app/main.py
+  1eb726b0b7aadb53 22-31,33-34,50,56,131,139-152,168-170,174-196,201,246,248-252,308-309,317,322,776-1022
+backend/app/templates/admin_msme_detail.html
+  1eb726b0b7aadb53 1-6,121-123,135-198
+backend/app/templates/admin_users.html
+  1eb726b0b7aadb53 1-6,121-123,135-155,157-179,181-184
+backend/app/templates/admin_overview.html
+  1eb726b0b7aadb53 1-6,121-123,135-173
+project.md
+  1eb726b0b7aadb53 97-112,135,139,149
+backend/app/store.py
+  1eb726b0b7aadb53 102,106-115,183-194,314,321-335,339-340,351-367,371-372,394-429,435-436,440-445,447,513-552,731-786
+backend/app/templates/admin_msmes.html
+  1eb726b0b7aadb53 1-6,121-123,135-177,179-193,195-198
+README.md
+  1eb726b0b7aadb53 146-147,193-210,212-215
+design.md
+  1eb726b0b7aadb53 5,10-12,18-28,32-39
+backend/app/templates/admin_audit.html
+  1eb726b0b7aadb53 1-6,121-123,135-139,141-154,156-159
+docs/agents/risks.md
+  1eb726b0b7aadb53 19-34,57-63,125-128,130-132
+backend/app/templates/application.html
+  1eb726b0b7aadb53 335,349,402
+backend/app/templates/admin_bank_detail.html
+  1eb726b0b7aadb53 1-6,121-123,135-165,167-173,175-195,197-198,200-210,212-223,225-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "1be9944745ee9e8ac33aba2776f078baa2bde007",
+  "prompts": {
+    "1eb726b0b7aadb53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f9130fb-99be-40c4-84b1-3fa41f9541db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1433,
+      "overriden_lines": 0
+    }
+  }
+}
