@@ -1,0 +1,41 @@
+backend/app/main.py
+  1eb726b0b7aadb53 11-12,19-21,42-43,56-72,280-296,298-299,317-319,321,323-327,329-330,403-405,407,409-415,418,420-422,427-431
+backend/app/report/dashboard_charts.py
+  1eb726b0b7aadb53 1-236
+design.md
+  1eb726b0b7aadb53 345-393
+docs/agents/architecture.md
+  1eb726b0b7aadb53 86-90
+backend/app/report/dashboard.py
+  1eb726b0b7aadb53 62-79,98-99,113,134,169-170,184-185,216,233-234,248-249,279-280,294,308,331-332,339
+backend/app/templates/msme.html
+  1eb726b0b7aadb53 316-319
+backend/tests/test_monitoring.py
+  1eb726b0b7aadb53 70,124-183
+backend/app/templates/application.html
+  1eb726b0b7aadb53 489,492
+backend/app/templates/dashboard.html
+  1eb726b0b7aadb53 379
+project.md
+  1eb726b0b7aadb53 77-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "0991c7ad6a67b236e9d0bd7fcfb32e8af9d97ff7",
+  "prompts": {
+    "1eb726b0b7aadb53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f9130fb-99be-40c4-84b1-3fa41f9541db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 531,
+      "total_deletions": 96,
+      "accepted_lines": 476,
+      "overriden_lines": 0
+    }
+  }
+}
