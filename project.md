@@ -181,6 +181,7 @@ dev/
   inline in `README.md` under "Before a pilot" — read that section before any production use.
 
 ## Docs
+- `docs/agents/seo-backlog.md` — deferred SEO and trust fixes for the home page (audit 2026-10-02).
 - `docs/agents/architecture.md` — modules, data flow, data model, config, entry points.
 - `docs/agents/risks.md` — fragile areas, missing coverage, what not to touch without a human.
 - `design.md` — this repo has a UI (bank dashboard + report + connector's local setup page);
