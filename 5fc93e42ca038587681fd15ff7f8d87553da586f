@@ -1,0 +1,23 @@
+backend/app/config.py
+  ba08dd2afa38f3cf 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "5fc93e42ca038587681fd15ff7f8d87553da586f",
+  "prompts": {
+    "ba08dd2afa38f3cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bddbbea-b05c-4c03-bb64-2675ba6b7611",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
