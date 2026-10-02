@@ -17,9 +17,8 @@ if not (ADMIN_USER and ADMIN_PASSWORD):
 CODE_TTL_HOURS = int(os.environ.get("TC_CODE_TTL_HOURS", "72"))
 MAX_UPLOAD_MB = int(os.environ.get("TC_MAX_UPLOAD_MB", "300"))
 DEFAULT_MONTHS = int(os.environ.get("TC_DEFAULT_MONTHS", "24"))
-# Monthly monitoring: a refresh is due once this day of the month is reached
-# (so the previous month is in the books), and flagged overdue after N days.
-MONITOR_DAY = int(os.environ.get("TC_MONITOR_DAY", "5"))
-MONITOR_OVERDUE_DAYS = int(os.environ.get("TC_MONITOR_OVERDUE_DAYS", "40"))
+# Daily monitoring: a refresh is due once a day has passed since the last
+# report, and flagged overdue after N days with no data at all.
+MONITOR_OVERDUE_DAYS = int(os.environ.get("TC_MONITOR_OVERDUE_DAYS", "3"))
 # Optional: path to the built TallyConnector.exe, served at /download.
 CONNECTOR_EXE = os.environ.get("TC_CONNECTOR_EXE", "")

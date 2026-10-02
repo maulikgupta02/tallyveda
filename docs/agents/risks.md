@@ -78,8 +78,15 @@
 The owner hosts the backend for many banks and MSMEs, with daily refreshes and an MSME-facing
 dashboard (see `project.md`, "Product direction"). Tenancy, per-bank accounts and a per-application
 MSME login now exist (`store.py`'s `tenants`/`users` tables, `/bank` scoped to `tenant_id`, `/msme`
-scoped to `application_id` — see `architecture.md`). Still open:
-- Monthly, not daily, refreshes (unchanged — see the connector/monitor gap below).
+scoped to `application_id` — see `architecture.md`). Refreshes are now due daily (`store.monitoring_due`),
+not monthly, and Linux cloud installs have a documented cron/systemd setup (README.md "Linux / cloud
+installs") since `schedule_other.go` still has no built-in scheduler. Each refresh still re-extracts
+the full requested window rather than only new vouchers — true incremental extraction (only
+pulling what changed since the last report) would need the connector/backend contract to change
+(partial bundles, merging with the previous snapshot) and was judged too large/risky to bundle into
+this pass given `internal/tally/`'s unverified-against-real-Tally status (see below); a human should
+decide whether to pursue it, especially for the Day Book performance concern on very large companies.
+Still open:
 - No admin web UI for tenant/user management — onboarding a bank or resetting a bank user's
   password is a CLI-only operation (`python -m app.manage`), which doesn't scale past a handful
   of banks and has no audit trail of who ran it.

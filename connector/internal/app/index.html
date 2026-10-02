@@ -49,9 +49,9 @@
     It does not change anything in Tally.</p>
 
   <section class="card hidden" id="mon">
-    <div class="step"><span class="num">✓</span>Monthly updates are on</div>
+    <div class="step"><span class="num">✓</span>Daily updates are on</div>
     <div id="monText" class="muted"></div>
-    <button id="monStop" class="secondary">Stop monthly updates</button>
+    <button id="monStop" class="secondary">Stop daily updates</button>
     <div id="monErr" class="err"></div>
   </section>
 
@@ -160,7 +160,7 @@ $("verifyBtn").onclick = async () => {
     info = await api("/api/verify", { code: $("code").value });
     months = info.months || 24;
     $("monOpt").classList.toggle("hidden", !info.monitoring_offered);
-    $("monOptText").textContent = `Also send ${info.bank_name} an updated copy about once a month, automatically, ` +
+    $("monOptText").textContent = `Also send ${info.bank_name} an updated copy daily, automatically, ` +
       `whenever Tally is open on this computer. You can stop this at any time by opening this tool again.`;
     $("verifyOk").textContent = `${info.bank_name} is requesting ${months} months of data for ${info.applicant_name}` +
       (info.reference ? ` (ref. ${info.reference})` : "") + ".";
@@ -224,15 +224,15 @@ async function loadMonitor() {
     const m = await api("/api/monitor");
     $("mon").classList.toggle("hidden", !m.active);
     if (m.active) {
-      $("monText").textContent = `This computer sends ${m.bank_name} a monthly copy of ${m.company}. ` +
-        (m.last_success ? `Last sent ${new Date(m.last_success).toLocaleDateString()}.` : "No monthly update sent yet.") +
+      $("monText").textContent = `This computer sends ${m.bank_name} a daily copy of ${m.company}. ` +
+        (m.last_success ? `Last sent ${new Date(m.last_success).toLocaleDateString()}.` : "No daily update sent yet.") +
         (m.last_error ? ` Last attempt: ${m.last_error}.` : "");
     }
   } catch (e) { /* not critical */ }
 }
 
 $("monStop").onclick = async () => {
-  if (!confirm("Stop sending monthly updates to the bank?")) return;
+  if (!confirm("Stop sending daily updates to the bank?")) return;
   $("monErr").textContent = "";
   try {
     await api("/api/monitor/stop", {});

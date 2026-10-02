@@ -24,18 +24,51 @@ Applicant's PC (Windows)                          Bank
 
 The connector only reads from Tally and never writes to it.
 
-## Monthly monitoring (optional)
+## Daily monitoring (optional)
 
-After the loan is given, the bank can keep receiving fresh books every month to spot early warning signs.
+After the loan is given, the bank can keep receiving fresh books every day to spot early warning signs.
 
-- **Bank:** tick *Offer monthly monitoring* when creating the request.
-- **Applicant:** a second, unticked-by-default checkbox appears in the connector: *Also send an updated copy about once a month*. When it's ticked, the backend issues a long-lived monitoring token, stored hashed. The connector then copies itself to `%AppData%\TallyConnector\`, saves its settings there, and registers a per-user Windows scheduled task (*TallyConnector Monthly Update*; no admin rights needed).
+- **Bank:** tick *Offer daily monitoring* when creating the request.
+- **Applicant:** a second, unticked-by-default checkbox appears in the connector: *Also send an updated copy daily*. When it's ticked, the backend issues a long-lived monitoring token, stored hashed. The connector then copies itself to `%AppData%\TallyConnector\`, saves its settings there, and registers a per-user Windows scheduled task (*TallyConnector Daily Update*; no admin rights needed).
 - **Schedule:** the task runs every 2 hours from 09:00 to 21:00 while the user is logged in. It also runs after a missed start. Each run asks the bank `POST /api/connector/monitor/status` whether a refresh is due. If one is due and the company is open in Tally, it extracts and uploads. Otherwise it exits and tries again later.
-- **Due rule:** set on the backend, so it can change without a new exe. A refresh is due 25+ days after the last report, on or after `TC_MONITOR_DAY` (default the 5th, so the previous month is booked). *Refresh now* on the bank's side makes it due at the next check-in. A client with no data for `TC_MONITOR_OVERDUE_DAYS` (default 40) is marked overdue.
+- **Due rule:** set on the backend, so it can change without a new exe. A refresh is due once a calendar day has passed since the last report. *Refresh now* on the bank's side makes it due at the next check-in. A client with no data for `TC_MONITOR_OVERDUE_DAYS` (default 3) is marked overdue.
 - **Alerts:** every report is stored, and each new one is compared with the previous one. Alerts are raised when an indicator gets worse (e.g. Good → Concern), a new high-severity red flag appears, or a key number moves sharply: revenue −15%, receivables +30%, receivables over 90 days +50%, debt +25%, OD/CC use +30%, net worth −20%. Moves under ₹5 L are ignored. Alerts appear at the top of the report, on the history page (`/bank/applications/{id}`, which also has an indicator trend table) and as a badge on the dashboard.
-- **Stopping:** the bank clicks *Stop monitoring*, or the client opens the connector and clicks *Stop monthly updates* (or runs `TallyConnector.exe -monitor-stop`). Either way, the scheduled task removes itself at its next run.
+- **Stopping:** the bank clicks *Stop monitoring*, or the client opens the connector and clicks *Stop daily updates* (or runs `TallyConnector.exe -monitor-stop`). Either way, the scheduled task removes itself at its next run.
+- **Extraction window:** each refresh still re-extracts the full requested window (e.g. the last 24 months), not just what changed, because the report's trends (YoY growth, ageing, indicator history) need that trailing window to stay correct. "Daily" so far only changed *how often* a refresh is due, not how much data each one pulls — see `docs/agents/risks.md` for the Day Book performance caveat on companies with very large voucher counts, which daily refreshes make more frequent.
 
 Logs go to `%AppData%\TallyConnector\connector.log`. On Windows the exe is a GUI-subsystem app with no console window. The interactive UI shuts down about 45 seconds after its browser tab is closed.
+
+### Linux / cloud installs (no scheduler)
+
+`schedule_other.go` is a no-op on anything but Windows (there is no portable "Task Scheduler" API), so a connector running on a Linux cloud host (e.g. an AWS instance reaching Tally over the network via `-tally`/`TC_TALLY_URL`) needs its own scheduler for `-monitor-run`. `build.sh` produces `dist/tallyconnector-linux-amd64` for this alongside the Windows exes. Two ready-to-use options:
+
+**cron** — add a line like this to the service account's crontab (`crontab -e`), running a few times a day to match the Windows cadence:
+```
+0 9,11,13,15,17,19,21 * * * /opt/tallyconnector/tallyconnector-linux-amd64 -monitor-run >> /var/log/tallyconnector.log 2>&1
+```
+
+**systemd timer** — `/etc/systemd/system/tallyconnector.service`:
+```ini
+[Unit]
+Description=TallyConnector monitoring check
+
+[Service]
+Type=oneshot
+ExecStart=/opt/tallyconnector/tallyconnector-linux-amd64 -monitor-run
+```
+and `/etc/systemd/system/tallyconnector.timer`:
+```ini
+[Unit]
+Description=Run TallyConnector's monitoring check every 2 hours
+
+[Timer]
+OnCalendar=*-*-* 9,11,13,15,17,19,21:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+Enable with `systemctl enable --now tallyconnector.timer`. `TC_HOME` still controls where settings/logs are kept (default `$XDG_CONFIG_HOME` or `~/.config/TallyConnector` via Go's `os.UserConfigDir()` on Linux), so point it at a directory the service account can write to if it isn't running as a normal login user.
 
 ## Terminology
 
@@ -45,7 +78,7 @@ The report uses the standard credit terms (LTM, YoY, DSO, DPO, DIO, CCC, TNW, De
 
 | Path | What it is |
 |---|---|
-| `connector/` | Go connector. Stdlib only, builds into a single ~8 MB `.exe` |
+| `connector/` | Go connector. Stdlib only, builds into a single ~8 MB `.exe` (plus a Linux binary for cloud installs, see `build.sh`) |
 | `connector/internal/tally` | Tally XML client: UTF-16, sanitises illegal characters, handles the different response layouts |
 | `connector/internal/extract` | Builds the bundle: groups, ledgers, voucher types, stock snapshots, bills, and Day Book vouchers month by month |
 | `connector/internal/app` | Local UI, served on 127.0.0.1 with a per-run token |
@@ -80,7 +113,7 @@ TallyConnector.exe -code 7K2Q-XM9P -company "My Co Pvt Ltd" -consent "A. Kumar"
 TallyConnector.exe -company "My Co Pvt Ltd" -dump books.json     # extract only, no upload
 TallyConnector.exe -tally http://192.168.1.20:9000 ...           # Tally on another machine
 TallyConnector.exe -monitor-run                                  # what the scheduled task runs
-TallyConnector.exe -monitor-stop                                 # withdraw monthly consent
+TallyConnector.exe -monitor-stop                                 # withdraw monitoring consent
 ```
 
 ## Building for distribution
@@ -89,7 +122,7 @@ TallyConnector.exe -monitor-stop                                 # withdraw mont
 cd connector && SERVER=https://tally.yourbank.in VERSION=1.0.0 ./build.sh
 ```
 
-This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PCs. Before giving it to applicants, sign the exe with the bank's code-signing certificate (`signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f bank.pfx TallyConnector.exe`). Without a signature, Windows SmartScreen and antivirus tools will warn about an unsigned download.
+This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PCs, plus `dist/tallyconnector-linux-amd64` for Linux cloud installs (see "Linux / cloud installs" above). Before giving the Windows exe to applicants, sign it with the bank's code-signing certificate (`signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f bank.pfx TallyConnector.exe`). Without a signature, Windows SmartScreen and antivirus tools will warn about an unsigned download.
 
 ## Backend configuration (environment variables)
 
@@ -103,8 +136,7 @@ This produces `dist/TallyConnector.exe` (64-bit) and a 32-bit build for older PC
 | `TC_DEFAULT_MONTHS` | 24 | Months of data requested |
 | `TC_MAX_UPLOAD_MB` | 300 | Maximum size of a compressed upload |
 | `TC_CONNECTOR_EXE` | – | Path to the signed exe, served at `/download` |
-| `TC_MONITOR_DAY` | 5 | Monthly refreshes are due on or after this day of the month |
-| `TC_MONITOR_OVERDUE_DAYS` | 40 | Monitored clients with no data for longer are shown as overdue |
+| `TC_MONITOR_OVERDUE_DAYS` | 3 | Monitored clients with no data for longer are shown as overdue |
 
 Run the backend behind TLS (nginx, a load balancer, or similar). The connector sends financial data, so the server URL must be `https://` in production.
 

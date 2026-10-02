@@ -1,4 +1,4 @@
-// Package monitor implements the optional monthly refresh. When the borrower
+// Package monitor implements the optional daily refresh. When the borrower
 // opts in, the connector copies itself to the user's AppData folder, saves the
 // bank's monitoring token and registers a per-user scheduled task (no admin
 // rights). The task runs a few times a day; each run asks the bank whether a
@@ -131,7 +131,7 @@ func Stop(ctx context.Context) error {
 		return err
 	}
 	if remoteErr != nil {
-		return fmt.Errorf("monthly updates were removed from this computer, but the bank could not be told: %w", remoteErr)
+		return fmt.Errorf("daily updates were removed from this computer, but the bank could not be told: %w", remoteErr)
 	}
 	return nil
 }
@@ -200,7 +200,7 @@ func Run(ctx context.Context, version string, logf func(string, ...any)) error {
 		return err
 	}
 	if c == nil {
-		logf("monthly updates are not set up; removing scheduled task")
+		logf("daily updates are not set up; removing scheduled task")
 		return unschedule()
 	}
 	c.LastAttempt = time.Now().Format(time.RFC3339)
@@ -214,7 +214,7 @@ func Run(ctx context.Context, version string, logf func(string, ...any)) error {
 	backend := upload.New(c.Server)
 	st, err := backend.MonitorStatus(ctx, c.Token)
 	if errors.Is(err, upload.ErrTokenRevoked) || (err == nil && !st.Active) {
-		logf("the bank has stopped monthly updates; removing them from this computer")
+		logf("the bank has stopped daily updates; removing them from this computer")
 		keep = false
 		return Uninstall()
 	}
@@ -260,7 +260,7 @@ func Run(ctx context.Context, version string, logf func(string, ...any)) error {
 	bundle, err := extract.Run(ctx, tc, extract.Options{
 		Company: *co, From: from, To: to, Version: version, TallyURL: tc.URL, Banner: banner,
 		ConsentBy:  c.ConsentBy,
-		ConsentMsg: fmt.Sprintf("Monthly update under the consent given by %s on %s.", c.ConsentBy, c.ConsentAt),
+		ConsentMsg: fmt.Sprintf("Daily update under the consent given by %s on %s.", c.ConsentBy, c.ConsentAt),
 	}, func(stage string, f float64) { logf("%3.0f%% %s", f*100, stage) })
 	if err != nil {
 		c.LastError = err.Error()
@@ -272,7 +272,7 @@ func Run(ctx context.Context, version string, logf func(string, ...any)) error {
 		return err
 	}
 	c.LastSuccess, c.LastError = time.Now().Format(time.RFC3339), ""
-	logf("sent monthly update: %d vouchers to %s", len(bundle.Vouchers), c.BankName)
+	logf("sent daily update: %d vouchers to %s", len(bundle.Vouchers), c.BankName)
 	return nil
 }
 

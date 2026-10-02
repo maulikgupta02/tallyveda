@@ -12,7 +12,7 @@ import (
 	"unicode/utf16"
 )
 
-const taskName = "TallyConnector Monthly Update"
+const taskName = "TallyConnector Daily Update"
 
 // Task definition as XML: schtasks' command-line flags can't set
 // StartWhenAvailable (run after a missed start) or the repetition window.
@@ -43,8 +43,8 @@ const taskXML = `<?xml version="1.0" encoding="UTF-16"?>
 
 func schedule(exe, bank string) error {
 	start := time.Now().AddDate(0, 0, 1).Format("2006-01-02") + "T09:00:00"
-	desc := fmt.Sprintf("Sends a monthly copy of your Tally accounts to %s. To stop, run TallyConnector and click "+
-		"'Stop monthly updates', or run: \"%s\" -monitor-stop", bank, exe)
+	desc := fmt.Sprintf("Sends a daily copy of your Tally accounts to %s. To stop, run TallyConnector and click "+
+		"'Stop daily updates', or run: \"%s\" -monitor-stop", bank, exe)
 	def := fmt.Sprintf(taskXML, html.EscapeString(desc), start, html.EscapeString(exe))
 
 	d, err := Dir()

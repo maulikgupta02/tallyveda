@@ -3,8 +3,8 @@
 Lets a bank pull a loan applicant's Tally books (via a small Windows connector the
 applicant runs) and turns them into an automatic credit report — revenue, customer
 concentration, receivables/payables ageing, working capital, balance sheet, leverage,
-banking/cash behaviour, GST, and red flags — plus optional month-to-month monitoring
-after the loan is disbursed.
+banking/cash behaviour, GST, and red flags — plus optional daily monitoring after the loan
+is disbursed.
 
 ## Stack
 - **Backend**: Python 3.12, FastAPI + Jinja2 (server-rendered HTML, no JS framework),
@@ -74,9 +74,6 @@ backend behind its own TLS, but that's out of date — see "Product direction" b
   potential areas of concern.
 
 Gaps between that and the code today (checked 2026-10-02):
-- **Monthly, not daily.** The connector's scheduled task checks in daily, but a refresh is
-  only *due* once a month after the monitoring day (`internal/monitor`, `application.html`).
-  Daily feeds need the due-check and the backend's monitoring flow changed.
 - **MSME dashboard exists now, but is basic** (2026-10-02): `/msme` shows the applicant's own
   reports/indicator trend (`msme.html`), scoped to their one application. It doesn't yet
   surface "sales, growth and potential areas of concern" as its own narrative the way
@@ -89,8 +86,16 @@ Gaps between that and the code today (checked 2026-10-02):
   `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` now only seed the first tenant + bank user; onboarding
   another bank is `python -m app.manage create-tenant`/`create-bank-user` (no admin web UI
   yet — see `docs/agents/risks.md`).
-- **Cloud installs.** Automatic scheduling only exists on Windows (`schedule_windows.go`).
-  A Linux cloud host would have to run `-monitor-run` from cron by hand (`schedule_other.go`).
+- **Daily refreshes (2026-10-02, resolved).** Refreshes are now due once a calendar day has
+  passed since the last report (`store.monitoring_due`), not monthly; labels/copy in the
+  connector and bank/MSME UI say "Daily"/"Refresh" accordingly. Each refresh still re-extracts
+  the full requested window rather than only new data — see `docs/agents/risks.md` for why
+  true incremental extraction wasn't attempted in this pass.
+- **Cloud installs (2026-10-02, partially resolved).** Automatic scheduling still only exists
+  on Windows (`schedule_windows.go`); there is no portable non-Windows scheduler API. A Linux
+  cloud host now has a documented, ready-to-use cron line and systemd timer for running
+  `-monitor-run` (README.md "Linux / cloud installs", `schedule_other.go`'s doc comment) instead
+  of being left to figure it out by hand.
 - **Hosting.** No deploy config, TLS, backups or production storage are in the repo. SQLite plus
   unencrypted bundles on local disk (see `docs/agents/risks.md`) need revisiting for a hosted
   multi-customer service.
@@ -104,7 +109,7 @@ backend/app/
   manage.py        CLI to provision tenants/bank users (no admin web UI yet)
   analysis/        book.py (ledger classification), metrics.py (the actual numbers),
                    redflags.py, indicators.py (bank's traffic-light policy), alerts.py
-                   (month-to-month comparison)
+                   (report-to-report comparison)
   report/          builder.py, charts.py (inline SVG), format.py, glossary.py (all report wording)
   templates/       dashboard.html, application.html, msme.html, msme_login.html, report.html
                    (server-rendered Jinja2)
@@ -114,7 +119,7 @@ connector/
   internal/tally/   Tally XML/HTTP client (UTF-16, quirky response handling)
   internal/extract/ builds the upload Bundle from Tally data (has its own tests)
   internal/app/     local 127.0.0.1 UI (index.html) + the Period()/RunJob() job logic
-  internal/monitor/ monthly scheduled-task logic (schedule_windows.go / schedule_other.go)
+  internal/monitor/ daily scheduled-task logic (schedule_windows.go / schedule_other.go)
   internal/upload/  HTTP client to the bank backend
   dist/            prebuilt .exe binaries — gitignored, never rebuild/overwrite casually
 dev/

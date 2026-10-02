@@ -31,7 +31,7 @@ type Consent struct {
 	AcceptedAt string `json:"accepted_at"`
 	AcceptedBy string `json:"accepted_by"`
 	Text       string `json:"text"`
-	// MonitoringOptIn: the borrower also agreed to monthly refreshes.
+	// MonitoringOptIn: the borrower also agreed to daily refreshes.
 	MonitoringOptIn bool `json:"monitoring_opt_in"`
 }
 

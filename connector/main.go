@@ -9,8 +9,8 @@
 //
 //	TallyConnector.exe -code ABCD-2345 -company "My Co" -consent "A. Kumar" [-monitor]
 //	TallyConnector.exe -company "My Co" -dump books.json   (extract only, no upload)
-//	TallyConnector.exe -monitor-run                        (scheduled monthly check)
-//	TallyConnector.exe -monitor-stop                       (withdraw monthly consent)
+//	TallyConnector.exe -monitor-run                        (scheduled daily check)
+//	TallyConnector.exe -monitor-stop                       (withdraw monitoring consent)
 package main
 
 import (
@@ -48,10 +48,10 @@ func main() {
 	company := flag.String("company", "", "headless: Tally company name")
 	months := flag.Int("months", 0, "headless: months of data (default: as requested by the bank, or 24)")
 	consent := flag.String("consent", "", "headless: name of the person consenting to the data share")
-	monitoring := flag.Bool("monitor", false, "headless: also opt in to monthly updates (if the bank offers them)")
+	monitoring := flag.Bool("monitor", false, "headless: also opt in to daily updates (if the bank offers them)")
 	dump := flag.String("dump", "", "headless: write the extracted bundle to this JSON file instead of uploading")
-	monitorRun := flag.Bool("monitor-run", false, "run the scheduled monthly check")
-	monitorStop := flag.Bool("monitor-stop", false, "stop monthly updates and tell the bank")
+	monitorRun := flag.Bool("monitor-run", false, "run the scheduled daily check")
+	monitorStop := flag.Bool("monitor-stop", false, "stop daily updates and tell the bank")
 	utf8 := flag.Bool("utf8", false, "send requests to Tally as UTF-8 instead of UTF-16")
 	flag.Parse()
 
@@ -73,7 +73,7 @@ func main() {
 	switch {
 	case *monitorRun:
 		if err := monitor.Run(ctx, version, monitor.Logger(logOut)); err != nil {
-			log.Printf("monthly update failed: %v", err)
+			log.Printf("daily update failed: %v", err)
 			os.Exit(1)
 		}
 		return
@@ -82,7 +82,7 @@ func main() {
 			log.Print(err)
 			os.Exit(1)
 		}
-		log.Print("monthly updates stopped")
+		log.Print("daily updates stopped")
 		return
 	}
 

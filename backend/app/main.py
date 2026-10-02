@@ -3,8 +3,8 @@
 Connector endpoints (called by TallyConnector.exe):
     POST /api/connector/verify           {"code"}              who is asking for the data
     POST /api/connector/upload           X-Link-Code + gzip JSON   first upload (one-time code)
-    POST /api/connector/monitor/status   Bearer token           is a monthly refresh due?
-    POST /api/connector/monitor/upload   Bearer token + gzip JSON  monthly refresh
+    POST /api/connector/monitor/status   Bearer token           is a refresh due?
+    POST /api/connector/monitor/upload   Bearer token + gzip JSON  daily refresh
     POST /api/connector/monitor/stop     Bearer token           client withdraws consent
 
 Bank endpoints (HTTP Basic auth, per-tenant bank user — see store.py's `users` table):
@@ -53,7 +53,7 @@ templates.filters["day"] = lambda s: s[:10] if s else ""
 
 MONITORING_LABELS = {
     "off": "Off",
-    "active": "Monthly",
+    "active": "Daily",
     "stopped_by_bank": "Stopped by bank",
     "stopped_by_client": "Stopped by client",
 }
@@ -187,7 +187,6 @@ async def connector_upload(request: Request, background: BackgroundTasks):
     out = {"status": "received", "bank_name": config.BANK_NAME, "reference": a["reference"]}
     if a["monitoring_offered"] and consent.get("monitoring_opt_in"):
         out["monitor_token"] = store.start_monitoring(a["id"])
-        out["monitor_day"] = config.MONITOR_DAY
     background.add_task(process_report, report_id)
     return out
 
@@ -216,7 +215,7 @@ async def monitor_upload(request: Request, background: BackgroundTasks):
     if a["monitoring_status"] != "active":
         raise HTTPException(403, "Monitoring has been stopped")
     raw, bundle = await _read_bundle(request)
-    report_id = _store_upload(a["id"], "monthly", raw, bundle)
+    report_id = _store_upload(a["id"], "refresh", raw, bundle)
     background.add_task(process_report, report_id)
     return {"status": "received", "report_id": report_id}
 
@@ -391,7 +390,7 @@ def _render_application(a: dict, template_name: str, **extra) -> str:
         a=a, reports=reports, columns=columns, rows=rows,
         monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
         due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
-        monitor_day=config.MONITOR_DAY, overdue_days=config.MONITOR_OVERDUE_DAYS,
+        overdue_days=config.MONITOR_OVERDUE_DAYS,
         **extra,
     )
 

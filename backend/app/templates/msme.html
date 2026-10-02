@@ -49,7 +49,7 @@
   </div>
 </div>
 
-<h2>Monthly monitoring</h2>
+<h2>Daily monitoring</h2>
 <div class="panel">
   <div><div class="k">Status</div><div class="v">{{ monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered") }}</div></div>
   {% if a.monitoring_status == "active" %}
@@ -75,7 +75,7 @@
   {% for r in reports %}
   <tr>
     <td>{{ r.created_at|when }}</td>
-    <td>{{ "First upload" if r.source == "initial" else "Monthly" }}</td>
+    <td>{{ "First upload" if r.source == "initial" else "Refresh" }}</td>
     <td>{{ r.period_to or "" }}</td>
     <td>{{ r.status }}</td>
   </tr>

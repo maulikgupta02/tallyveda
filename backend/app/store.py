@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS applications (
 CREATE TABLE IF NOT EXISTS reports (
     id TEXT PRIMARY KEY,
     application_id TEXT NOT NULL REFERENCES applications(id),
-    source TEXT NOT NULL,          -- initial | monthly
+    source TEXT NOT NULL,          -- initial | refresh
     created_at TEXT NOT NULL,
     status TEXT NOT NULL,          -- processing | ready | failed
     error TEXT,
@@ -354,8 +354,7 @@ def request_refresh(app_id: str) -> None:
 
 
 def monitoring_due(app: dict, at: datetime | None = None) -> bool:
-    """Monthly cadence: due once 25+ days have passed since the last report and
-    the month has reached config.MONITOR_DAY (so last month is in the books)."""
+    """Daily cadence: due once a calendar day has passed since the last report."""
     if app["monitoring_status"] != "active":
         return False
     if app["force_refresh"]:
@@ -364,7 +363,7 @@ def monitoring_due(app: dict, at: datetime | None = None) -> bool:
     if not app["last_report_at"]:
         return True
     since = at - datetime.fromisoformat(app["last_report_at"])
-    return since >= timedelta(days=25) and at.day >= config.MONITOR_DAY
+    return since >= timedelta(days=1)
 
 
 def monitoring_overdue(app: dict, at: datetime | None = None) -> bool:

@@ -1,5 +1,5 @@
 // Package upload talks to the bank backend: code verification, bundle upload
-// and the monthly-monitoring endpoints.
+// and the daily-monitoring endpoints.
 package upload
 
 import (
@@ -26,7 +26,6 @@ type Info struct {
 type UploadResult struct {
 	BankName     string `json:"bank_name"`
 	MonitorToken string `json:"monitor_token"`
-	MonitorDay   int    `json:"monitor_day"`
 }
 
 type MonitorStatus struct {
@@ -64,7 +63,7 @@ func (b *Backend) Upload(ctx context.Context, code string, bundle any) (*UploadR
 	return &res, b.upload(ctx, "/api/connector/upload", map[string]string{"X-Link-Code": code}, bundle, &res)
 }
 
-// MonitorUpload sends a monthly refresh, authorised by the monitoring token.
+// MonitorUpload sends a daily refresh, authorised by the monitoring token.
 func (b *Backend) MonitorUpload(ctx context.Context, token string, bundle any) error {
 	return b.upload(ctx, "/api/connector/monitor/upload", bearer(token), bundle, nil)
 }

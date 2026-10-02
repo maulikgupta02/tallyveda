@@ -29,7 +29,7 @@ var indexHTML string
 const (
 	ConsentText = "I am authorised to share this company's accounting data. I consent to %s receiving the books of %s " +
 		"(ledgers, vouchers, outstanding bills and stock values) for the period %s to %s to assess a credit application."
-	MonitoringConsentText = " I also consent to this computer sending an updated copy to %s about once a month, " +
+	MonitoringConsentText = " I also consent to this computer sending an updated copy to %s daily, " +
 		"until I or the bank stop it."
 )
 
@@ -188,7 +188,7 @@ func (a *App) monitorStop(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	log.Printf("monthly updates stopped by the user")
+	log.Printf("daily updates stopped by the user")
 	writeJSON(w, 200, map[string]bool{"stopped": true})
 }
 
@@ -304,12 +304,12 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 		ConsentBy: bundle.Consent.AcceptedBy, ConsentAt: bundle.Consent.AcceptedAt,
 	})
 	if err != nil {
-		log.Printf("monthly updates: %v", err)
-		return summary + " Monthly updates could not be set up automatically (" + err.Error() + ").", nil
+		log.Printf("daily updates: %v", err)
+		return summary + " Daily updates could not be set up automatically (" + err.Error() + ").", nil
 	}
-	return summary + fmt.Sprintf(" Monthly updates are on: this computer will send %s a fresh copy each month, "+
-		"after the %d%s, whenever Tally is open. You can stop this at any time by opening the connector again.",
-		info.BankName, res.MonitorDay, ordinal(res.MonitorDay)), nil
+	return summary + fmt.Sprintf(" Daily updates are on: this computer will send %s a fresh copy each day, "+
+		"whenever Tally is open. You can stop this at any time by opening the connector again.",
+		info.BankName), nil
 }
 
 // Period is the extraction window: the last `months` months up to today,
@@ -321,19 +321,4 @@ func Period(c tally.Company, months int, now time.Time) (time.Time, time.Time) {
 		from = bf
 	}
 	return from, to
-}
-
-func ordinal(n int) string {
-	if n%100 >= 11 && n%100 <= 13 {
-		return "th"
-	}
-	switch n % 10 {
-	case 1:
-		return "st"
-	case 2:
-		return "nd"
-	case 3:
-		return "rd"
-	}
-	return "th"
 }

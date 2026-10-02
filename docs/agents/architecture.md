@@ -80,12 +80,14 @@ itself). They never share code or a process.
 - **`internal/app/`** — the local UI: serves `index.html` on 127.0.0.1 with a per-run token,
   owns the guided 4-step flow (detect Tally → enter code → choose company/consent →
   extract/upload) and idle-timeout (exits ~45s after the tab closes).
-- **`internal/monitor/`** — owns the monthly-monitoring lifecycle: `monitor.go` (due-check
+- **`internal/monitor/`** — owns the daily-monitoring lifecycle: `monitor.go` (due-check
     and upload loop invoked by `-monitor-run`/`-monitor-stop`), platform-specific scheduled-task
     registration split into `schedule_windows.go` (real Windows Task Scheduler XML, no admin
-    rights needed) and `schedule_other.go` (non-Windows no-op, used for local dev builds on
-    mac/Linux). Settings persist under `%AppData%\TallyConnector\` (`TC_HOME` env var
-    overrides it, used by `dev/e2e.sh` and tests).
+    rights needed) and `schedule_other.go` (non-Windows no-op — used for local dev builds on
+    mac/Linux, and for Linux cloud installs, which instead run `-monitor-run` from cron or a
+    systemd timer; see README.md "Linux / cloud installs"). Settings persist under
+    `%AppData%\TallyConnector\` (`TC_HOME` env var overrides it, used by `dev/e2e.sh`, tests,
+    and non-Windows hosts).
 - **`internal/upload/`** — thin HTTP client to the bank backend's `/api/connector/...`
   endpoints; owns gzip-compressing the bundle before sending.
 
@@ -111,8 +113,11 @@ itself). They never share code or a process.
    (returned once, stored only as a SHA-256 hash). The connector then self-copies to
    `%AppData%\TallyConnector\`, saves settings, and registers a Windows scheduled task that
    periodically asks `/api/connector/monitor/status` whether a refresh is due
-   (`store.monitoring_due`, policy: 25+ days since last report AND on/after `TC_MONITOR_DAY`),
-   and if so extracts and uploads again via `/api/connector/monitor/upload`.
+   (`store.monitoring_due`, policy: due once a calendar day has passed since the last report),
+   and if so extracts and uploads again via `/api/connector/monitor/upload`. Each refresh still
+   re-extracts the full requested window (not just new vouchers) so the report's trailing-window
+   trends stay correct — "daily" only changed the due-check cadence, not the extraction size (see
+   `docs/agents/risks.md`).
 6. Bank views results via the dashboard (`/bank`) or a specific application's history
    (`/bank/applications/{id}`, including an indicator trend table and alerts).
 
@@ -137,7 +142,7 @@ never talks to Tally directly.
   identity, one-time code + expiry, `status` (awaiting_data | processing | ready | failed),
   monitoring fields added via `MIGRATIONS` (offered flag, status, hashed token,
   started/last-seen timestamps, a manual `force_refresh` flag, pointer to the latest report).
-- `reports` — one row per upload (initial or monthly): status (processing | ready | failed),
+- `reports` — one row per upload (initial or refresh): status (processing | ready | failed),
   computed `indicators_json`/`snapshot_json`/`alerts_json`, `high_flags` count. Report
   artifacts themselves (the gzip bundle, `report.json`, `report.html`) live on disk under
   `DATA_DIR/applications/<app_id>/reports/<report_id>/`, not in SQLite.
@@ -153,8 +158,8 @@ this repo). PyPI/Go-stdlib dependencies only (`fastapi`, `uvicorn`, `jinja2`,
 
 ## Config (names only — see `backend/app/config.py` and `README.md` "Backend configuration")
 `TC_BANK_NAME`, `TC_ADMIN_USER`, `TC_ADMIN_PASSWORD`, `TC_DATA_DIR`, `TC_CODE_TTL_HOURS`,
-`TC_DEFAULT_MONTHS`, `TC_MAX_UPLOAD_MB`, `TC_CONNECTOR_EXE`, `TC_MONITOR_DAY`,
-`TC_MONITOR_OVERDUE_DAYS`. Connector-side env/flags (not server config, but worth knowing):
+`TC_DEFAULT_MONTHS`, `TC_MAX_UPLOAD_MB`, `TC_CONNECTOR_EXE`, `TC_MONITOR_OVERDUE_DAYS`.
+Connector-side env/flags (not server config, but worth knowing):
 `TC_TALLY_URL`/`-tally`, `TC_SERVER`/`-server`, `TC_HOME` (test/dev override for where
 monitoring settings are persisted, default `%AppData%\TallyConnector`). None are secrets files or `.env`-loaded — they're plain OS environment variables. All have
 defaults except `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`: `config.py` raises at import if either

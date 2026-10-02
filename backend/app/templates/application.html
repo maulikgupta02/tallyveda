@@ -53,21 +53,21 @@
   </div>
 </div>
 
-<h2>Monthly monitoring</h2>
+<h2>Daily monitoring</h2>
 <div class="panel">
   <div><div class="k">Status</div><div class="v">{{ monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered") }}</div></div>
   {% if a.monitoring_status == "active" %}
   <div><div class="k">Last data received</div><div class="v">{{ a.last_report_at|when }}</div></div>
   <div><div class="k">Client last checked in</div><div class="v">{{ a.monitor_last_seen_at|when }}</div></div>
-  <div><div class="k">Next refresh</div><div class="v">{{ "Requested, on the client's next check-in" if a.force_refresh else ("Due now" if due else "On or after day %d of the month, 25+ days after the last" % monitor_day) }}</div></div>
+  <div><div class="k">Next refresh</div><div class="v">{{ "Requested, on the client's next check-in" if a.force_refresh else ("Due now" if due else "A day after the last report") }}</div></div>
   {% if overdue %}<div class="warn">No data for over {{ overdue_days }} days: the client's computer or Tally may be off.</div>{% endif %}
   <div>
     <form class="inline" method="post" action="/bank/applications/{{ a.id }}/monitoring/refresh"><button>Refresh now</button></form>
-    <form class="inline" method="post" action="/bank/applications/{{ a.id }}/monitoring/stop" onsubmit="return confirm('Stop monthly updates from this client?')"><button>Stop monitoring</button></form>
+    <form class="inline" method="post" action="/bank/applications/{{ a.id }}/monitoring/stop" onsubmit="return confirm('Stop daily updates from this client?')"><button>Stop monitoring</button></form>
   </div>
   {% endif %}
 </div>
-<p class="muted">The client's connector checks in daily and uploads when a refresh is due and Tally is open. Refreshes are due once a month, after the monitoring day.</p>
+<p class="muted">The client's connector checks in daily and uploads when a refresh is due and Tally is open. Refreshes are due once a day since the last report.</p>
 
 <h2>MSME dashboard login</h2>
 <div class="panel">
@@ -95,7 +95,7 @@
   {% for r in reports %}
   <tr>
     <td>{{ r.created_at|when }}</td>
-    <td>{{ "First upload" if r.source == "initial" else "Monthly" }}</td>
+    <td>{{ "First upload" if r.source == "initial" else "Refresh" }}</td>
     <td>{{ r.period_to or "" }}</td>
     <td>{{ r.status }}{% if r.error %}<div class="muted">{{ r.error }}</div>{% endif %}</td>
     <td>

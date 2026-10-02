@@ -1,4 +1,4 @@
-"""Monthly monitoring: opt-in, due logic, refresh, alerts and stopping."""
+"""Daily monitoring: opt-in, due logic, refresh, alerts and stopping."""
 
 import gzip
 import json
@@ -36,7 +36,7 @@ def gz(bundle: dict) -> bytes:
     return gzip.compress(json.dumps(bundle).encode())
 
 
-def test_monthly_monitoring_flow(client, model):
+def test_daily_monitoring_flow(client, model):
     a = client.post("/api/bank/applications", auth=AUTH,
                     json={"applicant_name": "Shree Ganesh", "monitoring": True}).json()
     assert client.post("/api/connector/verify", json={"code": a["link_code"]}).json()["monitoring_offered"]
@@ -89,12 +89,11 @@ def test_due_schedule():
     from app import store
 
     utc = lambda *a: datetime(*a, tzinfo=timezone.utc)
-    app = {"monitoring_status": "active", "force_refresh": 0, "last_report_at": utc(2026, 8, 20).isoformat()}
-    assert not store.monitoring_due(app, utc(2026, 9, 10))  # only 21 days since the last report
-    assert store.monitoring_due(app, utc(2026, 9, 15))      # 26 days, and past the 5th
-    early = app | {"last_report_at": utc(2026, 8, 1).isoformat()}
-    assert not store.monitoring_due(early, utc(2026, 9, 3))  # 33 days, but before the 5th
-    assert store.monitoring_due(early | {"force_refresh": 1}, utc(2026, 8, 2))
+    app = {"monitoring_status": "active", "force_refresh": 0, "last_report_at": utc(2026, 9, 10, 8, 0).isoformat()}
+    assert not store.monitoring_due(app, utc(2026, 9, 10, 20, 0))  # under a day since the last report
+    assert store.monitoring_due(app, utc(2026, 9, 11, 9, 0))       # a day has passed
+    assert store.monitoring_due({**app, "last_report_at": None}, utc(2026, 9, 10, 8, 1))  # never reported yet
+    assert store.monitoring_due(app | {"force_refresh": 1}, utc(2026, 9, 10, 8, 1))
     assert not store.monitoring_due(app | {"monitoring_status": "stopped_by_bank"}, utc(2026, 12, 1))
 
 
