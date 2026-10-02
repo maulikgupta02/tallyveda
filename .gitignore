@@ -3,3 +3,6 @@ backend/data/
 __pycache__/
 .pytest_cache/
 connector/dist/
+
+# Agent design mockups (local only)
+/docs/agents/mockups/
