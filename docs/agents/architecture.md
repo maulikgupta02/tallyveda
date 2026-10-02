@@ -15,37 +15,54 @@ Python backend (runs on the bank's infrastructure, has no knowledge of how to ta
 itself). They never share code or a process.
 
 ## Backend (`backend/app/`) — who owns what
-- **`main.py`** — single FastAPI app, owns all HTTP routing. Four route groups:
+- **`main.py`** — single FastAPI app, owns all HTTP routing. Five route groups:
   - Connector API (`/api/connector/...`): `verify` (check a one-time code), `upload` (first
     upload, authenticated by the one-time code in `X-Link-Code`), `monitor/status`,
-    `monitor/upload`, `monitor/stop` (all authenticated by a bearer monitoring token).
+    `monitor/upload`, `monitor/stop` (all authenticated by a bearer monitoring token). The
+    `bank_name` returned by `verify`/`monitor/status`/`upload` is the applicant's own tenant's
+    name (`store.get_tenant(a["tenant_id"])`), not a single global setting — a direct (no-bank)
+    client correctly sees the platform's own name (`TC_PLATFORM_NAME`) in the connector's
+    consent text instead of some other bank's.
   - Bank UI (`/bank`, `/bank/applications/{id}`, report views) — HTTP Basic auth against a
     per-tenant bank account (`bank_user` dependency, backed by `store.authenticate`),
     server-rendered Jinja2. Every query is scoped to `user["tenant_id"]`, so one bank can
     never see another bank's applications (`_get_or_404`/`_report_or_404` check this).
   - MSME UI (`/msme`, `/msme/report[.json]`) — HTTP Basic auth against an MSME account
     (`msme_user` dependency), scoped to exactly the one `application_id` the account was
-    issued for (a bank creates/resets this login from an application's page). A trimmed,
-    read-only view of that one company's own analysis (`msme.html`) — no monitoring
-    controls, no other applicants' data.
+    issued for (a bank or platform admin creates/resets this login from an application's
+    page). A trimmed, read-only view of that one company's own analysis (`msme.html`) — no
+    monitoring controls, no other applicants' data.
   - Bank JSON API (`/api/bank/applications...`) — same bank Basic auth, for LOS integration.
-  - Also owns upload-size/gzip-bomb guarding (`_read_bundle`, `_gunzip_json`) and a simple
-    in-memory per-IP throttle (`_failed_attempts`, 20/hour) on code/token checks.
+  - Platform admin UI (`/admin/...`) — HTTP Basic auth against a `platform`-role account
+    (`platform_user` dependency), scoped to nothing (sees every tenant). See "Platform admin
+    panel" below.
+  - Public marketing site (`/`, `robots.txt`, `sitemap.xml`, `llms.txt`, `/favicon.ico`,
+    `/static/...`, `POST /api/leads`) — no auth, server-rendered from `templates/home.html` and
+    `app/marketing.py` (static content/helpers; see `design.md`'s "Marketing home page"). A
+    blanket middleware (`_noindex_private_routes`) tags every `/bank`, `/msme`, `/admin` and
+    `/api` response `X-Robots-Tag: noindex, nofollow`, and a second branch sets a long
+    `Cache-Control` on `/static/...`. `GZipMiddleware` and `StaticFiles` are both mounted here too.
+  - Also owns upload-size/gzip-bomb guarding (`_read_bundle`, `_gunzip_json`), simple
+    in-memory per-IP throttles (`_failed_attempts`, 20/hour, code/token checks; `_lead_attempts`,
+    5/hour, `/api/leads`), and the CSRF guard (`_csrf_guard`) applied to every state-changing
+    `/bank`/`/admin` form POST — see "CSRF" below.
 - **`store.py`** — owns all persistence: SQLite (stdlib `sqlite3`, one file at
   `config.DATA_DIR/tally_connector.db`) by default, or Postgres (`psycopg[binary]`) when
   `DATABASE_URL` is set — see "Storage backend" below. No ORM; raw SQL, dict-like rows on
   both engines. Schema is created and migrated idempotently on every connection (`SCHEMA` +
   `MIGRATIONS` dict — new columns are added via `ALTER TABLE` if missing, never a separate
   migration runner/tool). Owns code generation/expiry, monitoring-token hashing (SHA-256,
-  token itself is returned once and never stored), the due/overdue date math, and
-  multi-tenancy: a `tenants` table (one row per bank) and a `users` table (role `bank` — sees
-  every application for its tenant — or `msme` — sees only its one `application_id`;
-  passwords are salted PBKDF2-SHA256, stdlib only, never stored or logged in the clear).
-  Every `applications` row carries a `tenant_id`.
-- **`manage.py`** — the only tenant/user provisioning tool (no admin web UI yet):
-  `python -m app.manage create-tenant "Bank name"` / `create-bank-user <tenant_id> <username>`.
-  `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` only seed the very first tenant + bank user, the first
-  time the backend runs against an empty database (`main._ensure_seed_tenant`).
+  token itself is returned once and never stored), the due/overdue date math, password
+  hashing (salted PBKDF2-SHA256, stdlib only, never stored or logged in the clear), and
+  multi-tenancy/roles — see "Roles, tenants and the direct tenant" below. Every `applications`
+  row carries a `tenant_id`. Also owns the `audit_log` table (see "Audit log" below).
+- **`manage.py`** — scripted tenant/user provisioning, for first-time setup or automation
+  (everyday management is `/admin` — see below): `python -m app.manage create-tenant
+  "Bank name"` / `create-bank-user <tenant_id> <username>` / `create-platform-admin
+  <username>`. `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` seed the very first bank tenant + bank
+  user; `TC_PLATFORM_ADMIN_USER`/`TC_PLATFORM_ADMIN_PASSWORD` (optional) seed the first
+  platform admin — both only on first startup of an empty database
+  (`main._ensure_seed_tenant`/`main._ensure_seed_platform_admin`).
 - **`analysis/`** — owns turning a raw Bundle into numbers and judgments. No I/O.
   - `book.py` — classifies ledgers into semantic categories by walking the Tally group tree
     (so custom voucher types/groups need no special-casing).
@@ -96,6 +113,10 @@ itself). They never share code or a process.
   (`nodata` is a separate state in `portfolio_view` for applications with no ready report yet).
 - **`templates/`** — Jinja2 HTML, inline `<style>` per page, no shared CSS file or JS
   framework. See `design.md`.
+- **`marketing.py`** — static content and small pure functions (no I/O) for the public home
+  page: chart series, the "for banks" tab panels, the cash-cycle calculator's thresholds, the
+  FAQ (also the single source for the FAQPage JSON-LD), title/description, and
+  `json_ld()`. `main.py`'s `home()` route is the only caller.
 
 ## Connector (`connector/`) — who owns what
 - **`main.go`** — CLI entry point and mode dispatch: interactive (opens a browser to a local
@@ -165,14 +186,23 @@ never talks to Tally directly.
 
 **Schema** (`backend/app/store.py`; SQLite at `backend/data/tally_connector.db` by default, or
 Postgres when `DATABASE_URL` is set — see "Storage backend" below):
-- `tenants` — one row per bank: `id`, `name`, `created_at`.
+- `tenants` — one row per bank, plus one built-in row for the direct (no-bank) tenant: `id`,
+  `name`, `created_at`, `kind` (`bank` | `direct`, added via `MIGRATIONS`, default `bank`),
+  `status` (`active` | `suspended`, added via `MIGRATIONS`, default `active` — only meaningful
+  for `kind = bank`; the direct tenant has no suspend concept of its own).
 - `users` — one row per login: `tenant_id`, `username` (unique), `password_hash` (salted
-  PBKDF2-SHA256), `role` (`bank` | `msme`), `application_id` (set only for `msme` — the one
-  application that login can see).
-- `applications` — one row per borrower/loan request: `tenant_id` (which bank owns it),
-  identity, one-time code + expiry, `status` (awaiting_data | processing | ready | failed),
-  monitoring fields added via `MIGRATIONS` (offered flag, status, hashed token,
-  started/last-seen timestamps, a manual `force_refresh` flag, pointer to the latest report).
+  PBKDF2-SHA256), `role` (`bank` | `msme` | `platform`), `application_id` (set only for `msme`
+  — the one application that login can see), `disabled` (added via `MIGRATIONS`, default 0 —
+  a disabled user, or any user of a suspended bank tenant, can't log in anywhere;
+  `store.authenticate` checks both). A `platform` user's `tenant_id` is the direct tenant's id
+  (the only tenant a platform admin login is attached to, since the column is `NOT NULL`) —
+  this does *not* make them a bank user of that tenant; they're never returned by a
+  bank-scoped user query (`role = 'bank'`).
+- `applications` — one row per borrower/loan request: `tenant_id` (which bank, or the direct
+  tenant, owns it), identity, one-time code + expiry, `status` (awaiting_data | processing |
+  ready | failed), monitoring fields added via `MIGRATIONS` (offered flag, status, hashed
+  token, started/last-seen timestamps, a manual `force_refresh` flag, pointer to the latest
+  report).
 - `reports` — one row per upload (initial or refresh): status (processing | ready | failed),
   computed `indicators_json`/`snapshot_json`/`alerts_json`, `high_flags` count. Report
   artifacts themselves (the gzip bundle, `report.json`, `report.html`) are not in this table —
@@ -184,8 +214,77 @@ Postgres when `DATABASE_URL` is set — see "Storage backend" below):
   `name` (`bundle.json.gz` | `report.json` | `report.html`), `data` (bytea), `created_at`,
   primary key `(report_id, name)`. Table always exists (it's in `SCHEMA`, both engines) but is
   simply unused under SQLite, where these files go to disk instead.
+- `audit_log` — one row per `/admin` write: `actor` (the platform admin's username), `action`
+  (a short dotted string, e.g. `bank.suspend`, `msme.delete`, `user.disable`), `target_type`,
+  `target_id`, `summary` (a human-readable line), `created_at`. Written by
+  `store.record_audit`, read by `store.list_audit` (newest first) for `/admin` and `/admin/audit`.
+  Unlike the Linear sync elsewhere in this project's sibling tooling, this is *not*
+  best-effort — a failed audit write is allowed to fail the request, since every `/admin`
+  action is expected to be attributable.
+- `leads` — one row per demo/pilot request from the public home page's form (`POST
+  /api/leads`): name, org, email, phone, kind, `created_at`, `user_agent`, `ip`. Unrelated to
+  tenants/applications — a marketing lead, not a borrower. `store.create_lead`/`list_leads`;
+  Read on `/admin/leads` or with `python -m app.manage list-leads`.
 
 No other datastore, queue, or cache exists in this repo.
+
+## Roles, tenants and the direct tenant
+Three user roles now exist: `bank` (scoped to one tenant's applications, `/bank`), `msme`
+(scoped to one application, `/msme`), and `platform` (scoped to nothing — sees every tenant,
+`/admin`). A tenant has a `kind`: `bank` (a real bank customer, with its own `status` of
+`active`/`suspended`) or `direct` — exactly one row, fixed id `store.direct_tenant_id()`,
+created lazily by `store.ensure_direct_tenant`/`main._ensure_seed_platform_admin` the first
+time it's needed, named by `TC_PLATFORM_NAME` (default "Tally Connector"). The direct tenant
+holds two kinds of thing: MSME applications with no bank at all (created from `/admin/msmes`
+with no bank chosen), and every `platform`-role user (since `users.tenant_id` is `NOT NULL` and
+a platform admin isn't a bank user of anywhere). Direct-tenant applications are visible only to
+platform admins (`/admin/msmes/...`) and to that application's own MSME login (`/msme`) — never
+to any bank's `/bank` dashboard, which only ever queries its own `tenant_id`.
+
+## Platform admin panel
+`/admin/*` (HTTP Basic auth, role `platform`, `platform_user` dependency in `main.py`) is the
+one place to manage the whole platform:
+- `/admin` — overview: counts (banks, MSMEs linked/direct, users by role, uploads in the last
+  24h, connectors overdue, failed reports) from `store.counts_overview`, plus the 20 most
+  recent audit log entries.
+- `/admin/banks[/{id}]` — list/create banks; per-bank detail (rename, suspend/reactivate, its
+  bank users with create/reset-password/disable/enable/delete, its MSMEs with a create form).
+- `/admin/msmes[/{id}]` — every MSME (bank-linked or direct) with filters (bank, direct/bank
+  kind, status, overdue) and search (`store.list_all_applications`); create (under a chosen
+  bank or direct); per-MSME detail (one-time code, monitoring refresh/stop, MSME login
+  issue/reset, report history, a read-only `/admin/msmes/{id}/view` that reuses
+  `application.html`'s company tabs exactly as the bank sees them — `_render_application(...,
+  readonly=True)` hides the Manage panel and points its back-link at `/admin/msmes/{id}`
+  instead of `/bank`), and delete (`store.delete_application`, behind typing the applicant's
+  name back as confirmation — removes the application, its reports/report artifacts and its
+  MSME login).
+- `/admin/users` — every user across every tenant, filterable by role/bank; reset
+  password/disable/enable/delete. `store.count_active_platform_admins` guards against
+  disabling or deleting the last active `platform` user (checked at write time, not just in
+  the UI) — the error is a plain 400, not a silent no-op.
+- `/admin/audit` — the full audit log.
+Every write above calls `store.record_audit` (see "Audit log" above) before responding.
+Generated passwords (bank users, MSME logins, password resets) are shown exactly once via
+`admin_credential.html`, the same one-time-reveal pattern `msme_login.html` already used for
+bank-issued MSME logins — never stored or logged in the clear (`store.py` hashes them
+immediately, same as every other password in this app).
+
+## CSRF
+Every state-changing form POST under `/admin` and `/bank` carries the `_csrf_guard`
+dependency (`main.py`). Rule: if the request has an `Origin` header (or, failing that,
+`Referer`), its host must match the request's own `Host`, or the request is rejected with 403.
+If *neither* header is present, the request is allowed through. Rationale: both `/bank` and
+`/admin` are HTTP Basic auth, which browsers resend automatically on every request to the same
+origin (there's no session cookie to scope a CSRF token to) — so a page on another site could
+still get a victim's browser to submit a state-changing form here. Every current browser sets
+`Origin` on a cross-origin POST/fetch/form submission (and on most same-origin ones too), so
+the only requests with neither header are non-browser clients (curl, a script, a LOS
+integration, `TestClient` in this test suite) which were never exposed to the CSRF scenario in
+the first place — rejecting them by default would break legitimate API usage for no real
+security gain. Connector endpoints (`/api/connector/...`, authenticated by a one-time code or
+bearer token) and the JSON `/api/bank/...` integration routes never carry this dependency —
+they're not browser form submissions, and a non-browser caller may legitimately send neither
+header.
 
 ## Storage backend
 `store.IS_POSTGRES` (`DATABASE_URL` starts with `postgres://`/`postgresql://`) picks the
@@ -221,16 +320,23 @@ bank's responsibility). PyPI/Go-stdlib dependencies only (`fastapi`, `uvicorn`, 
 modules).
 
 ## Config (names only — see `backend/app/config.py` and `README.md` "Backend configuration")
-`TC_BANK_NAME`, `TC_ADMIN_USER`, `TC_ADMIN_PASSWORD`, `TC_DATA_DIR`, `DATABASE_URL`,
+`TC_BANK_NAME`, `TC_ADMIN_USER`, `TC_ADMIN_PASSWORD`, `TC_PLATFORM_ADMIN_USER`,
+`TC_PLATFORM_ADMIN_PASSWORD`, `TC_PLATFORM_NAME`, `TC_DATA_DIR`, `DATABASE_URL`,
 `TC_CODE_TTL_HOURS`, `TC_DEFAULT_MONTHS`, `TC_MAX_UPLOAD_MB`, `TC_CONNECTOR_EXE`,
-`TC_CONNECTOR_URL`, `TC_MONITOR_OVERDUE_DAYS`.
+`TC_CONNECTOR_URL`, `TC_MONITOR_OVERDUE_DAYS`, `TC_PUBLIC_URL` (canonical origin for the
+marketing home page's SEO tags/sitemap/robots.txt — defaults to the live Render URL).
 Connector-side env/flags (not server config, but worth knowing):
 `TC_TALLY_URL`/`-tally`, `TC_SERVER`/`-server`, `TC_HOME` (test/dev override for where
 monitoring settings are persisted, default `%AppData%\TallyConnector`). None are secrets files or `.env`-loaded — they're plain OS environment variables. All have
 defaults except `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`: `config.py` raises at import if either
 is unset, unless `TC_DEV=1` (which falls back to `admin`/`admin` for local runs and tests).
 These two only *seed* the first tenant/bank user on an empty database (`main._ensure_seed_tenant`)
-— real accounts live in `store.py`'s `users` table from then on, provisioned via `manage.py`.
+— real accounts live in `store.py`'s `users` table from then on, provisioned via `manage.py` or
+`/admin`. `TC_PLATFORM_ADMIN_USER`/`TC_PLATFORM_ADMIN_PASSWORD` are the same idea for the first
+`/admin` login (`main._ensure_seed_platform_admin`), but genuinely optional — leaving them unset
+just means `/admin` has no working login until one is created; `TC_DEV=1` falls back to
+`platform`/`platform`. `TC_PLATFORM_NAME` names the one built-in direct tenant (see "Roles,
+tenants and the direct tenant" above).
 
 ## Entry points
 - Backend: `uvicorn app.main:app` (from `backend/`), app object is `app.main:app`.

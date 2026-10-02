@@ -19,6 +19,27 @@ MSME endpoints (HTTP Basic auth, a login tied to exactly one application):
     GET  /msme[?tab=home|sales|cust|money|dues] that company's own plain-language dashboard
     GET  /msme/report                           redirects to /msme (no bank report here)
     GET  /msme/report.json                      the MSME view-model, not the bank's report.json
+
+Platform admin endpoints (HTTP Basic auth, role `platform` — see store.py's `users` table):
+    GET  /admin                                  overview: counts, recent activity, quick actions
+    GET  /admin/banks[/{id}]                     list/create banks; per-bank detail, suspend/reactivate,
+                                                  its bank users, its MSMEs
+    GET  /admin/msmes[/{id}]                     every MSME (bank-linked or direct), filters/search;
+                                                  per-MSME detail: code, monitoring, MSME login, report
+                                                  history, read-only dashboard view, delete
+    GET  /admin/users                            every user across tenants; reset/disable/enable/delete
+    GET  /admin/audit                            the audit log
+    GET  /admin/leads                            pilot requests from the home page
+State-changing form POSTs under /admin and /bank are CSRF-guarded (`_csrf_guard`) — see its
+docstring for the exact rule. Connector and JSON `/api/...` routes are exempt (not browser forms).
+
+Public marketing site (no auth, server-rendered, see design.md's "Marketing home page"):
+    GET  /                    the home page
+    GET  /robots.txt, /sitemap.xml, /llms.txt
+    GET  /favicon.ico, /static/...   icons, self-hosted fonts, the OG image
+    POST /api/leads           demo/pilot request form (JSON or form-encoded)
+Every route under /bank, /msme, /admin and /api carries `X-Robots-Tag: noindex, nofollow`
+(see `_NOINDEX_PREFIXES` below) so only the home page is ever indexed.
 """
 
 from __future__ import annotations
@@ -26,18 +47,23 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import secrets
+import re
 import time
 import zlib
 from collections import defaultdict, deque
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
+from starlette.middleware.gzip import GZipMiddleware
 
-from . import config, store
+from . import config, marketing, store
 from .analysis.alerts import compare, snapshot
 from .report import dashboard as dashboard_views, dashboard_charts as dc
 from .report import format as fmt
@@ -45,6 +71,25 @@ from .report.builder import build_report, render_html, report_json
 
 log = logging.getLogger("tally_connector")
 app = FastAPI(title="Tally Connector backend", docs_url="/api/docs")
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+_NOINDEX_PREFIXES = ("/bank", "/msme", "/admin", "/api")
+
+
+@app.middleware("http")
+async def _noindex_private_routes(request: Request, call_next):
+    """Everything except the public marketing site is a private, per-tenant
+    tool — never meant to rank. Belt-and-braces alongside robots.txt, since a
+    crawler that already has a stale link shouldn't need to consult it."""
+    response = await call_next(request)
+    if request.url.path.startswith(_NOINDEX_PREFIXES):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    elif request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
 security = HTTPBasic()
 templates = Environment(
     loader=FileSystemLoader(Path(__file__).resolve().parent / "templates"),
@@ -83,11 +128,26 @@ def _ensure_seed_tenant() -> None:
     """On a brand-new database, turn TC_ADMIN_USER/TC_ADMIN_PASSWORD into the first
     real tenant + bank user, so a fresh deploy still gets a working login without a
     separate provisioning step. Once any tenant exists this is a no-op — onboarding
-    a second bank is done via `python -m app.manage` (see docs/agents/architecture.md)."""
+    a second bank is done via `python -m app.manage` or /admin (see
+    docs/agents/architecture.md)."""
     if store.get_tenant(store.seed_tenant_id()) is not None:
         return
     tenant = store.create_tenant(config.BANK_NAME, tenant_id=store.seed_tenant_id())
     store.create_user(tenant["id"], config.ADMIN_USER, config.ADMIN_PASSWORD, "bank")
+
+
+def _ensure_seed_platform_admin() -> None:
+    """Mirrors `_ensure_seed_tenant`, but for the platform's own /admin login and
+    its built-in direct tenant. TC_PLATFORM_ADMIN_USER/PASSWORD are optional (unlike
+    TC_ADMIN_USER/PASSWORD) — a deploy with no platform admin configured simply has
+    no working /admin login until one is created via `python -m app.manage
+    create-platform-admin` or TC_DEV's platform/platform default."""
+    store.ensure_direct_tenant(config.PLATFORM_NAME)
+    if not (config.PLATFORM_ADMIN_USER and config.PLATFORM_ADMIN_PASSWORD):
+        return
+    if store.list_users(tenant_id=store.direct_tenant_id(), role="platform"):
+        return
+    store.create_user(store.direct_tenant_id(), config.PLATFORM_ADMIN_USER, config.PLATFORM_ADMIN_PASSWORD, "platform")
 
 
 def bank_user(creds: HTTPBasicCredentials = Depends(security)) -> dict:
@@ -103,6 +163,42 @@ def msme_user(creds: HTTPBasicCredentials = Depends(security)) -> dict:
     if not user:
         raise HTTPException(401, "Unauthorised", headers={"WWW-Authenticate": "Basic"})
     return user
+
+
+def platform_user(creds: HTTPBasicCredentials = Depends(security)) -> dict:
+    _ensure_seed_platform_admin()
+    user = store.authenticate(creds.username, creds.password, "platform")
+    if not user:
+        raise HTTPException(401, "Unauthorised", headers={"WWW-Authenticate": "Basic"})
+    return user
+
+
+def _csrf_guard(request: Request) -> None:
+    """Every state-changing form POST under /admin and /bank is Basic-auth protected,
+    and Basic-auth browsers resend credentials on *any* request to the same origin
+    automatically — there's no session cookie here, but the same ride-along risk
+    exists: a page on another site could still submit a form/fetch to one of these
+    URLs and the browser attaches the saved credentials itself.
+
+    Rule: if the request carries an `Origin` header (or, failing that, `Referer`),
+    its host must match this request's own `Host`, or the request is rejected with
+    403. If *neither* header is present, the request is allowed through. Every
+    current browser sets `Origin` on a cross-origin POST/fetch/form submission
+    (and on same-origin ones too, in most cases) — so the only traffic with neither
+    header is a non-browser client (curl, a script, a LOS integration, this test
+    suite's TestClient) that was never exposed to the browser-based CSRF scenario
+    this guards against in the first place. Connector endpoints (code/bearer-token
+    authenticated) and the JSON `/api/bank/...` integration routes never carry this
+    dependency — they're not browser form submissions and a non-browser caller may
+    legitimately send neither header."""
+    source = request.headers.get("origin") or request.headers.get("referer")
+    if not source:
+        return
+    # A present but host-less value (browsers send `Origin: null` from sandboxed iframes and
+    # some redirects) is treated as cross-site, never as "no header".
+    source_host = urlsplit(source).netloc.lower()
+    if not source_host or source_host != request.url.netloc.lower():
+        raise HTTPException(403, "Cross-site request blocked")
 
 
 # ------------------------------------------------------------- connector API
@@ -147,8 +243,13 @@ class VerifyIn(BaseModel):
 @app.post("/api/connector/verify")
 def connector_verify(body: VerifyIn, request: Request):
     a = _check_code(body.code, request.client.host)
+    tenant = store.get_tenant(a["tenant_id"])
     return {
-        "bank_name": config.BANK_NAME,
+        # The connector's consent screen shows this as who the applicant is sharing
+        # books with — the applicant's own tenant's name, not a single global
+        # setting, so a direct (no-bank) client correctly sees the platform's own
+        # name (TC_PLATFORM_NAME) instead of some other bank's.
+        "bank_name": tenant["name"] if tenant else config.BANK_NAME,
         "applicant_name": a["applicant_name"],
         "reference": a["reference"],
         "months": a["months"],
@@ -204,7 +305,8 @@ async def connector_upload(request: Request, background: BackgroundTasks):
     consent = bundle.get("consent") or {}
     store.mark_uploaded(a["id"], (bundle.get("company") or {}).get("name", ""), consent.get("accepted_by", ""),
                         request.client.host)
-    out = {"status": "received", "bank_name": config.BANK_NAME, "reference": a["reference"]}
+    tenant = store.get_tenant(a["tenant_id"])
+    out = {"status": "received", "bank_name": tenant["name"] if tenant else config.BANK_NAME, "reference": a["reference"]}
     if a["monitoring_offered"] and consent.get("monitoring_opt_in"):
         out["monitor_token"] = store.start_monitoring(a["id"])
     background.add_task(process_report, report_id)
@@ -212,11 +314,12 @@ async def connector_upload(request: Request, background: BackgroundTasks):
 
 
 def _monitor_status(a: dict) -> dict:
+    tenant = store.get_tenant(a["tenant_id"])
     return {
         "active": a["monitoring_status"] == "active",
         "status": a["monitoring_status"],
         "due": store.monitoring_due(a),
-        "bank_name": config.BANK_NAME,
+        "bank_name": tenant["name"] if tenant else config.BANK_NAME,
         "applicant_name": a["applicant_name"],
         "reference": a["reference"],
         "months": a["months"],
@@ -268,12 +371,141 @@ def process_report(report_id: str) -> None:
         store.fail_report(report_id, f"{type(e).__name__}: {e}")
 
 
+# ------------------------------------------------------------- public marketing site
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_lead_attempts: dict[str, deque] = defaultdict(deque)
+MAX_LEADS_PER_HOUR = 5
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home(sent: str = ""):
+    ccc = marketing.cash_cycle(**marketing.CASH_CYCLE_DEFAULTS)
+    return templates.get_template("home.html").render(
+        title=marketing.TITLE,
+        description=marketing.DESCRIPTION,
+        canonical=config.PUBLIC_URL + "/",
+        public_url=config.PUBLIC_URL,
+        ld_json=json.dumps(marketing.json_ld(config.PUBLIC_URL)),
+        bars=marketing.hero_bars(),
+        feed=marketing.ALERT_FEED_POOL[:3],
+        feed_pool_json=json.dumps(marketing.ALERT_FEED_POOL),
+        bank_tabs=marketing.BANK_TABS,
+        overview_panel=marketing.bank_panel("overview"),
+        bank_panels_json=json.dumps({k: marketing.bank_panel(k) for k in marketing.BANK_PANELS}),
+        ccc=ccc,
+        faq=marketing.FAQ,
+        lead_kinds=marketing.LEAD_KINDS,
+        sent=sent,
+    )
+
+
+def _lead_throttle(ip: str) -> deque:
+    attempts = _lead_attempts[ip]
+    cutoff = time.time() - 3600
+    while attempts and attempts[0] < cutoff:
+        attempts.popleft()
+    return attempts
+
+
+@app.post("/api/leads", include_in_schema=False)
+async def create_lead(request: Request):
+    """Demo/pilot request from the home page's form. Accepts JSON (the page's own
+    fetch()) or a plain form POST (works without JS, then redirects back with
+    `?sent=1#demo`). A filled honeypot or a bad email is rejected the same way
+    either path reports errors, just without ever touching `store.create_lead`."""
+    ip = request.client.host or "unknown"
+    wants_json = "application/json" in request.headers.get("accept", "")
+
+    if request.headers.get("content-type", "").startswith("application/json"):
+        data = await request.json()
+    else:
+        data = dict(await request.form())
+
+    def reject(status: int, message: str):
+        if wants_json:
+            raise HTTPException(status, message)
+        return RedirectResponse("/?sent=0#demo", status_code=303)
+
+    attempts = _lead_throttle(ip)
+    if len(attempts) >= MAX_LEADS_PER_HOUR:
+        return reject(429, "Too many requests. Please try again later.")
+    attempts.append(time.time())
+
+    if (data.get("website") or "").strip():
+        return reject(400, "Could not submit the form.")  # honeypot tripped
+
+    name = (data.get("name") or "").strip()
+    org = (data.get("org") or "").strip()
+    email = (data.get("email") or "").strip()
+    phone = (data.get("phone") or "").strip()
+    kind = (data.get("kind") or "").strip()
+    if not name or not org or not EMAIL_RE.match(email):
+        return reject(400, "Please fill in your name, organisation and a valid work email.")
+
+    store.create_lead(name, org, email, phone, kind, request.headers.get("user-agent", ""), ip)
+    if wants_json:
+        return JSONResponse({"ok": True, "message": "Thanks, we will be in touch."})
+    return RedirectResponse("/?sent=1#demo", status_code=303)
+
+
+ROBOTS_TXT = """\
+User-agent: *
+Allow: /
+Disallow: /bank
+Disallow: /msme
+Disallow: /admin
+Disallow: /api
+Disallow: /download
+
+Sitemap: {public_url}/sitemap.xml
+"""
+
+LLMS_TXT = """\
+# Tally Connector
+
+Tally Connector lets a bank or NBFC pull an MSME borrower's Tally books (TallyPrime or \
+Tally.ERP 9), with the borrower's consent, and turns them into a bank-grade credit report: \
+revenue, customer concentration, receivables/payables ageing, working capital, balance \
+sheet, leverage, banking/cash behaviour, GST, and red flags. Reports refresh daily once a \
+borrower opts into monitoring. The MSME gets its own plain-language dashboard of the same \
+data, with no ratings or lending language.
+
+Home page: {public_url}/
+"""
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    return PlainTextResponse(ROBOTS_TXT.format(public_url=config.PUBLIC_URL))
+
+
+@app.get("/llms.txt", include_in_schema=False)
+def llms_txt():
+    return PlainTextResponse(LLMS_TXT.format(public_url=config.PUBLIC_URL))
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml():
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        f"    <loc>{config.PUBLIC_URL}/</loc>\n"
+        f"    <lastmod>{marketing.HOME_LASTMOD}</lastmod>\n"
+        "  </url>\n"
+        "</urlset>\n"
+    )
+    return Response(xml, media_type="application/xml")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon_ico():
+    return FileResponse(_STATIC_DIR / "favicon.ico", media_type="image/x-icon")
+
+
 # ------------------------------------------------------------------ bank UI
-
-
-@app.get("/", include_in_schema=False)
-def root():
-    return RedirectResponse("/bank")
 
 
 @app.get("/bank", response_class=HTMLResponse)
@@ -307,7 +539,7 @@ def dashboard(request: Request, filter: str = "", user: dict = Depends(bank_user
 @app.post("/bank/applications")
 def create_application_form(
     applicant_name: str = Form(...), reference: str = Form(""), months: int = Form(config.DEFAULT_MONTHS),
-    monitoring: str = Form(""), user: dict = Depends(bank_user),
+    monitoring: str = Form(""), user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard),
 ):
     store.create_application(user["tenant_id"], applicant_name.strip(), reference.strip(),
                               max(6, min(months, 60)), monitoring == "on")
@@ -331,28 +563,28 @@ def application_detail(app_id: str, tab: str = "overview", user: dict = Depends(
 
 
 @app.post("/bank/applications/{app_id}/code")
-def regenerate(app_id: str, user: dict = Depends(bank_user)):
+def regenerate(app_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     _get_or_404(app_id, user["tenant_id"])
     store.regenerate_code(app_id)
     return RedirectResponse("/bank", status_code=303)
 
 
 @app.post("/bank/applications/{app_id}/monitoring/refresh")
-def monitoring_refresh(app_id: str, user: dict = Depends(bank_user)):
+def monitoring_refresh(app_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     _get_or_404(app_id, user["tenant_id"])
     store.request_refresh(app_id)
     return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
 
 
 @app.post("/bank/applications/{app_id}/monitoring/stop")
-def monitoring_stop_bank(app_id: str, user: dict = Depends(bank_user)):
+def monitoring_stop_bank(app_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     _get_or_404(app_id, user["tenant_id"])
     store.stop_monitoring(app_id, "bank")
     return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
 
 
 @app.post("/bank/applications/{app_id}/msme-login", response_class=HTMLResponse)
-def issue_msme_login(app_id: str, user: dict = Depends(bank_user)):
+def issue_msme_login(app_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     """Issue (or rotate) the applicant's own login to their MSME dashboard. The
     password is only ever shown here, once — store.py keeps only its hash."""
     a = _get_or_404(app_id, user["tenant_id"])
@@ -362,7 +594,7 @@ def issue_msme_login(app_id: str, user: dict = Depends(bank_user)):
 
 
 @app.post("/bank/reports/{report_id}/recompute")
-def recompute(report_id: str, user: dict = Depends(bank_user)):
+def recompute(report_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     r = _report_or_404(report_id, user["tenant_id"])
     process_report(report_id)
     return RedirectResponse(f"/bank/applications/{r['application_id']}", status_code=303)
@@ -539,6 +771,258 @@ def api_refresh(app_id: str, user: dict = Depends(bank_user)):
     _get_or_404(app_id, user["tenant_id"])
     store.request_refresh(app_id)
     return _public(store.get_application(app_id, user["tenant_id"]))
+
+
+# --------------------------------------------------------------- platform admin
+
+
+def _audit(user: dict, action: str, target_type: str, target_id: str | None, summary: str) -> None:
+    store.record_audit(user["username"], action, target_type, target_id, summary)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_overview(user: dict = Depends(platform_user)):
+    return templates.get_template("admin_overview.html").render(
+        user=user, counts=store.counts_overview(), audit=store.list_audit(limit=20),
+        platform_name=config.PLATFORM_NAME,
+    )
+
+
+@app.get("/admin/banks", response_class=HTMLResponse)
+def admin_banks(user: dict = Depends(platform_user)):
+    return templates.get_template("admin_banks.html").render(user=user, banks=store.list_tenants(kind="bank"))
+
+
+@app.post("/admin/banks")
+def admin_create_bank(name: str = Form(...), user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    tenant = store.create_tenant(name.strip(), kind="bank")
+    _audit(user, "bank.create", "tenant", tenant["id"], f"Created bank {tenant['name']}")
+    return RedirectResponse(f"/admin/banks/{tenant['id']}", status_code=303)
+
+
+def _bank_or_404(tenant_id: str) -> dict:
+    t = store.get_tenant(tenant_id)
+    if not t or t["kind"] != "bank":
+        raise HTTPException(404, "No such bank")
+    return t
+
+
+@app.get("/admin/banks/{tenant_id}", response_class=HTMLResponse)
+def admin_bank_detail(tenant_id: str, user: dict = Depends(platform_user)):
+    tenant = _bank_or_404(tenant_id)
+    return templates.get_template("admin_bank_detail.html").render(
+        user=user, tenant=tenant, bank_users=store.list_users(tenant_id=tenant_id, role="bank"),
+        msmes=store.list_all_applications(tenant_id=tenant_id), default_months=config.DEFAULT_MONTHS,
+    )
+
+
+@app.post("/admin/banks/{tenant_id}/rename")
+def admin_bank_rename(tenant_id: str, name: str = Form(...), user: dict = Depends(platform_user),
+                       _csrf: None = Depends(_csrf_guard)):
+    _bank_or_404(tenant_id)
+    store.rename_tenant(tenant_id, name.strip())
+    _audit(user, "bank.rename", "tenant", tenant_id, f"Renamed bank to {name.strip()}")
+    return RedirectResponse(f"/admin/banks/{tenant_id}", status_code=303)
+
+
+@app.post("/admin/banks/{tenant_id}/suspend")
+def admin_bank_suspend(tenant_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    _bank_or_404(tenant_id)
+    store.set_tenant_status(tenant_id, "suspended")
+    _audit(user, "bank.suspend", "tenant", tenant_id, "Suspended bank — its users can no longer log in")
+    return RedirectResponse(f"/admin/banks/{tenant_id}", status_code=303)
+
+
+@app.post("/admin/banks/{tenant_id}/reactivate")
+def admin_bank_reactivate(tenant_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    _bank_or_404(tenant_id)
+    store.set_tenant_status(tenant_id, "active")
+    _audit(user, "bank.reactivate", "tenant", tenant_id, "Reactivated bank")
+    return RedirectResponse(f"/admin/banks/{tenant_id}", status_code=303)
+
+
+@app.post("/admin/banks/{tenant_id}/users", response_class=HTMLResponse)
+def admin_bank_create_user(tenant_id: str, username: str = Form(...), user: dict = Depends(platform_user),
+                            _csrf: None = Depends(_csrf_guard)):
+    _bank_or_404(tenant_id)
+    username = username.strip()
+    if store.username_taken(username):
+        raise HTTPException(400, "Username already taken")
+    password = secrets.token_urlsafe(9)
+    new_user = store.create_user(tenant_id, username, password, "bank")
+    _audit(user, "user.create", "user", new_user["id"], f"Created bank user {username}")
+    return templates.get_template("admin_credential.html").render(
+        heading=f"Bank login for {username}", username=username, password=password,
+        back_url=f"/admin/banks/{tenant_id}",
+    )
+
+
+@app.get("/admin/msmes", response_class=HTMLResponse)
+def admin_msmes(bank: str = "", kind: str = "", status: str = "", overdue: str = "", q: str = "",
+                 user: dict = Depends(platform_user)):
+    apps = store.list_all_applications(tenant_id=bank or None, search=q)
+    if kind:
+        apps = [a for a in apps if a["tenant_kind"] == kind]
+    if status:
+        apps = [a for a in apps if a["status"] == status]
+    if overdue:
+        apps = [a for a in apps if store.monitoring_overdue(a)]
+    return templates.get_template("admin_msmes.html").render(
+        user=user, apps=apps, banks=store.list_tenants(kind="bank"), direct_id=store.direct_tenant_id(),
+        filters={"bank": bank, "kind": kind, "status": status, "overdue": overdue, "q": q},
+        default_months=config.DEFAULT_MONTHS,
+    )
+
+
+@app.post("/admin/msmes")
+def admin_create_msme(applicant_name: str = Form(...), reference: str = Form(""),
+                       months: int = Form(config.DEFAULT_MONTHS), monitoring: str = Form(""), bank_id: str = Form(""),
+                       user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    tenant_id = bank_id or store.direct_tenant_id()
+    if bank_id:
+        _bank_or_404(bank_id)
+    a = store.create_application(tenant_id, applicant_name.strip(), reference.strip(),
+                                  max(6, min(months, 60)), monitoring == "on")
+    _audit(user, "msme.create", "application", a["id"], f"Created MSME {a['applicant_name']}")
+    return RedirectResponse(f"/admin/msmes/{a['id']}", status_code=303)
+
+
+@app.get("/admin/msmes/{app_id}", response_class=HTMLResponse)
+def admin_msme_detail(app_id: str, user: dict = Depends(platform_user)):
+    a = _get_or_404(app_id)
+    return templates.get_template("admin_msme_detail.html").render(
+        user=user, a=a, tenant=store.get_tenant(a["tenant_id"]), reports=store.list_reports(app_id),
+        msme_login=store.msme_login_for(app_id), due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
+        overdue_days=config.MONITOR_OVERDUE_DAYS, monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
+    )
+
+
+@app.post("/admin/msmes/{app_id}/code")
+def admin_msme_code(app_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    _get_or_404(app_id)
+    store.regenerate_code(app_id)
+    _audit(user, "msme.code.regenerate", "application", app_id, "Issued a new one-time code")
+    return RedirectResponse(f"/admin/msmes/{app_id}", status_code=303)
+
+
+@app.post("/admin/msmes/{app_id}/monitoring/refresh")
+def admin_msme_refresh(app_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    _get_or_404(app_id)
+    store.request_refresh(app_id)
+    _audit(user, "msme.monitoring.refresh", "application", app_id, "Requested an immediate refresh")
+    return RedirectResponse(f"/admin/msmes/{app_id}", status_code=303)
+
+
+@app.post("/admin/msmes/{app_id}/monitoring/stop")
+def admin_msme_stop(app_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    _get_or_404(app_id)
+    store.stop_monitoring(app_id, "bank")
+    _audit(user, "msme.monitoring.stop", "application", app_id, "Stopped monitoring")
+    return RedirectResponse(f"/admin/msmes/{app_id}", status_code=303)
+
+
+@app.post("/admin/msmes/{app_id}/msme-login", response_class=HTMLResponse)
+def admin_issue_msme_login(app_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    a = _get_or_404(app_id)
+    username, password = store.create_or_reset_msme_login(app_id, a["tenant_id"])
+    _audit(user, "msme.login.issue", "application", app_id, f"Issued/reset MSME login {username}")
+    return templates.get_template("admin_credential.html").render(
+        heading=f"MSME login for {a['applicant_name']}", username=username, password=password,
+        back_url=f"/admin/msmes/{app_id}",
+    )
+
+
+@app.get("/admin/msmes/{app_id}/view", response_class=HTMLResponse)
+def admin_view_msme(app_id: str, tab: str = "overview", user: dict = Depends(platform_user)):
+    """Read-only reuse of the bank's own company page — a platform admin has no
+    tenant-scoped bank account, so this bypasses `bank_user`/tenant_id entirely."""
+    a = _get_or_404(app_id)
+    company = None
+    if a["latest_report_id"]:
+        report = store.load_report_json(app_id, a["latest_report_id"])
+        if report:
+            company = dashboard_views.company_view(report)
+    return _render_application(a, "application.html", bank_name=config.BANK_NAME,
+                                msme_login=store.msme_login_for(app_id), company=company,
+                                active_tab=tab if tab in COMPANY_TABS else "overview", readonly=True)
+
+
+@app.post("/admin/msmes/{app_id}/delete")
+def admin_delete_msme(app_id: str, confirm: str = Form(...), user: dict = Depends(platform_user),
+                       _csrf: None = Depends(_csrf_guard)):
+    a = _get_or_404(app_id)
+    if confirm.strip() != a["applicant_name"]:
+        raise HTTPException(400, "Typed name did not match this MSME's name — nothing was deleted")
+    store.delete_application(app_id)
+    _audit(user, "msme.delete", "application", app_id, f"Deleted MSME {a['applicant_name']} and all its data")
+    return RedirectResponse("/admin/msmes", status_code=303)
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users(role: str = "", bank: str = "", user: dict = Depends(platform_user)):
+    tenants = {t["id"]: t for t in store.list_tenants()}
+    return templates.get_template("admin_users.html").render(
+        user=user, users=store.list_users(tenant_id=bank or None, role=role or None), tenants=tenants,
+        banks=store.list_tenants(kind="bank"), filters={"role": role, "bank": bank},
+    )
+
+
+@app.post("/admin/users/{user_id}/reset-password", response_class=HTMLResponse)
+def admin_reset_password(user_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    target = store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "No such user")
+    password = secrets.token_urlsafe(9)
+    store.set_password(user_id, password)
+    _audit(user, "user.reset_password", "user", user_id, f"Reset password for {target['username']}")
+    return templates.get_template("admin_credential.html").render(
+        heading=f"New password for {target['username']}", username=target["username"], password=password,
+        back_url="/admin/users",
+    )
+
+
+@app.post("/admin/users/{user_id}/disable")
+def admin_disable_user(user_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    target = store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "No such user")
+    if target["role"] == "platform" and not target["disabled"] and store.count_active_platform_admins() <= 1:
+        raise HTTPException(400, "Cannot disable the last active platform admin")
+    store.set_user_disabled(user_id, True)
+    _audit(user, "user.disable", "user", user_id, f"Disabled {target['username']}")
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/enable")
+def admin_enable_user(user_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    target = store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "No such user")
+    store.set_user_disabled(user_id, False)
+    _audit(user, "user.enable", "user", user_id, f"Enabled {target['username']}")
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.post("/admin/users/{user_id}/delete")
+def admin_delete_user(user_id: str, user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
+    target = store.get_user(user_id)
+    if not target:
+        raise HTTPException(404, "No such user")
+    if target["role"] == "platform" and not target["disabled"] and store.count_active_platform_admins() <= 1:
+        raise HTTPException(400, "Cannot delete the last active platform admin")
+    store.delete_user(user_id)
+    _audit(user, "user.delete", "user", user_id, f"Deleted {target['username']}")
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.get("/admin/audit", response_class=HTMLResponse)
+def admin_audit(user: dict = Depends(platform_user)):
+    return templates.get_template("admin_audit.html").render(user=user, audit=store.list_audit(limit=200))
+
+
+@app.get("/admin/leads", response_class=HTMLResponse)
+def admin_leads(user: dict = Depends(platform_user)):
+    return templates.get_template("admin_leads.html").render(user=user, leads=store.list_leads(limit=500))
 
 
 # ------------------------------------------------------------------ misc

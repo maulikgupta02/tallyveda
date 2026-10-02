@@ -2,25 +2,52 @@
 
 There is no shared component library, CSS framework, or build step for styling — every
 surface is a single server-rendered HTML file with its own inline `<style>` block using CSS
-custom properties. Six such pages exist, and they should stay visually consistent with each
-other even though nothing enforces that automatically:
+custom properties. The pages below should stay visually consistent with each other even though
+nothing enforces that automatically:
 
 - `backend/app/templates/dashboard.html` — bank's list of applications
 - `backend/app/templates/application.html` — one application's history/alerts/monitoring controls
-  (bank-only; also where a bank issues/resets an applicant's MSME login)
+  (bank-only; also where a bank issues/resets an applicant's MSME login; `readonly=True` —
+  passed by the platform admin's `/admin/msmes/{id}/view` — hides the Manage panel and points
+  the back-link at `/admin/msmes/{id}` instead of `/bank`, reusing the exact same tabs/markup)
 - `backend/app/templates/msme.html` — an MSME's own read-only view of the same application's
   history/trend (same visual language as `application.html`, minus any bank-only controls)
 - `backend/app/templates/msme_login.html` — the one-time "here is the username/password"
   confirmation shown to the bank right after creating/resetting an MSME login
 - `backend/app/templates/report.html` — the credit report itself (largest, most visual: charts, tables)
+- `backend/app/templates/admin_overview.html`, `admin_banks.html`, `admin_bank_detail.html`,
+  `admin_msmes.html`, `admin_msme_detail.html`, `admin_users.html`, `admin_audit.html` — the
+  platform admin panel (2026-10-02, ticket 2d48bed7), one page per `/admin` route. Same shared
+  `:root` block, plus a smaller, admin-specific set of components (dark `.appbar` with a top
+  `.tabs-top` nav across all seven pages — Overview/Banks/MSMEs/Users/Audit — a flat-table
+  `.pill`/`.tbl` list-and-detail pattern, `details.manage`/`.mpanel` reused verbatim from
+  `application.html`'s Manage panel, and `.new-panel` reused from `dashboard.html`'s "+ New
+  request" toggle pattern for "+ New bank"/"+ New MSME"). No new design tokens were needed.
+- `backend/app/templates/admin_credential.html` — the one-time credential-reveal page for
+  anything `/admin` creates or resets a password for (bank users, MSME logins), visually
+  identical to `msme_login.html`'s existing pattern, just reusable for any username/password.
 - `connector/internal/app/index.html` — the local 127.0.0.1 page the *applicant* sees on their
   own PC (different audience/tone from the other bank/MSME-facing pages)
 
+**Admin-page layout note**: any table whose rows carry more than one or two action buttons
+(e.g. "Reset password" / "Disable" / "Delete") needs either a full-width (`s12`) card or a
+`.scrollx` wrapper — a half-width (`s6`) card clips action buttons with no way to reach them.
+`.scrollx`'s `overflow-x: auto` also needs `min-width: 0` wherever it sits inside a CSS grid
+(`.manage-body`'s `display: grid` children default to `min-width: auto`, which lets a wide table
+blow out the grid item and overflow the whole page horizontally on narrow viewports otherwise —
+the existing `application.html`/`dashboard.html` pages happened not to hit this because their
+`.scrollx` tables weren't nested inside a `display: grid` container).
+
+A seventh surface, `backend/app/templates/home.html` (the public marketing home page at
+`GET /`), shares the same `:root` color tokens but is otherwise its own thing — see "Marketing
+home page" below for why.
+
 **When adding or changing UI, reuse the tokens and patterns below rather than inventing new
 ones.** There's no separate design-tokens file; the `:root` block at the top of each template
-*is* the token set — all six files share **one identical `:root` block, copied verbatim**.
-When adding a new page, copy that block exactly rather than retyping it; when adding a token
-any page needs, add it to the block in all six files at once so they never diverge again.
+*is* the token set — all six app templates share **one identical `:root` block, copied
+verbatim**. When adding a new page, copy that block exactly rather than retyping it; when
+adding a token any page needs, add it to the block in all six files at once so they never
+diverge again.
 
 ## Colors
 The single `:root` block, identical across all six files above:
@@ -333,6 +360,95 @@ no write actions, so no forms/redirects there, only links. The connector's wizar
 only multi-step flow, and it's steps within one page (`.card`/`.step` sections toggled via
 `.hidden`/`.off` classes), not multiple routes.
 
+
+## Marketing home page (ticket 90b7d084)
+
+`backend/app/templates/home.html` (`GET /`) is the public, logged-out marketing site — a
+different audience (a bank's credit team or an MSME owner deciding whether to try the
+product at all, not someone already using the dashboard) and the only page search engines
+are allowed to index (see "SEO" below). It follows an owner-approved mockup rather than
+growing out of the six app pages above, so it deliberately diverges from them in two ways,
+documented here so a future change doesn't "fix" them back to the app's pattern by mistake:
+
+- **Typography.** The six app pages use one system font stack and no webfonts (see
+  "Typography" above). The home page instead self-hosts two Google Fonts as variable woff2
+  files under `/static/fonts/` (`bricolage-grotesque.woff2` for headings/display numbers —
+  weights 500–700, `ibm-plex-sans.woff2` for body text — weights 400–600), both declared with
+  `font-display: swap` and `font-optical-sizing: auto`, with the display font preloaded. This
+  matches the approved mockup's look; the app pages' system-font convention is unchanged.
+- **Markup style.** The app pages' CSS is class-based (`:root` tokens + named classes, see
+  `dashboard.html`). The approved mockup used heavy inline `style="..."` attributes; `home.html`
+  keeps the same visuals but converts them to named classes in a `<style>` block (the app
+  pages' convention), since that's easier to maintain and is what the rest of this repo does —
+  a faithful reproduction of the design, not a literal copy of the mockup's markup.
+
+Colors are **not** a divergence: `home.html` carries the identical direction-6 navy/indigo
+`:root` block (including the `--brand` token), so the marketing site and the dashboards read
+as the same product.
+
+**Components specific to this page** (all progressive enhancement — every one has a
+server-rendered default so the page is complete without JS; a small inline `<script>` at the
+end of the template takes over from there):
+- **Sample dashboard card** (hero): a 12-bar chart (`.bars`/`.bar`) that plays a one-time
+  "rise" animation on load, and a 3-item "Today's alerts" feed (`.feed-list`) that rotates
+  through a 5-item pool every ~3.2s. Both skip their animation/rotation under
+  `prefers-reduced-motion: reduce` (a blanket `* { animation: none !important }` override in
+  that media query, plus the JS simply never starts the rotation interval).
+- **"For banks" tab/panel** (`.tablist`/`.panel`): 5 tabs, 6 metric tiles (`.mt`) each. Full
+  ARIA tablist pattern (`role="tab"`/`"tabpanel"`, `aria-selected`, roving `tabindex`,
+  arrow-key/Home/End navigation) with all 5 panels' data inlined as JSON for the JS to switch
+  without a round trip; the server renders the `overview` tab's panel directly in HTML so a
+  no-JS visitor still sees real content, just can't switch tabs.
+- **Cash-cycle calculator** (`.field` sliders + `.result-card`): three range inputs
+  (stock/debtor/creditor days) feeding `ccc = stock + debtor − creditor`, three proportional
+  meter bars, and verdict text at the same thresholds as the mockup (≤60d healthy, ≤120d
+  stretched, else strained). `app/marketing.py`'s `cash_cycle()` computes the initial
+  server-rendered state; the inline JS duplicates the same small formula for instant slider
+  feedback (deliberately not a server round trip per keystroke).
+- **Lead form** (`#demo`): posts to `POST /api/leads`, JSON via `fetch()` when JS is available
+  (shows an inline "Thanks, we will be in touch" message) or a plain form POST otherwise
+  (redirects to `/?sent=1#demo`, which renders the same thank-you copy server-side). A hidden
+  `website` honeypot field and a per-IP rate limit (`app/main.py`'s `_lead_attempts`, 5/hour)
+  guard it; both reject the same way on both paths without revealing which check fired.
+
+Static content specific to the page — chart series, the five tab panels' tiles, the
+cash-cycle thresholds, and the FAQ copy (also the source for the FAQPage JSON-LD) — lives in
+`backend/app/marketing.py`, not in `home.html` or `main.py`, following the same "small pure
+functions, no I/O" convention as `report/dashboard.py`.
+
+### SEO
+
+`config.PUBLIC_URL` (env `TC_PUBLIC_URL`, defaults to the live Render URL) is the one source
+for the canonical origin used in `<link rel="canonical">`, Open Graph/Twitter tags, the
+JSON-LD `url` fields, `robots.txt`'s `Sitemap:` line and `sitemap.xml` itself — change it in
+one place once a real domain is bought (see `project.md`).
+
+- Only `/` is indexable. Every route under `/bank`, `/msme`, `/admin` and `/api` gets
+  `X-Robots-Tag: noindex, nofollow` from a blanket middleware in `main.py`
+  (`_noindex_private_routes`), and `robots.txt` disallows the same prefixes plus `/download`
+  (the connector `.exe`/download redirect — not meant to be crawled either, but not a path a
+  stale indexed link would be useless without the home page's context, so it's a robots.txt
+  entry only, not a response header).
+- JSON-LD (`marketing.json_ld`): `Organization` + `WebSite` + `SoftwareApplication`
+  (`BusinessApplication`/`FinanceApplication`, `operatingSystem: Windows`, no invented ratings
+  or prices) + `FAQPage`, built directly from the same `marketing.FAQ` list the visible FAQ
+  section renders from, so they can't drift apart.
+- Icons: `/favicon.ico` (16/32/48px, one file with all three sizes), `/static/icon-192.png`
+  (`rel="icon"`, ≥48px per Google's favicon guidance), `/static/favicon.svg` (`rel="icon"`,
+  vector), and `/static/apple-touch-icon.png` (180×180, fully opaque, no transparency — iOS
+  applies its own mask). All under `/static/`, cache-control is set long
+  (`public, max-age=31536000, immutable`, from the same middleware above) except
+  `/favicon.ico` itself, served by its own root-level route since browsers probe that exact
+  path. **If the icon's design ever changes, publish it under a new filename and update these
+  links rather than overwriting the existing files** — Google caches a given icon URL for
+  weeks regardless of what's served there now.
+- Open Graph image: `/static/og-image.png`, 1200×630, generated once from a small HTML card
+  (navy background, the brand mark, the H1) via `npx playwright screenshot` — not hand-drawn,
+  not a screenshot of the live page. Regenerate the same way if the hero headline ever changes.
+- `robots.txt`, `sitemap.xml` (one `<url>`, the home page, with a `marketing.HOME_LASTMOD`
+  constant — bump it when the page's visible content changes meaningfully) and `llms.txt` (a
+  plain-text summary for LLM crawlers) are all generated by `main.py`, not static files, so
+  they can reuse `config.PUBLIC_URL` and the FAQ data.
 
 ## Approved direction (ticket 7485bcfc)
 Direction 6 chosen. 6 Owner approved direction 6 (owner said no further approval needed). Build: new theme in all six pages' :root, bank portfolio + company page with grouped metric tabs, MSME tabs. Build it on this device.

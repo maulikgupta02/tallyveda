@@ -11,6 +11,10 @@ Applicant's PC (Windows)                          Bank
 └───────────────┘             └────────────────┘          └──────────────────────────────┘
 ```
 
+The backend's `/` is a public marketing home page (no auth) — see `design.md`'s "Marketing
+home page" for its content/SEO/lead-form details. `/bank` and `/msme` below are the two
+logged-in dashboards.
+
 ## How it works
 
 1. **The bank** creates a request on the dashboard (`/bank`) and gets a one-time code, for example `7K2Q-XM9P`. The code is valid for 72 hours and can be used once.
@@ -139,6 +143,9 @@ This produces one `dist/TallyConnector.exe` that runs on every Windows PC (a 32-
 | `TC_CONNECTOR_EXE` | – | Path to the signed exe on local disk, served at `/download` |
 | `TC_CONNECTOR_URL` | – | If set, `/download` redirects here instead (e.g. a GitHub Releases asset) — takes priority over `TC_CONNECTOR_EXE`, and is the only option that works on Render's ephemeral filesystem |
 | `TC_MONITOR_OVERDUE_DAYS` | 3 | Monitored clients with no data for longer are shown as overdue |
+| `TC_PLATFORM_ADMIN_USER` / `TC_PLATFORM_ADMIN_PASSWORD` | none | Optional. Seed the first `/admin` (platform admin) login on first startup of an empty database, if both are set. `TC_DEV=1` falls back to `platform`/`platform` for local runs. Unlike `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`, leaving these unset is fine — `/admin` just has no working login until one is created (`python -m app.manage create-platform-admin`) |
+| `TC_PLATFORM_NAME` | Tally Connector | Name of the operator's own built-in "direct" tenant (MSMEs with no bank) — shown as the counterparty name in the connector's consent text for a direct client |
+| `TC_PUBLIC_URL` | `https://tally-connector-1lir.onrender.com` | Canonical origin for the public marketing home page (`/`) — its `<link rel="canonical">`, Open Graph/Twitter tags, JSON-LD, `robots.txt`'s `Sitemap:` line and `sitemap.xml`. Change it once a real domain is bought |
 
 Run the backend behind TLS (nginx, a load balancer, or similar). The connector sends financial data, so the server URL must be `https://` in production.
 
@@ -183,17 +190,29 @@ customer data.
 
 ## Accounts
 
-One backend hosts several banks (tenants) and their applicants' MSME logins. `TC_ADMIN_USER`/
-`TC_ADMIN_PASSWORD` only seed the first bank tenant and its first bank user, the first time the
-backend runs against an empty database. After that:
-- Onboard another bank with `python -m app.manage create-tenant "Bank name"`, then
-  `python -m app.manage create-bank-user <tenant_id> <username>` (prints a one-time password).
-  A bank user only ever sees applications created under their own tenant (`/bank`).
-- An MSME login is tied to exactly one application: from that application's page, the bank
-  clicks "Create login" (or "Reset password" to rotate it) under "MSME dashboard login". The
-  applicant then signs in at `/msme` to see their own analysis — never another company's.
+One backend hosts several banks (tenants), their applicants' MSME logins, and direct MSME
+clients with no bank at all (the platform's own built-in tenant, named by `TC_PLATFORM_NAME`).
+`TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` only seed the first bank tenant and its first bank user,
+the first time the backend runs against an empty database; `TC_PLATFORM_ADMIN_USER`/
+`TC_PLATFORM_ADMIN_PASSWORD` do the same for the first `/admin` login. After that:
+- **`/admin`** (role `platform`, HTTP Basic auth) is the everyday way to run the platform: create/
+  suspend/reactivate banks, create/manage bank users and MSMEs (either under a bank or direct),
+  issue/reset MSME dashboard logins, delete an MSME and all its data, manage every user across
+  tenants, and read the audit log of every admin action. See `docs/agents/architecture.md` for
+  the full route list.
+- `python -m app.manage` still works for scripted/first-time provisioning: `create-tenant
+  "Bank name"`, `create-bank-user <tenant_id> <username>`, `create-platform-admin <username>`
+  (each prints a one-time password).
+- A bank user only ever sees applications created under their own tenant (`/bank`); a suspended
+  bank's users (and any disabled user, of any role) can't log in anywhere.
+- An MSME login is tied to exactly one application: from that application's page (`/bank/...`
+  or `/admin/msmes/...`), issue/reset it under "MSME dashboard login". The applicant then signs
+  in at `/msme` to see their own analysis — never another company's.
 
-There's no admin web UI for tenant/user management yet; `python -m app.manage` is it.
+State-changing form submissions under `/admin` and `/bank` are CSRF-guarded: a request whose
+`Origin` (or, failing that, `Referer`) header names a different host is rejected; a request with
+neither header is allowed (see `main.py`'s `_csrf_guard` for the full reasoning). Connector and
+JSON `/api/...` endpoints are exempt — they're not browser form submissions.
 
 ## What the report computes
 

@@ -28,13 +28,13 @@ except where noted.
 # backend — install (verified: venv already present at backend/.venv, same result)
 cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 
-# backend — run (verified: starts, /healthz returns {"ok": true})
-TC_DEV=1 .venv/bin/uvicorn app.main:app --port 8000   # dashboard at /bank, admin/admin (dev only)
+# backend — run (verified: starts, /healthz returns {"ok": true}, / renders the marketing home page)
+TC_DEV=1 .venv/bin/uvicorn app.main:app --port 8000   # home page at /, /bank admin/admin, /admin platform/platform (dev only)
 
-# backend — tests (verified: 17 passed)
+# backend — tests (verified: 66 passed, 2026-10-02)
 .venv/bin/python -m pytest -q
 
-# backend — tests against Postgres instead of SQLite (verified: 40/40 passed against a
+# backend — tests against Postgres instead of SQLite (verified: 66/66 passed against a
 # throwaway local cluster; same suite, no code path is SQLite-specific)
 DATABASE_URL=postgresql://user@host:port/dbname .venv/bin/python -m pytest -q
 
@@ -94,8 +94,22 @@ Gaps between that and the code today (checked 2026-10-02):
   (`/bank`, scoped by `tenant_id`), and each application can have its own MSME login
   (`/msme`, scoped to one `application_id`) issued from the bank's application page.
   `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` now only seed the first tenant + bank user; onboarding
-  another bank is `python -m app.manage create-tenant`/`create-bank-user` (no admin web UI
-  yet — see `docs/agents/risks.md`).
+  another bank can still be done via `python -m app.manage create-tenant`/`create-bank-user`,
+  or from `/admin` (see below).
+- **Platform admin panel built** (2026-10-02, ticket 2d48bed7): a new user role `platform`
+  (seeded from `TC_PLATFORM_ADMIN_USER`/`TC_PLATFORM_ADMIN_PASSWORD`, or `python -m app.manage
+  create-platform-admin`) can manage the whole platform at `/admin` — banks (create, rename,
+  suspend/reactivate), every MSME (bank-linked or direct, with filters/search, create, issue/
+  reset its MSME login, a read-only dashboard view, delete with a typed confirmation), every
+  user across tenants (reset/disable/enable/delete, with a guard against disabling/deleting the
+  last active platform admin), and an audit log of every admin action. Tenants gained a `kind`
+  (`bank` | `direct`) and `status` (`active` | `suspended`, bank tenants only); one built-in
+  direct tenant (named by `TC_PLATFORM_NAME`, default "Tally Connector") holds MSMEs with no
+  bank, visible only to platform admins and to the MSME's own login. A disabled user, or any
+  user of a suspended bank, can't log in anywhere (`/bank`, `/msme` or `/admin`). State-changing
+  form POSTs under `/admin` and `/bank` are now CSRF-guarded (`main.py`'s `_csrf_guard`) — see
+  `docs/agents/architecture.md` for the exact rule. See `docs/agents/risks.md` for what's still
+  open.
 - **Daily refreshes (2026-10-02, resolved).** Refreshes are now due once a calendar day has
   passed since the last report (`store.monitoring_due`), not monthly; labels/copy in the
   connector and bank/MSME UI say "Daily"/"Refresh" accordingly. Each refresh still re-extracts
@@ -109,21 +123,37 @@ Gaps between that and the code today (checked 2026-10-02):
 - **Hosting.** No deploy config, TLS, backups or production storage are in the repo. SQLite plus
   unencrypted bundles on local disk (see `docs/agents/risks.md`) need revisiting for a hosted
   multi-customer service.
+- **Public marketing home page (resolved, 2026-10-02, ticket 90b7d084).** `GET /` is now a
+  server-rendered marketing page (was a bare redirect to `/bank`) — see `design.md`'s
+  "Marketing home page" for the full breakdown. Verified in this pass: all four Lighthouse
+  categories (performance/accessibility/best-practices/SEO) score 100 against a local run;
+  `backend/tests/test_home.py` passed against both SQLite and a throwaway local Postgres.
 
 ## Folder map
 ```
 backend/app/
-  main.py          FastAPI app: connector API, bank dashboard, MSME dashboard, bank JSON API
+  main.py          FastAPI app: connector API, bank dashboard, MSME dashboard, bank JSON API,
+                   platform admin panel (/admin), public marketing home page (/, robots.txt,
+                   sitemap.xml, /api/leads)
   config.py        env-var config (all with safe defaults)
-  store.py         SQLite access: tenants, users, applications, codes, monitoring, reports
-  manage.py        CLI to provision tenants/bank users (no admin web UI yet)
+  store.py         SQLite/Postgres access: tenants, users, applications, codes, monitoring,
+                   reports, audit log, leads
+  manage.py        CLI to provision tenants/bank users/platform admins and list leads (also doable from /admin)
+  marketing.py     static content + small pure helpers for the home page (chart data, FAQ,
+                   cash-cycle calculator, JSON-LD) — see design.md's "Marketing home page"
   analysis/        book.py (ledger classification), metrics.py (the actual numbers),
                    redflags.py, indicators.py (bank's traffic-light policy), alerts.py
                    (report-to-report comparison)
   report/          builder.py, charts.py (inline SVG), format.py, glossary.py (all report wording)
   templates/       dashboard.html, application.html, msme.html, msme_login.html, report.html
-                   (server-rendered Jinja2)
-  tests/           test_analysis.py, test_monitoring.py (pytest, all passing)
+                   (server-rendered Jinja2), admin_overview/banks/bank_detail/msmes/
+                   msme_detail/users/audit/leads.html, admin_credential.html,
+                   home.html (public marketing page)
+  static/          favicon.ico/.svg, icon-192.png, apple-touch-icon.png, og-image.png,
+                   fonts/ (self-hosted woff2 for home.html only) — served at /static,
+                   long-cached; favicon.ico also served at the root
+backend/tests/     test_analysis.py, test_monitoring.py, test_dashboard.py, test_admin.py, test_home.py
+                   (pytest, all passing)
 connector/
   main.go          CLI entry: interactive UI mode, headless mode, -monitor-run/-monitor-stop
   internal/tally/   Tally XML/HTTP client (UTF-16, quirky response handling)

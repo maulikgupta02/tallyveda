@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSMEs · Admin</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #f5f6f8; --surface-2: #eceef3; --card: #ffffff; --line: #e2e5eb;
+    --text: #101828; --text-2: #475467; --muted: #667085;
+    --accent: #3b5bdb; --accent-ink: #ffffff; --brand: #111c3a;
+    --good: #12a150; --warning: #f2a900; --serious: #ea6b2d; --critical: #d92d20;
+    --series-1: #3b5bdb; --series-2: #0fa3a3;
+    --age-1: #c5cff8; --age-2: #9aabf1; --age-3: #6f86e8; --age-4: #3b5bdb; --age-5: #2b43a8; --age-6: #1b2c75;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+  h2 { font-size: 16px; margin: 0; }
+  h3 { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+  a { color: var(--accent); text-decoration: none; cursor: pointer; }
+  small { display: block; color: var(--muted); font-size: 12px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); } .small { font-size: 12px; margin: 10px 0 0; }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .appbar { display: flex; align-items: center; gap: 24px; padding: 12px 24px; background: var(--brand);
+    border-bottom: 0; color: #fff; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .brand em { font-style: normal; color: rgba(255,255,255,.6); font-weight: 400; }
+  .logo { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-size: 11px; letter-spacing: .02em; }
+  .tabs-top { display: flex; gap: 4px; }
+  .tabs-top a { color: rgba(255,255,255,.7); padding: 6px 12px; border-radius: 6px; }
+  .tabs-top a.on { background: rgba(255,255,255,.12); color: #fff; font-weight: 600; }
+
+  .title-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; gap: 16px; flex-wrap: wrap; }
+  .sub { margin: 4px 0 0; color: var(--text-2); }
+  .btn { font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-ink); border: 0;
+    border-radius: 6px; padding: 8px 14px; cursor: pointer; white-space: nowrap; display: inline-block; }
+  .btn.ghost { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .btn.danger { background: var(--critical); }
+
+  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s6 { grid-column: span 6; }
+  .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px;
+    box-shadow: 0 1px 2px rgba(11, 11, 11, .04); min-width: 0; }
+  .card.flush { padding: 0; overflow: hidden; }
+  .card.flush .card-head { padding: 16px 18px 12px; margin: 0; }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .card-foot { padding: 12px 18px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
+
+  .kpi { display: flex; flex-direction: column; gap: 8px; min-height: 100px; }
+  .k-label { color: var(--text-2); font-size: 13px; }
+  .k-val { font-size: 30px; font-weight: 650; letter-spacing: -.02em; line-height: 1.1; }
+  .k-foot { font-size: 12px; color: var(--muted); }
+
+  .tbl { width: 100%; border-collapse: collapse; }
+  .tbl th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); padding: 8px 12px;
+    border-bottom: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
+  .tbl td { white-space: nowrap; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .tbl tbody tr:hover { background: #f8f9fc; }
+  .tbl td b { font-weight: 600; } .tbl .r, .tbl td.num { text-align: right; } .tbl .c { text-align: center; }
+  .tbl .empty { color: var(--muted); font-style: italic; }
+  .scrollx { overflow-x: auto; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 9px 3px 8px;
+    border-radius: 999px; background: var(--surface-2); white-space: nowrap; }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; }
+  .pill.p-active { background: rgba(18, 161, 80, .12); color: #0b6b35; }
+  .pill.p-suspended { background: rgba(217, 45, 32, .1); color: #a11b12; }
+  .pill.p-disabled { background: rgba(217, 45, 32, .1); color: #a11b12; }
+  .pill.p-bank { background: rgba(59, 91, 219, .12); color: #2a3f9e; }
+  .pill.p-direct { background: rgba(15, 163, 163, .14); color: #0b6b6b; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips a, .chips span { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--text-2); }
+  .chips a.on { background: var(--text); color: var(--card); border-color: var(--text); }
+
+  .feed { list-style: none; margin: 0; padding: 0; }
+  .feed li { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); align-items: start; }
+  .feed li:first-child { border-top: 0; padding-top: 0; }
+  .feed b { display: block; font-weight: 600; font-size: 13px; } .feed span { color: var(--text-2); font-size: 13px; }
+  .feed time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  .new-panel { display: none; }
+  .new-panel.open { display: block; }
+  form.inline-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-top: 12px; }
+  form.inline-form label { display: flex; flex-direction: column; font-size: 12px; color: var(--text-2); gap: 4px; }
+  form.inline-form input, form.inline-form select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  label.check { justify-content: flex-end; padding-bottom: 8px; color: var(--text); font-size: 13px; flex-direction: row; gap: 6px; }
+  .inline { display: inline-block; margin-right: 6px; }
+  form.inline-btn { display: inline; }
+  details.manage { margin: 18px 0; }
+  details.manage > summary { cursor: pointer; font-weight: 600; padding: 10px 14px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; list-style: none; }
+  details.manage > summary::-webkit-details-marker { display: none; }
+  details.manage[open] > summary { border-radius: 8px 8px 0 0; }
+  .manage-body { border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; padding: 14px; display: grid; gap: 14px; }
+  .manage-body > div { min-width: 0; }
+  .scrollx { overflow-x: auto; min-width: 0; }
+  .mpanel { background: var(--surface-2); border-radius: 8px; padding: 12px 14px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+  .mpanel .k { font-size: 12px; color: var(--text-2); } .mpanel .v { font-weight: 600; }
+  .warn { color: #6b4a00; font-weight: 600; }
+  .code { font: 600 16px ui-monospace, Menlo, Consolas, monospace; letter-spacing: .06em; }
+  a.name { color: var(--text); font-weight: 600; text-decoration: none; }
+
+  @media (max-width: 1180px) { .s3 { grid-column: span 6; } .s8 { grid-column: span 12; } }
+  @media (max-width: 900px) { .s4, .s6, .s8 { grid-column: span 12; } .tabs-top { display: none; } }
+  @media (max-width: 640px) {
+    .wrap { padding: 16px; } .appbar { padding: 10px 16px; gap: 12px; }
+    .grid { gap: 12px; } .s3 { grid-column: span 6; }
+    .card { padding: 14px; } .title-row .btn { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="appbar">
+    <div class="brand"><span class="logo">AD</span><span>Admin</span></div>
+    <nav class="tabs-top">
+    <a class="" href="/admin">Overview</a>
+    <a class="" href="/admin/banks">Banks</a>
+    <a class="on" href="/admin/msmes">MSMEs</a>
+    <a class="" href="/admin/users">Users</a>
+    <a class="" href="/admin/audit">Audit</a>
+    <a class="" href="/admin/leads">Leads</a>
+    </nav>
+  </header>
+  <div class="title-row">
+    <div><h1>MSMEs</h1><p class="sub">{{ apps|length }} result{{ "s" if apps|length != 1 }}</p></div>
+    <button class="btn" onclick="document.getElementById('newMsme').classList.toggle('open')">+ New MSME</button>
+  </div>
+
+  <div class="card new-panel" id="newMsme">
+    <form class="inline-form" method="post" action="/admin/msmes">
+      <label>Bank<select name="bank_id">
+          <option value="">Direct (no bank)</option>
+          {% for b in banks %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+        </select></label>
+      <label>Applicant<input name="applicant_name" required placeholder="Company name"></label>
+      <label>Reference<input name="reference" placeholder="e.g. LN-2026-0142"></label>
+      <label>Months<input name="months" type="number" min="6" max="60" value="{{ default_months }}" style="width:80px"></label>
+      <label class="check"><input type="checkbox" name="monitoring" checked> Daily monitoring</label>
+      <button class="btn primary" type="submit">Create</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <form class="inline-form" method="get" action="/admin/msmes">
+      <label>Search<input name="q" value="{{ filters.q }}" placeholder="Name, reference, company"></label>
+      <label>Bank<select name="bank">
+          <option value="">All</option>
+          {% for b in banks %}<option value="{{ b.id }}" {{ "selected" if filters.bank == b.id }}>{{ b.name }}</option>{% endfor %}
+        </select></label>
+      <label>Kind<select name="kind">
+          <option value="">All</option>
+          <option value="bank" {{ "selected" if filters.kind == "bank" }}>Via a bank</option>
+          <option value="direct" {{ "selected" if filters.kind == "direct" }}>Direct</option>
+        </select></label>
+      <label>Status<select name="status">
+          <option value="">All</option>
+          {% for s in ["awaiting_data", "processing", "ready", "failed"] %}
+          <option value="{{ s }}" {{ "selected" if filters.status == s }}>{{ s }}</option>
+          {% endfor %}
+        </select></label>
+      <label class="check"><input type="checkbox" name="overdue" {{ "checked" if filters.overdue }}> Overdue only</label>
+      <button class="btn ghost" type="submit">Filter</button>
+    </form>
+  </div>
+
+  <div class="card s12 flush">
+    <div class="scrollx"><table class="tbl">
+      <thead><tr><th>MSME</th><th>Bank / Direct</th><th>Status</th><th>Monitoring</th><th>Last data</th><th></th></tr></thead>
+      <tbody>
+      {% for a in apps %}
+      <tr>
+        <td><a class="name" href="/admin/msmes/{{ a.id }}">{{ a.applicant_name }}</a><small>{{ a.reference or "" }}</small></td>
+        <td><span class="pill p-{{ a.tenant_kind }}">{{ a.tenant_name }}</span></td>
+        <td>{{ a.status }}</td>
+        <td>{{ a.monitoring_status }}</td>
+        <td>{{ a.last_report_at|when if a.last_report_at else "Never" }}</td>
+        <td><a class="btn ghost" href="/admin/msmes/{{ a.id }}">Open</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">No MSMEs match these filters.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</main>
+</body>
+</html>

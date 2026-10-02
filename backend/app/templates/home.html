@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<meta name="description" content="{{ description }}">
+<link rel="canonical" href="{{ canonical }}">
+<meta name="theme-color" content="#111c3a">
+
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Tally Connector">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:image" content="{{ public_url }}/static/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ title }}">
+<meta name="twitter:description" content="{{ description }}">
+<meta name="twitter:image" content="{{ public_url }}/static/og-image.png">
+
+<link rel="preload" href="/static/fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
+
+<script type="application/ld+json">{{ ld_json | safe }}</script>
+
+<style>
+  @font-face {
+    font-family: "Bricolage Grotesque";
+    src: url("/static/fonts/bricolage-grotesque.woff2") format("woff2-variations"), url("/static/fonts/bricolage-grotesque.woff2") format("woff2");
+    font-weight: 500 700;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "IBM Plex Sans";
+    src: url("/static/fonts/ibm-plex-sans.woff2") format("woff2-variations"), url("/static/fonts/ibm-plex-sans.woff2") format("woff2");
+    font-weight: 400 600;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    color-scheme: light;
+    --surface: #f5f6f8; --surface-2: #eceef3; --card: #ffffff; --line: #e2e5eb;
+    --text: #101828; --text-2: #475467; --muted: #667085;
+    --accent: #3b5bdb; --accent-ink: #ffffff; --brand: #111c3a;
+    --good: #12a150; --warning: #f2a900; --serious: #ea6b2d; --critical: #d92d20;
+    --series-1: #3b5bdb; --series-2: #0fa3a3;
+    --age-1: #c5cff8; --age-2: #9aabf1; --age-3: #6f86e8; --age-4: #3b5bdb; --age-5: #2b43a8; --age-6: #1b2c75;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--surface); color: var(--text);
+    font: 16px/1.55 "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-optical-sizing: auto; }
+  h1, h2, h3, .disp { font-family: "Bricolage Grotesque", Georgia, serif; letter-spacing: -.02em; font-optical-sizing: auto; }
+  a { color: var(--accent); }
+  a:hover { color: #2b43a8; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  img, svg { max-width: 100%; }
+
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+  .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  .eyebrow.on-dark { color: #9aabf1; }
+  .sec { padding: 104px 0; }
+  .sec.white { background: var(--card); }
+  .sec.dark { background: var(--brand); color: #ffffff; }
+  .sec-head { max-width: 760px; display: flex; flex-direction: column; gap: 14px; }
+  .sec-head.narrow { max-width: 720px; }
+  .lede { margin: 0; font-size: 18px; color: var(--text-2); }
+  .lede.on-dark { color: rgba(255,255,255,.78); }
+
+  /* header */
+  header.site { background: var(--brand); color: #ffffff; position: sticky; top: 0; z-index: 5; }
+  .appbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 68px; }
+  .brand-link { display: flex; align-items: center; gap: 10px; color: #ffffff; text-decoration: none; font-weight: 600; }
+  .brand-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; font-size: 12px; letter-spacing: .02em; }
+  nav.nav-links { display: flex; gap: 28px; font-size: 15px; }
+  nav.nav-links a { color: rgba(255,255,255,.8); text-decoration: none; }
+  .header-actions { display: flex; gap: 10px; align-items: center; }
+  .btn { font: inherit; font-weight: 600; text-decoration: none; border-radius: 10px; padding: 14px 22px;
+    border: 0; cursor: pointer; display: inline-block; min-height: 44px; }
+  .btn.primary { background: var(--accent); color: #ffffff; }
+  .btn.ghost-dark { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: #ffffff; }
+  .signin-link { color: #ffffff; text-decoration: none; font-size: 15px; padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* hero */
+  .hero { background: var(--brand); color: #ffffff; padding: 72px 0 96px; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); gap: 56px; align-items: center; }
+  .hero-copy { display: flex; flex-direction: column; gap: 24px; }
+  .hero h1 { margin: 0; font-size: 60px; line-height: 1.04; font-weight: 700; }
+  .hero-sub { margin: 0; font-size: 19px; color: rgba(255,255,255,.78); max-width: 560px; }
+  .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .hero-facts { display: flex; gap: 22px; flex-wrap: wrap; font-size: 14px; color: rgba(255,255,255,.7); list-style: none; margin: 0; padding: 0; }
+
+  /* sample dashboard card */
+  .sample-card { background: var(--card); color: var(--text); border-radius: 16px; padding: 22px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.35); display: flex; flex-direction: column; gap: 16px; }
+  .sample-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .sample-head .co { font-weight: 600; }
+  .sample-head .sub { font-size: 13px; color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px;
+    border-radius: 999px; }
+  .pill.attn { background: rgba(217,45,32,.1); color: #a11b12; }
+  .pill.attn i { width: 7px; height: 7px; border-radius: 50%; background: var(--critical); display: inline-block; }
+  .sample-tiles { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+  .sample-tiles .tile { background: var(--surface); border-radius: 10px; padding: 10px 12px; }
+  .sample-tiles .tile .label { font-size: 12px; color: var(--text-2); }
+  .sample-tiles .tile .value { font-weight: 600; font-size: 18px; }
+  .sample-tiles .tile .delta { font-size: 12px; }
+  /* Darker than --good/--warning: those tokens are tuned for dots/fills, not
+     12px text, and fail 4.5:1 against --surface at that size. */
+  .up { color: #0c6f35; } .warn-delta { color: #7a5400; }
+  .bars { display: flex; align-items: flex-end; gap: 8px; height: 120px; padding: 4px 4px 0; border-bottom: 1px solid var(--line); }
+  .bars .bar { flex: 1; border-radius: 4px 4px 0 0; transform-origin: bottom; }
+  @keyframes rise { from { transform: scaleY(.15); } to { transform: scaleY(1); } }
+  .bars .bar.animate { animation: rise .9s cubic-bezier(.2,.8,.2,1) both; }
+  .feed-head { display: flex; justify-content: space-between; align-items: center; }
+  .feed-head .label { font-size: 13px; font-weight: 600; }
+  /* Darker than the dot's #0fa3a3 fill, which fails 4.5:1 as 12px text. */
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #0a6e6e; font-weight: 600; }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: #0fa3a3; display: inline-block; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  .live i.animate { animation: pulse 1.6s ease-in-out infinite; }
+  .feed-list { display: flex; flex-direction: column; gap: 8px; min-height: 152px; }
+  .feed-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--surface); }
+  .feed-item .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; flex: none; }
+  .feed-item .who { font-weight: 600; font-size: 14px; }
+  .feed-item .what { color: var(--text-2); font-size: 14px; }
+  .feed-item .time { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  @keyframes slidein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .feed-item.alert-new.animate { animation: slidein .5s ease both; }
+
+  /* works-with strip */
+  .strip { background: var(--card); border-bottom: 1px solid var(--line); }
+  .strip .wrap { display: flex; gap: 14px 36px; flex-wrap: wrap; justify-content: center; padding: 22px 32px; font-size: 14px; color: var(--text-2); }
+  .strip b { color: var(--text); }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 24px; }
+  .step { border: 1px solid var(--line); border-radius: 14px; padding: 26px; display: flex; flex-direction: column; gap: 12px; background: var(--card); }
+  .step .num { font-size: 40px; font-weight: 700; }
+  .step h3 { margin: 0; font-size: 20px; font-family: inherit; }
+  .step p { margin: 0; color: var(--text-2); }
+  .step.dark { background: var(--brand); color: #ffffff; }
+  .step.dark p { color: rgba(255,255,255,.78); }
+
+  /* tabs + panel (for banks) */
+  .tablist { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tab { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text-2); cursor: pointer; min-height: 44px; }
+  .tab[aria-selected="true"] { background: var(--brand); border-color: var(--brand); color: #ffffff; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px;
+    display: flex; flex-direction: column; gap: 16px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .panel-head h3 { margin: 0; font-size: 20px; font-family: inherit; }
+  .panel-head .note { font-size: 14px; color: var(--text-2); }
+  .tiles { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+  .mt { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px; }
+  .mt-head { display: flex; justify-content: space-between; gap: 8px; }
+  .mt-head .label { font-size: 13px; color: var(--text-2); }
+  .mt-head .rating { font-size: 12px; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; }
+  .mt-head .rating .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .mt .value { font-size: 24px; font-weight: 600; }
+  .mt .ctx { font-size: 13px; color: var(--muted); }
+
+  .flags { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+  .flag-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  .flag-card.on-dark { background: transparent; border-color: rgba(255,255,255,.14); }
+  .flag-card h3 { margin: 0 0 6px; font-size: 17px; font-family: inherit; }
+  .flag-card p { margin: 0; color: var(--text-2); }
+  .flag-card.on-dark p { color: rgba(255,255,255,.75); }
+
+  /* two-column sections */
+  .two { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 48px; align-items: center; }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+
+  /* cash-cycle calculator */
+  .field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #344054; }
+  input[type=range] { width: 100%; accent-color: var(--accent); min-height: 44px; }
+  .result-card { background: var(--brand); color: #ffffff; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 18px; }
+  .result-label { font-size: 14px; color: rgba(255,255,255,.7); }
+  .result-value { font-family: "Bricolage Grotesque", Georgia, serif; font-size: 64px; font-weight: 700; line-height: 1; }
+  .meter-row { display: grid; grid-template-columns: 120px 1fr; gap: 10px; align-items: center; }
+  .meter-row .meter-label { color: rgba(255,255,255,.7); font-size: 13px; }
+  .meter-track { height: 14px; background: rgba(255,255,255,.08); border-radius: 4px; }
+  .meter-fill { height: 14px; border-radius: 4px; }
+  .verdict { margin: 0; padding: 14px 16px; border-radius: 10px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.88); }
+
+  /* msme phone preview */
+  .phone { width: 300px; border-radius: 36px; background: var(--brand); padding: 12px; box-shadow: 0 30px 70px rgba(16,24,40,.25); }
+  .phone-screen { background: var(--surface); border-radius: 26px; overflow: hidden; }
+  .phone-bar { background: var(--brand); color: #ffffff; padding: 16px 18px 14px; font-weight: 600; font-size: 15px; }
+  .phone-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .phone-card { background: var(--card); border-radius: 14px; padding: 14px; }
+  .phone-card .k { font-size: 12px; color: var(--text-2); }
+  .phone-card .v { font-size: 26px; font-weight: 700; }
+  .phone-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+  .phone-grid .phone-card { padding: 12px; }
+  .phone-grid .phone-card .v { font-size: 16px; font-weight: 600; }
+  .phone-todo { font-size: 12px; color: var(--text-2); }
+  .list-plain { display: flex; flex-direction: column; gap: 10px; font-size: 16px; list-style: none; margin: 0; padding: 0; }
+
+  /* faq */
+  .faq { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px 40px; }
+  .faq-item h3 { margin: 0 0 6px; font-size: 18px; font-family: inherit; }
+  .faq-item p { margin: 0; color: var(--text-2); }
+
+  /* demo form */
+  .form-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; }
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+  .field input, .field select { font: inherit; padding: 11px 12px; border: 1px solid #d0d5dd; border-radius: 8px;
+    background: #ffffff; min-height: 44px; box-sizing: border-box; }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .submit-row { display: flex; align-items: flex-end; grid-column: 1 / -1; }
+  .submit-row button { width: 100%; font: inherit; font-weight: 600; background: var(--accent); color: #ffffff;
+    border: 0; border-radius: 8px; padding: 12px 16px; min-height: 46px; cursor: pointer; }
+  .form-note { grid-column: 1 / -1; margin: 0; font-size: 14px; }
+  .form-note.ok { color: var(--good); }
+  .form-note.err { color: var(--critical); }
+
+  footer.site { background: var(--brand); color: rgba(255,255,255,.7); padding: 40px 0; font-size: 14px; }
+  footer.site .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  footer.site .fbrand { color: #ffffff; font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  @media (max-width: 900px) {
+    .wrap { padding: 0 20px; }
+    nav.nav-links { display: none; }
+    .hero-grid, .two { grid-template-columns: minmax(0,1fr); gap: 36px; }
+    .steps, .flags, .faq, .form-grid { grid-template-columns: minmax(0,1fr); }
+    .tiles { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .hero h1 { font-size: 40px; }
+    .sec-head h2 { font-size: 30px; }
+    .sec { padding: 64px 0; }
+  }
+  .brand-link, .header-actions a { white-space: nowrap; }
+  @media (max-width: 480px) {
+    .appbar { gap: 10px; }
+    .brand-link { font-size: 15px; gap: 8px; }
+    .header-actions { gap: 2px; }
+    .header-actions .signin-link { padding: 10px 8px; font-size: 14px; }
+    .header-actions .btn { padding: 10px 12px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap appbar">
+    <a href="#top" class="brand-link">
+      <span class="brand-mark">TC</span>
+      <span>Tally Connector</span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#banks">For banks</a>
+      <a href="#msmes">For MSMEs</a>
+      <a href="#security">Security</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="header-actions">
+      <a href="/bank" class="signin-link">Sign in</a>
+      <a href="#demo" class="btn primary">Book a demo</a>
+    </div>
+  </div>
+</header>
+
+<main>
+<section id="top" class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow on-dark" style="align-self: flex-start">For banks, NBFCs and MSMEs &middot; works with TallyPrime</span>
+      <h1>Credit decisions from live Tally books, not last year&rsquo;s balance sheet.</h1>
+      <p class="hero-sub">Tally Connector reads an MSME&rsquo;s Tally books with their consent, turns them into a bank-grade credit analysis in minutes, and refreshes it every day, so you see trouble months before it reaches the repayment schedule.</p>
+      <div class="hero-ctas">
+        <a href="#demo" class="btn primary">Book a demo</a>
+        <a href="#how" class="btn ghost-dark">See how it works</a>
+      </div>
+      <ul class="hero-facts">
+        <li>Read-only: changes nothing in Tally</li>
+        <li>24 months of books in one pass</li>
+        <li>Refreshed daily</li>
+      </ul>
+    </div>
+
+    <div class="sample-card" aria-label="Sample borrower dashboard (illustrative data)">
+      <div class="sample-head">
+        <div>
+          <div class="co">Shree Ganesh Traders</div>
+          <div class="sub">Sample borrower &middot; updated today 06:14</div>
+        </div>
+        <span class="pill attn"><i></i>Attention</span>
+      </div>
+      <div class="sample-tiles">
+        <div class="tile"><div class="label">Sales, 12 mo</div><div class="value">&#8377;18.4 Cr</div><div class="delta up">+13.6%</div></div>
+        <div class="tile"><div class="label">Debtor days</div><div class="value">72 d</div><div class="delta warn-delta">was 64</div></div>
+        <div class="tile"><div class="label">DSCR</div><div class="value">1.35x</div><div class="delta warn-delta">was 1.60x</div></div>
+      </div>
+      <div class="bars" id="hero-bars">
+        {% for b in bars %}
+        <div class="bar animate" style="height: {{ b.pct }}%; background: {{ '#3b5bdb' if b.latest else '#c5cff8' }}; animation-delay: {{ (loop.index0 * 0.05) | round(2) }}s" title="{{ b.title }}"></div>
+        {% endfor %}
+      </div>
+      <div class="feed-head">
+        <span class="label">Today&rsquo;s alerts</span>
+        <span class="live"><i class="animate"></i>Live</span>
+      </div>
+      <div class="feed-list" id="alert-feed" aria-live="polite">
+        {% for f in feed %}
+        <div class="feed-item{{ ' alert-new animate' if loop.index0 == 0 else '' }}">
+          <span class="dot" style="background: {{ f.color }}"></span>
+          <div style="flex: 1">
+            <div class="who">{{ f.who }}</div>
+            <div class="what">{{ f.what }}</div>
+          </div>
+          <span class="time">{{ f.time }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="strip">
+  <div class="wrap">
+    <span>Works with <b>TallyPrime</b></span>
+    <span><b>Tally.ERP 9</b></span>
+    <span><b>Tally on cloud</b> (AWS, Azure, remote desktop)</span>
+    <span>Runs on any <b>Windows</b> PC, no install, no admin rights</span>
+  </div>
+</section>
+
+<section id="how" class="sec">
+  <div class="wrap" style="display: flex; flex-direction: column; gap: 48px">
+    <div class="sec-head">
+      <span class="eyebrow">How it works</span>
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">From request to analysis in one sitting.</h2>
+      <p class="lede">No document chase, no spreadsheet exports, no accountant in the loop.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="disp num" style="color: #7b90e2">01</span>
+        <h3>The bank sends a code</h3>
+        <p>Create a request on the dashboard and share the one-time code with the borrower, by WhatsApp or email.</p>
+      </div>
+      <div class="step">
+        <span class="disp num" style="color: #6f86e8">02</span>
+        <h3>The MSME runs the connector</h3>
+        <p>One file, double-clicked on the PC where Tally is open. It reads 24 months of books, asks for consent and sends them over HTTPS. Nothing in Tally changes.</p>
+      </div>
+      <div class="step dark">
+        <span class="disp num" style="color: #6f86e8">03</span>
+        <h3>Analysis, refreshed daily</h3>
+        <p>Sales, margins, receivables, cash cycle, debt service, banking and tax, rated against your policy, with alerts the morning anything moves.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="banks" class="sec white">
+  <div class="wrap" style="display: flex; flex-direction: column; gap: 40px">
+    <div class="sec-head" style="max-width: 760px">
+      <span class="eyebrow">For banks and NBFCs</span>
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">Every borrower&rsquo;s books, one click deep.</h2>
+      <p class="lede">A portfolio view that sorts borrowers by urgency, and a company view grouped into the questions a credit officer actually asks.</p>
+    </div>
+
+    <div class="tablist" role="tablist" aria-label="Dashboard preview">
+      {% for key, label in bank_tabs %}
+      <button type="button" class="tab" id="tab-{{ key }}" data-tab="{{ key }}" role="tab"
+        aria-selected="{{ 'true' if key == 'overview' else 'false' }}"
+        aria-controls="bank-panel" tabindex="{{ '0' if key == 'overview' else '-1' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="panel" id="bank-panel" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="panel-head">
+        <h3 id="panel-title">Overview</h3>
+        <span class="note" id="panel-note">{{ overview_panel.note }}</span>
+      </div>
+      <div class="tiles" id="panel-tiles">
+        {% for t in overview_panel.tiles %}
+        <div class="mt">
+          <div class="mt-head">
+            <span class="label">{{ t.label }}</span>
+            <span class="rating"><span class="dot" style="background: {{ t.dot }}"></span>{{ t.rating }}</span>
+          </div>
+          <span class="value">{{ t.value }}</span>
+          <span class="ctx">{{ t.ctx }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="flags">
+      <div class="col" style="gap: 6px">
+        <h3 style="margin: 0; font-size: 17px">Portfolio at a glance</h3>
+        <p style="margin: 0; color: var(--text-2)">Borrowers grouped into attention, watch and healthy, with stale connectors flagged before data goes cold.</p>
+      </div>
+      <div class="col" style="gap: 6px">
+        <h3 style="margin: 0; font-size: 17px">Your policy, your thresholds</h3>
+        <p style="margin: 0; color: var(--text-2)">Fourteen indicators rated green, amber or red against the thresholds your credit policy sets.</p>
+      </div>
+      <div class="col" style="gap: 6px">
+        <h3 style="margin: 0; font-size: 17px">The full credit report</h3>
+        <p style="margin: 0; color: var(--text-2)">A printable report and the raw books for every upload, kept as history you can compare.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap" style="display: flex; flex-direction: column; gap: 36px">
+    <div class="sec-head" style="max-width: 760px">
+      <span class="eyebrow">Red-flag checks</span>
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">The things an audit finds a year late, on day one.</h2>
+    </div>
+    <div class="flags">
+      <div class="flag-card"><h3>Stuck receivables</h3><p>Customers who have stopped paying, named, with what they owe.</p></div>
+      <div class="flag-card"><h3>Books not up to date</h3><p>How many days behind the last entry is, so you know what you are looking at.</p></div>
+      <div class="flag-card"><h3>Large cash receipts and payments</h3><p>Cash receipts of &#8377;2 lakh or more (s.269ST) and cash payments over &#8377;10,000 (s.40A(3)).</p></div>
+      <div class="flag-card"><h3>Circular trading</h3><p>Parties that appear as both customer and supplier with offsetting flows.</p></div>
+      <div class="flag-card"><h3>Backdated or deleted entries</h3><p>Gaps and out-of-order voucher numbering that suggest the books were edited after the fact.</p></div>
+      <div class="flag-card"><h3>Cash going negative</h3><p>Days the cash book dipped below zero, a classic sign of unrecorded receipts.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec white">
+  <div class="wrap two">
+    <div class="col">
+      <span class="eyebrow">Try it</span>
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">How long is cash tied up?</h2>
+      <p class="lede">The cash cycle is one of the numbers Tally Connector works out from the books. Move the sliders to see how stock, customer credit and supplier credit add up.</p>
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px">
+        <label class="field">Stock held: <b id="stock-out">{{ ccc.stock }}</b> days
+          <input type="range" id="stock" min="0" max="180" value="{{ ccc.stock }}" aria-label="Stock held in days"></label>
+        <label class="field">Customers take to pay: <b id="debtor-out">{{ ccc.debtor }}</b> days
+          <input type="range" id="debtor" min="0" max="180" value="{{ ccc.debtor }}" aria-label="Debtor days"></label>
+        <label class="field">Credit from suppliers: <b id="creditor-out">{{ ccc.creditor }}</b> days
+          <input type="range" id="creditor" min="0" max="180" value="{{ ccc.creditor }}" aria-label="Creditor days"></label>
+      </div>
+    </div>
+    <div class="result-card">
+      <span class="result-label">Cash tied up</span>
+      <span class="result-value" id="ccc-out">{{ ccc.ccc }} days</span>
+      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+        <div class="meter-row"><span class="meter-label">Stock</span><div class="meter-track"><div class="meter-fill" id="meter-stock" style="background: #6f86e8; width: {{ ccc.w_stock }}%"></div></div></div>
+        <div class="meter-row"><span class="meter-label">+ Customers</span><div class="meter-track"><div class="meter-fill" id="meter-debtor" style="background: #9aabf1; width: {{ ccc.w_debtor }}%"></div></div></div>
+        <div class="meter-row"><span class="meter-label">&minus; Suppliers</span><div class="meter-track"><div class="meter-fill" id="meter-creditor" style="background: #0fa3a3; width: {{ ccc.w_creditor }}%"></div></div></div>
+      </div>
+      <p class="verdict" id="verdict-out">{{ ccc.verdict }}</p>
+    </div>
+  </div>
+</section>
+
+<section id="msmes" class="sec">
+  <div class="wrap two">
+    <div style="display: flex; justify-content: center">
+      <div class="phone">
+        <div class="phone-screen">
+          <div class="phone-bar">Good morning</div>
+          <div class="phone-body">
+            <div class="phone-card"><div class="k">Sales in September</div><div class="v">&#8377;1.68 Cr</div><div class="delta up" style="font-weight: 600">18% up on last year</div></div>
+            <div class="phone-grid">
+              <div class="phone-card"><div class="k" style="font-size: 11px">To collect</div><div class="v">&#8377;1.37 Cr</div></div>
+              <div class="phone-card"><div class="k" style="font-size: 11px">In the bank</div><div class="v">&#8377;62 L</div></div>
+            </div>
+            <div class="phone-card" style="display: flex; flex-direction: column; gap: 8px">
+              <div style="font-size: 12px; font-weight: 600">To do this week</div>
+              <div class="phone-todo">Call Sunrise Retail: &#8377;38.6 L unpaid 90+ days</div>
+              <div class="phone-todo">Pay GST: &#8377;14.2 L</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <span class="eyebrow">For MSMEs</span>
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">Share once. Get your own dashboard back.</h2>
+      <p class="lede">Owners get a plain-language view of their own business on their phone: sales against last year, who owes what, cash in the bank, and the dues coming up this week.</p>
+      <ul class="list-plain">
+        <li>No bank jargon and no ratings, just your numbers</li>
+        <li>Your best and slowest-paying customers</li>
+        <li>Busy and quiet months from your own history</li>
+        <li>Stop sharing any time, from the same tool</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="security" class="sec dark">
+  <div class="wrap" style="display: flex; flex-direction: column; gap: 40px">
+    <div class="sec-head narrow">
+      <span class="eyebrow on-dark">Consent and security</span>
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">The MSME stays in control of their books.</h2>
+    </div>
+    <div class="flags">
+      <div class="flag-card on-dark"><h3>Read-only</h3><p>The connector only reads from Tally. It installs nothing and writes nothing.</p></div>
+      <div class="flag-card on-dark"><h3>Explicit consent</h3><p>Every share names the bank, the company and the months, and records who agreed.</p></div>
+      <div class="flag-card on-dark"><h3>Only the bank they chose</h3><p>Data goes to the bank that issued the code, and nobody else. Daily updates stop with one click.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="sec white">
+  <div class="wrap" style="display: flex; flex-direction: column; gap: 36px">
+    <h2 style="margin: 0; font-size: 44px; line-height: 1.1">Questions</h2>
+    <div class="faq">
+      {% for q, a in faq %}
+      <div class="faq-item"><h3>{{ q }}</h3><p>{{ a }}</p></div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section id="demo" class="sec">
+  <div class="wrap two">
+    <div style="display: flex; flex-direction: column; gap: 14px">
+      <h2 style="margin: 0; font-size: 44px; line-height: 1.1">See it on your own borrowers.</h2>
+      <p class="lede">Tell us who you are and we will set up a pilot: a bank workspace, the connector and a walkthrough for your first MSME.</p>
+      {% if sent == "1" %}
+      <p class="form-note ok" role="status">Thanks, we will be in touch.</p>
+      {% endif %}
+    </div>
+    <form class="form-card" id="lead-form" method="post" action="/api/leads" novalidate>
+      <div class="form-grid">
+        <label class="field">Your name<input name="name" autocomplete="name" required></label>
+        <label class="field">Organisation<input name="org" autocomplete="organization" required></label>
+        <label class="field">Work email<input name="email" type="email" autocomplete="email" required></label>
+        <label class="field">Phone<input name="phone" type="tel" autocomplete="tel"></label>
+        <label class="field">I am
+          <select name="kind">
+            {% for k in lead_kinds %}<option>{{ k }}</option>{% endfor %}
+          </select>
+        </label>
+        <div class="hp" aria-hidden="true">
+          <label>Leave this field blank<input name="website" tabindex="-1" autocomplete="off"></label>
+        </div>
+        <div class="submit-row">
+          <button type="submit" id="lead-submit">Request a pilot</button>
+        </div>
+        <p class="form-note" id="lead-message" hidden></p>
+      </div>
+    </form>
+  </div>
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span class="fbrand">Tally Connector</span>
+    <span>Tally, TallyPrime and Tally.ERP 9 are trademarks of Tally Solutions Pvt. Ltd. Tally Connector is not affiliated with Tally Solutions.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- "For banks" tabs ----
+  var panels = {{ bank_panels_json | safe }};
+  var tabs = document.querySelectorAll(".tab");
+  var panelTitles = { overview: "Overview", recv: "Receivables", wc: "Working capital", debt: "Debt", bank: "Banking & tax" };
+
+  function renderPanel(key) {
+    var p = panels[key];
+    if (!p) return;
+    document.getElementById("panel-title").textContent = panelTitles[key] || key;
+    document.getElementById("panel-note").textContent = p.note;
+    var tiles = document.getElementById("panel-tiles");
+    tiles.innerHTML = "";
+    p.tiles.forEach(function (t) {
+      var tile = document.createElement("div");
+      tile.className = "mt";
+      tile.innerHTML =
+        '<div class="mt-head"><span class="label"></span><span class="rating"><span class="dot"></span><span class="rating-word"></span></span></div>' +
+        '<span class="value"></span><span class="ctx"></span>';
+      tile.querySelector(".label").textContent = t.label;
+      tile.querySelector(".rating-word").textContent = t.rating;
+      tile.querySelector(".dot").style.background = t.dot;
+      tile.querySelector(".value").textContent = t.value;
+      tile.querySelector(".ctx").textContent = t.ctx;
+      tiles.appendChild(tile);
+    });
+  }
+
+  function selectTab(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+    });
+    document.getElementById("bank-panel").setAttribute("aria-labelledby", tab.id);
+    renderPanel(tab.dataset.tab);
+    tab.focus();
+  }
+
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener("click", function () { selectTab(tab); });
+    tab.addEventListener("keydown", function (e) {
+      var list = Array.prototype.slice.call(tabs);
+      var idx = list.indexOf(tab);
+      if (e.key === "ArrowRight") { e.preventDefault(); selectTab(list[(idx + 1) % list.length]); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); selectTab(list[(idx - 1 + list.length) % list.length]); }
+      else if (e.key === "Home") { e.preventDefault(); selectTab(list[0]); }
+      else if (e.key === "End") { e.preventDefault(); selectTab(list[list.length - 1]); }
+    });
+  });
+
+  // ---- Hero bar "rise" animation (plays once on load) ----
+  if (!reduceMotion) {
+    document.querySelectorAll("#hero-bars .bar").forEach(function (bar) {
+      bar.classList.add("animate");
+    });
+    var liveDot = document.querySelector(".live i");
+    if (liveDot) liveDot.classList.add("animate");
+  }
+
+  // ---- "Today's alerts" feed rotation (~3s), paused for reduced motion ----
+  var pool = {{ feed_pool_json | safe }};
+  var feedEl = document.getElementById("alert-feed");
+  var tick = 0;
+  function renderFeed() {
+    feedEl.innerHTML = "";
+    for (var j = 0; j < 3; j++) {
+      var f = pool[(tick + j) % pool.length];
+      var item = document.createElement("div");
+      item.className = "feed-item" + (j === 0 && !reduceMotion ? " alert-new animate" : "");
+      item.innerHTML =
+        '<span class="dot"></span><div style="flex:1"><div class="who"></div><div class="what"></div></div><span class="time"></span>';
+      item.querySelector(".dot").style.background = f.color;
+      item.querySelector(".who").textContent = f.who;
+      item.querySelector(".what").textContent = f.what;
+      item.querySelector(".time").textContent = f.time;
+      feedEl.appendChild(item);
+    }
+  }
+  if (!reduceMotion) {
+    setInterval(function () { tick = (tick + 1) % pool.length; renderFeed(); }, 3200);
+  }
+
+  // ---- Cash-cycle calculator ----
+  var stockEl = document.getElementById("stock"), debtorEl = document.getElementById("debtor"), creditorEl = document.getElementById("creditor");
+  function pct(v) { return Math.round(v / 180 * 100); }
+  function recompute() {
+    var s = Number(stockEl.value), d = Number(debtorEl.value), c = Number(creditorEl.value);
+    var ccc = s + d - c;
+    document.getElementById("stock-out").textContent = s;
+    document.getElementById("debtor-out").textContent = d;
+    document.getElementById("creditor-out").textContent = c;
+    document.getElementById("ccc-out").textContent = Math.max(ccc, 0) + " days";
+    document.getElementById("meter-stock").style.width = pct(s) + "%";
+    document.getElementById("meter-debtor").style.width = pct(d) + "%";
+    document.getElementById("meter-creditor").style.width = pct(c) + "%";
+    var verdict;
+    if (ccc <= 60) verdict = "Healthy: cash comes back quickly enough to fund growth without much borrowing.";
+    else if (ccc <= 120) verdict = "Stretched: the business needs working-capital credit to bridge about " + ccc + " days.";
+    else verdict = "Strained: over four months of cash is tied up, so a delay from one big customer hurts.";
+    document.getElementById("verdict-out").textContent = verdict;
+  }
+  [stockEl, debtorEl, creditorEl].forEach(function (el) { el.addEventListener("input", recompute); });
+
+  // ---- Lead form: progressive enhancement (plain POST works without JS) ----
+  var form = document.getElementById("lead-form");
+  var message = document.getElementById("lead-message");
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var submit = document.getElementById("lead-submit");
+    submit.disabled = true;
+    var data = {};
+    new FormData(form).forEach(function (v, k) { data[k] = v; });
+    fetch("/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(data),
+    })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) {
+        message.hidden = false;
+        if (res.ok) {
+          message.className = "form-note ok";
+          message.textContent = res.body.message || "Thanks, we will be in touch.";
+          submit.textContent = "Thanks, we will be in touch";
+          form.reset();
+        } else {
+          message.className = "form-note err";
+          message.textContent = res.body.detail || "Something went wrong. Please try again.";
+          submit.disabled = false;
+        }
+      })
+      .catch(function () {
+        message.hidden = false;
+        message.className = "form-note err";
+        message.textContent = "Something went wrong. Please try again.";
+        submit.disabled = false;
+      });
+  });
+})();
+</script>
+</body>
+</html>

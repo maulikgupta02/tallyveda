@@ -332,7 +332,7 @@
 <main class="wrap">
   <header class="appbar">
     <div class="brand"><span class="logo">{{ bank_name[:2]|upper }}</span><span>{{ bank_name }} <em>SME desk</em></span></div>
-    <a class="btn ghost" href="/bank" style="margin-left:auto">← Portfolio</a>
+    <a class="btn ghost" href="{{ '/admin/msmes/' ~ a.id if readonly|default(false) else '/bank' }}" style="margin-left:auto">← {{ "Back" if readonly|default(false) else "Portfolio" }}</a>
   </header>
 
   <div class="co-head">
@@ -346,6 +346,7 @@
     </div>
   </div>
 
+  {% if not readonly|default(false) %}
   <details class="manage"{% if not company %} open{% endif %}>
     <summary>Manage (code, monitoring, MSME login)</summary>
     <div class="manage-body">
@@ -398,6 +399,7 @@
       </div>
     </div>
   </details>
+  {% endif %}
 
   {% if not company %}
   <div class="card empty-state">

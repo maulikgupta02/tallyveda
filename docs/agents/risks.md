@@ -16,13 +16,22 @@
   unverifiable in this sandbox; treat it as higher-risk than the rest of the Go code.
 - **Dashboard login**: `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD` are required. `config.py` refuses
   to start without them, and only `TC_DEV=1` (tests, `dev/e2e.sh`, local runs) allows
-  `admin`/`admin`. Never set `TC_DEV` on a hosted deployment, and don't reintroduce a
-  fallback. These two env vars now only *seed* the first tenant + bank user on an empty
-  database (`main._ensure_seed_tenant`) — real logins are per-tenant rows in `store.py`'s
-  `users` table (bank users scoped to their tenant's applications, MSME users scoped to one
-  application), provisioned via `python -m app.manage`. There's still no password-reset flow,
-  no account lockout beyond the existing per-IP throttle, and no admin web UI for managing
-  users — only the CLI.
+  `admin`/`admin` (and, for `/admin`, `platform`/`platform`). Never set `TC_DEV` on a hosted
+  deployment, and don't reintroduce a fallback. These two env vars now only *seed* the first
+  tenant + bank user on an empty database (`main._ensure_seed_tenant`) — real logins are
+  per-tenant rows in `store.py`'s `users` table (bank users scoped to their tenant's
+  applications, MSME users scoped to one application, platform admins scoped to nothing),
+  provisioned via `python -m app.manage` or `/admin` (2026-10-02, ticket 2d48bed7 — see
+  `architecture.md`'s "Platform admin panel"). There's still no password-reset
+  *self-service* flow (an admin/platform admin resets it for you, there's no "forgot
+  password" email), and no account lockout beyond the existing per-IP throttle.
+- **`/admin` is a high blast-radius surface** — a platform admin can suspend any bank
+  (logging out every one of its users immediately), delete any MSME's data permanently (typed
+  confirmation is the only guard), and disable/delete any user. The only built-in safety net
+  is `store.count_active_platform_admins`, which blocks disabling or deleting the *last*
+  active platform admin — there is nothing stopping a platform admin from, say, suspending
+  every bank in sequence. Treat `/admin` credentials with the same care as root/infra access,
+  not as a regular login.
 - **`connector/dist/`** — prebuilt `.exe` binaries are committed-but-gitignored (per the task
   brief and `.gitignore`). Never rebuild into this path casually; a verification build should
   go to a throwaway path outside the repo (this onboarding pass did that).
@@ -45,11 +54,13 @@
   runs here. Treat all Windows-only code paths as unverified by this onboarding pass.
 
 ## Missing test coverage
-- `backend/app/main.py` itself (routes, auth, throttling, upload-size/gzip-bomb guarding) has
-  **no dedicated test file** — `test_analysis.py` and `test_monitoring.py` exercise it
-  indirectly via `TestClient` for the flows they cover, but things like `_throttle`'s 20/hour
-  limit, the gzip-bomb guard in `_gunzip_json`, and the various 404 paths don't appear to have
-  direct tests.
+- `backend/app/main.py`'s connector/bank routes (throttling, upload-size/gzip-bomb guarding)
+  still have **no dedicated test file** — `test_analysis.py` and `test_monitoring.py` exercise
+  them indirectly via `TestClient` for the flows they cover, but things like `_throttle`'s
+  20/hour limit, the gzip-bomb guard in `_gunzip_json`, and the various 404 paths don't appear
+  to have direct tests. (`/admin` itself now has dedicated coverage — `test_admin.py`, added
+  2026-10-02 — including the CSRF guard, role isolation, the direct tenant, bank suspension,
+  and the last-active-platform-admin guard.)
 - `backend/app/report/charts.py` and `report/builder.py` HTML/SVG output has no snapshot or
   visual test — only verified indirectly through `report.json`/`report.html` being produced
   without exceptions.
@@ -111,11 +122,14 @@ pulling what changed since the last report) would need the connector/backend con
 this pass given `internal/tally/`'s unverified-against-real-Tally status (see below); a human should
 decide whether to pursue it, especially for the Day Book performance concern on very large companies.
 Still open:
-- No admin web UI for tenant/user management — onboarding a bank or resetting a bank user's
-  password is a CLI-only operation (`python -m app.manage`), which doesn't scale past a handful
-  of banks and has no audit trail of who ran it.
+- **Admin web UI resolved** (2026-10-02, ticket 2d48bed7): `/admin` now covers tenant/MSME/user
+  management with an audit trail (`audit_log` table) of every action — see
+  `architecture.md`'s "Platform admin panel". `python -m app.manage` remains for scripted/
+  first-time provisioning.
 - No password-reset self-service for bank or MSME users, and no account lockout beyond the
-  existing per-IP throttle (20 failed attempts/hour) shared with the connector endpoints.
+  existing per-IP throttle (20 failed attempts/hour) shared with the connector endpoints. A
+  platform admin can reset any user's password from `/admin/users`, but there's still no
+  "forgot password" flow a bank/MSME user can trigger themselves.
 - This pass has **not been run against a real second tenant in a shared production database** —
   only against SQLite in tests and a local dev run. Treat the isolation as test-verified, not
   field-verified, before onboarding a second paying bank.

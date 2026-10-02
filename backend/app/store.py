@@ -99,10 +99,20 @@ CREATE TABLE IF NOT EXISTS users (
     tenant_id TEXT NOT NULL REFERENCES tenants(id),
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL,            -- bank | msme
+    role TEXT NOT NULL,            -- bank | msme | platform
     application_id TEXT,           -- set for role = msme: the one application this login sees
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    summary TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS audit_log_by_created ON audit_log(created_at);
 CREATE TABLE IF NOT EXISTS applications (
     id TEXT PRIMARY KEY,
     tenant_id TEXT NOT NULL,
@@ -142,6 +152,18 @@ CREATE TABLE IF NOT EXISTS report_files (
     created_at TEXT NOT NULL,
     PRIMARY KEY (report_id, name)
 );
+CREATE TABLE IF NOT EXISTS leads (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    org TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT,
+    kind TEXT,
+    created_at TEXT NOT NULL,
+    user_agent TEXT,
+    ip TEXT
+);
+CREATE INDEX IF NOT EXISTS leads_by_created ON leads(created_at);
 """
 
 # Columns added after the first release; applied to existing databases.
@@ -158,7 +180,18 @@ MIGRATIONS = {
         "force_refresh": "INTEGER NOT NULL DEFAULT 0",
         "latest_report_id": "TEXT",
         "last_report_at": "TEXT",
-    }
+    },
+    "tenants": {
+        # Added for the platform admin panel. 'bank' is every pre-existing tenant;
+        # 'direct' marks the single built-in platform tenant for MSMEs with no bank.
+        "kind": "TEXT NOT NULL DEFAULT 'bank'",
+        # Only meaningful for kind = 'bank' (suspend/reactivate from /admin); left
+        # 'active' on the direct tenant, which has no suspend concept of its own.
+        "status": "TEXT NOT NULL DEFAULT 'active'",
+    },
+    "users": {
+        "disabled": "INTEGER NOT NULL DEFAULT 0",
+    },
 }
 
 
@@ -278,16 +311,34 @@ def load_report_file(app_id: str, report_id: str, name: str) -> bytes | None:
 
 
 SEED_TENANT_ID = "seed-tenant"  # fixed id so _ensure_seed_tenant is idempotent across restarts
+DIRECT_TENANT_ID = "direct-tenant"  # fixed id for the one built-in no-bank/platform tenant
 
 
 def seed_tenant_id() -> str:
     return SEED_TENANT_ID
 
 
-def create_tenant(name: str, tenant_id: str | None = None) -> dict:
+def direct_tenant_id() -> str:
+    return DIRECT_TENANT_ID
+
+
+def ensure_direct_tenant(name: str) -> dict:
+    """The one built-in tenant for MSMEs with no bank (and the tenant platform
+    admin users are attached to, since `users.tenant_id` is NOT NULL). Safe to
+    call every startup/CLI invocation — a no-op once it exists."""
+    existing = get_tenant(DIRECT_TENANT_ID)
+    if existing:
+        return existing
+    return create_tenant(name, tenant_id=DIRECT_TENANT_ID, kind="direct")
+
+
+def create_tenant(name: str, tenant_id: str | None = None, kind: str = "bank") -> dict:
     tenant_id = tenant_id or uuid.uuid4().hex
     with db() as conn:
-        conn.execute("INSERT INTO tenants (id, name, created_at) VALUES (?, ?, ?)", (tenant_id, name, now().isoformat()))
+        conn.execute(
+            "INSERT INTO tenants (id, name, created_at, kind, status) VALUES (?, ?, ?, ?, 'active')",
+            (tenant_id, name, now().isoformat(), kind),
+        )
     return get_tenant(tenant_id)
 
 
@@ -297,8 +348,28 @@ def get_tenant(tenant_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def list_tenants(kind: str | None = None) -> list[dict]:
+    with db() as conn:
+        if kind:
+            rows = conn.execute("SELECT * FROM tenants WHERE kind = ? ORDER BY created_at", (kind,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM tenants ORDER BY created_at").fetchall()
+    return [dict(r) for r in rows]
+
+
+def rename_tenant(tenant_id: str, name: str) -> None:
+    with db() as conn:
+        conn.execute("UPDATE tenants SET name = ? WHERE id = ?", (name, tenant_id))
+
+
+def set_tenant_status(tenant_id: str, status: str) -> None:
+    with db() as conn:
+        conn.execute("UPDATE tenants SET status = ? WHERE id = ?", (status, tenant_id))
+
+
 def create_user(tenant_id: str, username: str, password: str, role: str, application_id: str | None = None) -> dict:
-    """role is 'bank' (sees every application for tenant_id) or 'msme' (sees only application_id)."""
+    """role is 'bank' (sees every application for tenant_id), 'msme' (sees only
+    application_id) or 'platform' (platform admin, sees every tenant)."""
     user_id = uuid.uuid4().hex
     with db() as conn:
         conn.execute(
@@ -320,15 +391,60 @@ def get_user(user_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def username_taken(username: str) -> bool:
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+    return row is not None
+
+
+def list_users(tenant_id: str | None = None, role: str | None = None) -> list[dict]:
+    clauses, params = [], []
+    if tenant_id:
+        clauses.append("tenant_id = ?")
+        params.append(tenant_id)
+    if role:
+        clauses.append("role = ?")
+        params.append(role)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with db() as conn:
+        rows = conn.execute(f"SELECT * FROM users {where} ORDER BY created_at", params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_active_platform_admins() -> int:
+    with db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM users WHERE role = 'platform' AND disabled = 0"
+        ).fetchone()
+    return row["n"]
+
+
+def set_user_disabled(user_id: str, disabled: bool) -> None:
+    with db() as conn:
+        conn.execute("UPDATE users SET disabled = ? WHERE id = ?", (int(disabled), user_id))
+
+
+def delete_user(user_id: str) -> None:
+    with db() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def authenticate(username: str, password: str, role: str) -> dict | None:
     """Constant-shape lookup for Basic auth: always hashes, even on an unknown
-    username, so a wrong username and a wrong password fail in the same time."""
+    username, so a wrong username and a wrong password fail in the same time.
+    A disabled user, or a user of a suspended bank tenant, never authenticates
+    anywhere — even with the right password."""
     with db() as conn:
         row = conn.execute("SELECT * FROM users WHERE username = ? AND role = ?", (username, role)).fetchone()
     user = dict(row) if row else None
-    if _verify_password(password, user["password_hash"] if user else _hash_password("")):
-        return user
-    return None
+    if not _verify_password(password, user["password_hash"] if user else _hash_password("")):
+        return None
+    if user["disabled"]:
+        return None
+    tenant = get_tenant(user["tenant_id"])
+    if tenant and tenant["status"] == "suspended":
+        return None
+    return user
 
 
 def msme_login_for(app_id: str) -> dict | None:
@@ -392,6 +508,46 @@ def list_applications(tenant_id: str) -> list[dict]:
             "SELECT * FROM applications WHERE tenant_id = ? ORDER BY created_at DESC", (tenant_id,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def list_all_applications(tenant_id: str | None = None, search: str = "") -> list[dict]:
+    """Every application across tenants (for /admin/msmes), each with its
+    tenant's name/kind joined in. `tenant_id` narrows to one bank or the
+    direct tenant; `search` matches applicant name, reference or company name."""
+    clauses, params = [], []
+    if tenant_id:
+        clauses.append("a.tenant_id = ?")
+        params.append(tenant_id)
+    if search:
+        clauses.append("(a.applicant_name LIKE ? OR a.reference LIKE ? OR a.company_name LIKE ?)")
+        like = f"%{search}%"
+        params += [like, like, like]
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with db() as conn:
+        rows = conn.execute(
+            f"SELECT a.*, t.name AS tenant_name, t.kind AS tenant_kind FROM applications a"
+            f" JOIN tenants t ON t.id = a.tenant_id {where} ORDER BY a.created_at DESC",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_application(app_id: str) -> None:
+    """Deletes an application and everything that belongs only to it: its
+    reports, report artifacts (disk files or `report_files` rows) and MSME
+    login. Used by /admin/msmes/{id} delete, behind a typed confirmation."""
+    import shutil
+
+    with db() as conn:
+        if IS_POSTGRES:
+            conn.execute("DELETE FROM report_files WHERE application_id = ?", (app_id,))
+        conn.execute("DELETE FROM reports WHERE application_id = ?", (app_id,))
+        conn.execute("DELETE FROM users WHERE application_id = ?", (app_id,))
+        conn.execute("DELETE FROM applications WHERE id = ?", (app_id,))
+    if not IS_POSTGRES:
+        app_dir = config.DATA_DIR / "applications" / app_id
+        if app_dir.exists():
+            shutil.rmtree(app_dir)
 
 
 def find_by_code(code: str) -> dict | None:
@@ -572,3 +728,82 @@ def _report_row(row) -> dict:
     for k in ("indicators_json", "snapshot_json", "alerts_json"):
         r[k.removesuffix("_json")] = json.loads(r[k]) if r[k] else []
     return r
+
+
+# -------------------------------------------------------------- audit log
+
+
+def record_audit(actor: str, action: str, target_type: str, target_id: str | None, summary: str) -> None:
+    """Best-effort is *not* appropriate here (unlike Linear sync elsewhere in
+    this project) — every /admin write goes through this, so a failure should
+    surface rather than be silently swallowed."""
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO audit_log (id, actor, action, target_type, target_id, summary, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (uuid.uuid4().hex, actor, action, target_type, target_id, summary, now().isoformat()),
+        )
+
+
+def list_audit(limit: int = 200) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute("SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ------------------------------------------------------------- admin counts
+
+
+def counts_overview() -> dict:
+    """Plain counts for the /admin overview tiles."""
+    since = (now() - timedelta(hours=24)).isoformat()
+    with db() as conn:
+        banks = conn.execute("SELECT COUNT(*) AS n FROM tenants WHERE kind = 'bank'").fetchone()["n"]
+        msmes_linked = conn.execute(
+            "SELECT COUNT(*) AS n FROM applications a JOIN tenants t ON t.id = a.tenant_id WHERE t.kind = 'bank'"
+        ).fetchone()["n"]
+        msmes_direct = conn.execute(
+            "SELECT COUNT(*) AS n FROM applications a JOIN tenants t ON t.id = a.tenant_id WHERE t.kind = 'direct'"
+        ).fetchone()["n"]
+        users_by_role = {
+            r["role"]: r["n"]
+            for r in conn.execute("SELECT role, COUNT(*) AS n FROM users GROUP BY role").fetchall()
+        }
+        uploads_24h = conn.execute("SELECT COUNT(*) AS n FROM reports WHERE created_at >= ?", (since,)).fetchone()["n"]
+        failed_reports = conn.execute("SELECT COUNT(*) AS n FROM reports WHERE status = 'failed'").fetchone()["n"]
+        apps = conn.execute(
+            "SELECT monitoring_status, force_refresh, last_report_at FROM applications WHERE monitoring_status = 'active'"
+        ).fetchall()
+    connectors_overdue = sum(1 for a in apps if monitoring_overdue(dict(a)))
+    return {
+        "banks": banks,
+        "msmes_linked": msmes_linked,
+        "msmes_direct": msmes_direct,
+        "users_by_role": users_by_role,
+        "uploads_24h": uploads_24h,
+        "connectors_overdue": connectors_overdue,
+        "failed_reports": failed_reports,
+    }
+
+# -------------------------------------------------------- marketing leads
+
+
+def create_lead(name: str, org: str, email: str, phone: str, kind: str, user_agent: str, ip: str) -> dict:
+    """A demo/pilot request from the public home page (see `main.py`'s `/api/leads`)."""
+    lead_id = str(uuid.uuid4())
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO leads (id, name, org, email, phone, kind, created_at, user_agent, ip) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (lead_id, name, org, email, phone, kind, now().isoformat(), user_agent, ip),
+        )
+    return {"id": lead_id}
+
+
+def list_leads(limit: int = 200) -> list[dict]:
+    """Newest first — used by `/admin/leads` and `manage.py list-leads`."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM leads ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]

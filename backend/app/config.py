@@ -19,6 +19,14 @@ ADMIN_USER = os.environ.get("TC_ADMIN_USER", "admin" if DEV else "")
 ADMIN_PASSWORD = os.environ.get("TC_ADMIN_PASSWORD", "admin" if DEV else "")
 if not (ADMIN_USER and ADMIN_PASSWORD):
     raise RuntimeError("Set TC_ADMIN_USER and TC_ADMIN_PASSWORD, or TC_DEV=1 for a local admin/admin login")
+# Platform admin (the operator's own /admin login) — same seed-once pattern as
+# ADMIN_USER/ADMIN_PASSWORD above, but for the `platform` role instead of the
+# first bank tenant. Also only required outside TC_DEV.
+PLATFORM_ADMIN_USER = os.environ.get("TC_PLATFORM_ADMIN_USER", "platform" if DEV else "")
+PLATFORM_ADMIN_PASSWORD = os.environ.get("TC_PLATFORM_ADMIN_PASSWORD", "platform" if DEV else "")
+# Name of the operator's own built-in "direct" tenant (MSMEs with no bank),
+# shown as the counterparty name in the connector's consent text for them.
+PLATFORM_NAME = os.environ.get("TC_PLATFORM_NAME", "Tally Connector")
 CODE_TTL_HOURS = int(os.environ.get("TC_CODE_TTL_HOURS", "72"))
 MAX_UPLOAD_MB = int(os.environ.get("TC_MAX_UPLOAD_MB", "300"))
 DEFAULT_MONTHS = int(os.environ.get("TC_DEFAULT_MONTHS", "24"))
@@ -31,3 +39,7 @@ MONITOR_OVERDUE_DAYS = int(os.environ.get("TC_MONITOR_OVERDUE_DAYS", "3"))
 # Releases asset) and /download redirects there. TC_CONNECTOR_URL takes priority.
 CONNECTOR_EXE = os.environ.get("TC_CONNECTOR_EXE", "")
 CONNECTOR_URL = os.environ.get("TC_CONNECTOR_URL", "")
+# Canonical origin of the public marketing home page (SEO tags, sitemap, robots.txt,
+# JSON-LD). No trailing slash. Defaults to the live Render URL — change it once a real
+# domain is bought (see project.md).
+PUBLIC_URL = os.environ.get("TC_PUBLIC_URL", "https://tally-connector-1lir.onrender.com").rstrip("/")
