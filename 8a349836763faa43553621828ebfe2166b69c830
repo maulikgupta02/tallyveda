@@ -1,0 +1,76 @@
+backend/app/templates/dashboard.html
+  b4605ee1e78b699b 50
+connector/internal/monitor/schedule_other.go
+  b4605ee1e78b699b 7-13
+connector/internal/upload/upload.go
+  b4605ee1e78b699b 2,66
+backend/app/config.py
+  b4605ee1e78b699b 20-22
+project.md
+  b4605ee1e78b699b 6,89-98,112,122
+README.md
+  b4605ee1e78b699b 27,29,31-32,34,36-37,41-71,81,116,125,139
+docs/agents/risks.md
+  b4605ee1e78b699b 81-89
+docs/agents/architecture.md
+  d5cdac50ea5e4f20 145
+  b4605ee1e78b699b 83,86-90,116-120
+connector/build.sh
+  b4605ee1e78b699b 2-4,11-12,14-17
+connector/internal/monitor/monitor.go
+  b4605ee1e78b699b 1,134,203,217,263,275
+connector/main.go
+  b4605ee1e78b699b 12-13,51,53-54,76,85
+backend/app/templates/msme.html
+  b4605ee1e78b699b 52,78
+connector/internal/app/index.html
+  b4605ee1e78b699b 52,54,163,227-228,235
+backend/app/main.py
+  b4605ee1e78b699b 7,56,218
+  d5cdac50ea5e4f20 393
+connector/internal/extract/bundle.go
+  b4605ee1e78b699b 34
+connector/internal/monitor/schedule_windows.go
+  b4605ee1e78b699b 15,46-47
+connector/internal/app/app.go
+  b4605ee1e78b699b 32,191,307-308,310-311
+backend/app/templates/application.html
+  b4605ee1e78b699b 56,62,66,70,98
+backend/app/store.py
+  b4605ee1e78b699b 66,357,366
+backend/tests/test_monitoring.py
+  b4605ee1e78b699b 1,39,92-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "8a349836763faa43553621828ebfe2166b69c830",
+  "prompts": {
+    "b4605ee1e78b699b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e5117803-2d8a-41a2-9c08-a9c22bf5533b",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 146,
+      "overriden_lines": 0
+    },
+    "d5cdac50ea5e4f20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6378ab4d-e21b-456f-b058-3688c695fcfa",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
