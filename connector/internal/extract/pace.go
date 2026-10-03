@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"tallyconnector/internal/activity"
 	"tallyconnector/internal/tally"
 )
 
@@ -14,12 +15,18 @@ import (
 // gets a time limit and is followed by a pause, and a request that runs over
 // is never followed by another until Tally is free again.
 var (
-	quickLimit   = 90 * time.Second // one group of ledgers, one stock group
+	quickLimit   = 90 * time.Second // one batch of ledgers or stock items
 	voucherLimit = 3 * time.Minute  // one month of Day Book; split further on timeout
 	slowLimit    = 10 * time.Minute // last-resort whole-collection fallback
 	idleWait     = 20 * time.Minute // how long to wait for Tally to finish an abandoned request
-	minPause     = 300 * time.Millisecond
-	maxPause     = 5 * time.Second
+	minPause     = 200 * time.Millisecond
+	maxPause     = 8 * time.Second
+	// While someone is using the computer, requests aim to finish in a few
+	// seconds and are followed by an equally long pause; otherwise they can
+	// run longer with short pauses.
+	busyTarget = 3 * time.Second
+	idleTarget = 10 * time.Second
+	userBusy   = func() bool { return activity.Busy(time.Minute) }
 )
 
 // errSlow means a request hit its time limit; Tally has since become free.
@@ -31,6 +38,9 @@ type pacer struct {
 	stage    string
 	frac     float64
 	last     time.Duration
+
+	strategies map[string]strategy // per object type, chosen once per run
+	slowSeen   int                 // timeouts in the current fetchComputed
 }
 
 func (p *pacer) report(stage string, frac float64) {
@@ -38,12 +48,17 @@ func (p *pacer) report(stage string, frac float64) {
 	p.progress(stage, frac)
 }
 
-// do runs one Tally request. It first pauses for half as long as the previous
-// request took (Tally gets at least a third of the time to itself), then runs
-// fn under limit. On timeout it waits for Tally to finish and returns errSlow.
+// do runs one Tally request. It first pauses: as long as the previous request
+// took while someone is using the computer (Tally is free half the time), a
+// quarter of that otherwise. Then it runs fn under limit. On timeout it waits
+// for Tally to finish and returns errSlow.
 func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn func(context.Context) error) error {
 	if p.last > 0 {
-		pause := min(max(p.last/2, minPause), maxPause)
+		pause := p.last / 4
+		if userBusy() {
+			pause = max(p.last, time.Second)
+		}
+		pause = min(max(pause, minPause), maxPause)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -68,4 +83,12 @@ func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn fun
 	p.last = maxPause * 2 // give Tally a longer breather after a slow request
 	p.progress(p.stage, p.frac)
 	return errSlow
+}
+
+// target is how long one batch should take.
+func (p *pacer) target() time.Duration {
+	if userBusy() {
+		return busyTarget
+	}
+	return idleTarget
 }

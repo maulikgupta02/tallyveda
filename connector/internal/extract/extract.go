@@ -28,9 +28,9 @@ type Progress func(stage string, fraction float64)
 
 // Master fields are stored on the ledger, so Tally returns them instantly.
 // Balances are computed from every voucher in the period, which is the slow
-// part, so they are fetched separately, one account group at a time.
+// part, so they are fetched separately in small batches (see batch.go).
 var (
-	ledgerMasterFetch  = []string{"Name", "Parent", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
+	ledgerMasterFetch  = []string{"Name", "Parent", "MasterId", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
 	ledgerBalanceFetch = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
 	stockValueFetch    = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
 )
@@ -54,7 +54,7 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		Warnings:         []string{},
 	}
 	name := o.Company.Name
-	p := &pacer{c: c, progress: progress}
+	p := &pacer{c: c, progress: progress, strategies: map[string]strategy{}}
 
 	p.report("Reading account groups", 0.02)
 	var groups []*tally.Node
@@ -92,7 +92,7 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		b.VoucherTypes = append(b.VoucherTypes, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
 	}
 
-	balances, missing, err := fetchByParent(ctx, p, name, "Ledger", "ledger balances", masters, ledgerBalanceFetch, o.From, o.To, 0.06, 0.20, slowLimit)
+	balances, missing, err := fetchComputed(ctx, p, name, "Ledger", "ledger balances", masters, ledgerBalanceFetch, o.From, o.To, 0.06, 0.20, slowLimit)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger balances: %w", err)
 	}
@@ -179,7 +179,7 @@ func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float
 	p.report("Reading stock items", f0)
 	var items []*tally.Node
 	err := p.do(ctx, slowLimit, "stock items", func(ctx context.Context) (err error) {
-		items, err = p.c.Collection(ctx, name, "StockItem", []string{"Name", "Parent"}, time.Time{}, time.Time{})
+		items, err = p.c.Collection(ctx, name, "StockItem", []string{"Name", "Parent", "MasterId"}, time.Time{}, time.Time{})
 		return err
 	})
 	if err != nil {
@@ -197,7 +197,7 @@ func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float
 			continue
 		}
 		label := "stock value at " + asOf.Format("02 Jan 2006")
-		values, missing, err := fetchByParent(ctx, p, name, "StockItem", label, items, stockValueFetch, o.From, asOf,
+		values, missing, err := fetchComputed(ctx, p, name, "StockItem", label, items, stockValueFetch, o.From, asOf,
 			f0+step*float64(i), f0+step*float64(i+1), voucherLimit)
 		if err != nil || missing > 0 {
 			if err == nil {
@@ -222,89 +222,6 @@ func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float
 		}
 		b.StockSnapshots = append(b.StockSnapshots, snap)
 	}
-}
-
-// fetchByParent reads computed fields for masters one parent at a time, so
-// each request covers only a slice of the books. Anything still missing
-// afterwards (a parent that timed out, or a Tally that ignores CHILDOF) is
-// fetched in one whole-collection request under fallbackLimit. It returns the
-// nodes by name and how many masters are still missing.
-func fetchByParent(ctx context.Context, p *pacer, company, objType, label string, masters []*tally.Node,
-	fetch []string, from, to time.Time, f0, f1 float64, fallbackLimit time.Duration) (map[string]*tally.Node, int, error) {
-	want := map[string][]string{} // raw parent -> member names
-	var parents []string
-	for _, n := range masters {
-		parent := strings.TrimSpace(n.Field("PARENT"))
-		if _, ok := want[parent]; !ok {
-			parents = append(parents, parent)
-		}
-		want[parent] = append(want[parent], n.ObjectName())
-	}
-	got := map[string]*tally.Node{}
-	covered := func(parent string) bool {
-		for _, m := range want[parent] {
-			if got[m] == nil {
-				return false
-			}
-		}
-		return true
-	}
-	slow := 0
-	for i, parent := range parents {
-		// Items directly under Primary have no group to ask for. After a few
-		// timeouts, stop: a Tally that ignores CHILDOF makes every slice slow.
-		if cleanParent(parent) == "" || covered(parent) || slow >= 3 {
-			continue
-		}
-		p.report(fmt.Sprintf("Reading %s (%d of %d)", label, i+1, len(parents)), f0+(f1-f0)*float64(i)/float64(len(parents)))
-		var nodes []*tally.Node
-		err := p.do(ctx, quickLimit, label+" under "+parent, func(ctx context.Context) (err error) {
-			nodes, err = p.c.CollectionOf(ctx, company, objType, parent, fetch, from, to)
-			return err
-		})
-		if ctx.Err() != nil {
-			return nil, 0, ctx.Err()
-		}
-		if errors.Is(err, errSlow) {
-			slow++
-		}
-		if err != nil {
-			continue // left for the fallback below
-		}
-		for _, n := range nodes {
-			got[n.ObjectName()] = n
-		}
-	}
-	missing := 0
-	for _, n := range masters {
-		if got[n.ObjectName()] == nil {
-			missing++
-		}
-	}
-	if missing == 0 {
-		return got, 0, nil
-	}
-	p.report(fmt.Sprintf("Reading %s (remaining %d)", label, missing), f1)
-	var nodes []*tally.Node
-	err := p.do(ctx, fallbackLimit, label+" (all)", func(ctx context.Context) (err error) {
-		nodes, err = p.c.Collection(ctx, company, objType, fetch, from, to)
-		return err
-	})
-	if err != nil {
-		return nil, missing, err
-	}
-	for _, n := range nodes {
-		if got[n.ObjectName()] == nil {
-			got[n.ObjectName()] = n
-		}
-	}
-	missing = 0
-	for _, n := range masters {
-		if got[n.ObjectName()] == nil {
-			missing++
-		}
-	}
-	return got, missing, nil
 }
 
 func (b *Bundle) warn(format string, args ...any) {

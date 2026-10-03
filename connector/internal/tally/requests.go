@@ -10,11 +10,17 @@ import (
 	"time"
 )
 
+// Query narrows a collection export so each request stays small enough for
+// Tally to answer quickly. The zero value exports everything.
+type Query struct {
+	ChildOf string   // direct children of this group or stock group
+	IDs     [2]int64 // inclusive MasterId range; {0, 0} means no range
+}
+
 // collectionRequest builds an inline-TDL collection export. Collections return
 // computed fields (ClosingBalance as at SVTODATE) that master exports don't.
-// A non-empty childOf limits it to the direct children of that group or stock
-// group, which keeps each request small enough for Tally to answer quickly.
-func collectionRequest(company, objType, childOf string, fetch []string, from, to time.Time) string {
+// Tally only computes fetched fields for objects that pass the filter.
+func collectionRequest(company, objType string, q Query, fetch []string, from, to time.Time) string {
 	var sv strings.Builder
 	sv.WriteString("<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>")
 	if company != "" {
@@ -26,15 +32,19 @@ func collectionRequest(company, objType, childOf string, fetch []string, from, t
 	if !to.IsZero() {
 		fmt.Fprintf(&sv, "<SVTODATE>%s</SVTODATE>", tallyDate(to))
 	}
-	var child string
-	if childOf != "" {
-		child = "<CHILDOF>" + html.EscapeString(childOf) + "</CHILDOF>"
+	var narrow, formula string
+	if q.ChildOf != "" {
+		narrow = "<CHILDOF>" + html.EscapeString(q.ChildOf) + "</CHILDOF>"
+	}
+	if q.IDs != [2]int64{} {
+		narrow += "<FILTERS>TCRange</FILTERS>"
+		formula = fmt.Sprintf(`<SYSTEM TYPE="Formulae" NAME="TCRange">$MasterId &gt;= %d AND $MasterId &lt;= %d</SYSTEM>`, q.IDs[0], q.IDs[1])
 	}
 	return fmt.Sprintf(`<ENVELOPE>
 <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>TCColl</ID></HEADER>
 <BODY><DESC><STATICVARIABLES>%s</STATICVARIABLES>
-<TDL><TDLMESSAGE><COLLECTION NAME="TCColl" ISMODIFY="No"><TYPE>%s</TYPE>%s<FETCH>%s</FETCH></COLLECTION></TDLMESSAGE></TDL>
-</DESC></BODY></ENVELOPE>`, sv.String(), objType, child, strings.Join(fetch, ", "))
+<TDL><TDLMESSAGE><COLLECTION NAME="TCColl" ISMODIFY="No"><TYPE>%s</TYPE>%s<FETCH>%s</FETCH></COLLECTION>%s</TDLMESSAGE></TDL>
+</DESC></BODY></ENVELOPE>`, sv.String(), objType, narrow, strings.Join(fetch, ", "), formula)
 }
 
 // dayBookRequest exports full vouchers for a date range. The Day Book report
@@ -62,7 +72,7 @@ type Company struct {
 }
 
 func (c *Client) Companies(ctx context.Context) ([]Company, error) {
-	root, err := c.Post(ctx, collectionRequest("", "Company", "",
+	root, err := c.Post(ctx, collectionRequest("", "Company", Query{},
 		[]string{"Name", "GUID", "StartingFrom", "BooksFrom", "StateName", "IncomeTaxNumber"}, time.Time{}, time.Time{}))
 	if err != nil {
 		return nil, err
@@ -87,12 +97,12 @@ func (c *Client) Companies(ctx context.Context) ([]Company, error) {
 
 // Collection fetches objects of one type and returns their nodes.
 func (c *Client) Collection(ctx context.Context, company, objType string, fetch []string, from, to time.Time) ([]*Node, error) {
-	return c.CollectionOf(ctx, company, objType, "", fetch, from, to)
+	return c.CollectionWhere(ctx, company, objType, Query{}, fetch, from, to)
 }
 
-// CollectionOf is Collection limited to the direct children of parent ("" for all).
-func (c *Client) CollectionOf(ctx context.Context, company, objType, parent string, fetch []string, from, to time.Time) ([]*Node, error) {
-	root, err := c.Post(ctx, collectionRequest(company, objType, parent, fetch, from, to))
+// CollectionWhere is Collection narrowed by q.
+func (c *Client) CollectionWhere(ctx context.Context, company, objType string, q Query, fetch []string, from, to time.Time) ([]*Node, error) {
+	root, err := c.Post(ctx, collectionRequest(company, objType, q, fetch, from, to))
 	if err != nil {
 		return nil, err
 	}

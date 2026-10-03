@@ -131,12 +131,16 @@ itself). They never share code or a process.
   big request freezes Tally for the user. `pace.go` therefore gives every request a time
   limit and a pause afterwards (half the last request's duration, 0.3-5 s). After a timeout
   it waits for Tally to answer a ping before sending anything else, so requests never queue
-  inside Tally. Ledger masters are read without balances; opening/closing balances (the
-  expensive, computed part) are read one account group at a time via `CHILDOF`, with one
-  whole-collection fallback for whatever is still missing. Stock values work the same way per
-  stock group. Stock and bills are best effort (warning, not failure). A slow voucher month is
-  split in half at once. Tests: `extract_test.go`, and `run_test.go`, which uses a fake
-  single-threaded Tally with a slow group.
+  inside Tally. While the keyboard/mouse was used in the last minute (`internal/activity`,
+  Windows `GetLastInputInfo`), each pause equals the last request's duration and batches aim
+  at 3 s; when idle, pauses are a quarter and batches aim at 10 s. Ledger masters (with
+  `MasterId`) are read without balances. Balances, the expensive computed part, are read in
+  batches by `batch.go`. A cheap probe that asks only for stored fields picks the method:
+  `MasterId` range filters (even batches that halve on timeout and grow when fast), else
+  `CHILDOF` per group, else one whole request. Stock values work the same way. Nothing is
+  escalated to a bigger request after a timeout. Stock and bills are best effort (warning,
+  not failure). A slow voucher month is split in half at once. Tests: `extract_test.go`, and
+  `run_test.go`, whose fake single-threaded Tally covers each filter mode.
 - **`internal/app/`** — the local UI: serves `index.html` on 127.0.0.1 with a per-run token,
   owns the guided 4-step flow (detect Tally → enter code → choose company/consent →
   extract/upload) and idle-timeout (exits ~45s after the tab closes).
