@@ -72,7 +72,7 @@ from .report import format as fmt
 from .report.builder import build_report, render_html, report_json
 
 log = logging.getLogger("tally_connector")
-app = FastAPI(title="Tally Connector backend", docs_url="/api/docs")
+app = FastAPI(title="TallyVeda backend", docs_url="/api/docs")
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -750,9 +750,9 @@ Sitemap: {public_url}/sitemap.xml
 """
 
 LLMS_TXT = """\
-# Tally Connector
+# TallyVeda
 
-Tally Connector lets a bank or NBFC pull an MSME borrower's Tally books (TallyPrime or \
+TallyVeda lets a bank or NBFC pull an MSME borrower's Tally books (TallyPrime or \
 Tally.ERP 9), with the borrower's consent, and turns them into a bank-grade credit report: \
 revenue, customer concentration, receivables/payables ageing, working capital, balance \
 sheet, leverage, banking/cash behaviour, GST, and red flags. Reports refresh daily once a \
@@ -778,12 +778,12 @@ def _legal(page: str, title: str, description: str) -> HTMLResponse:
 
 @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
 def privacy_page():
-    return _legal("privacy", "Privacy Notice", "How Tally Connector collects, uses, shares and protects business data, and your rights.")
+    return _legal("privacy", "Privacy Notice", "How TallyVeda collects, uses, shares and protects business data, and your rights.")
 
 
 @app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
 def terms_page():
-    return _legal("terms", "Terms of Use", "Terms for using Tally Connector and its dashboards.")
+    return _legal("terms", "Terms of Use", "Terms for using TallyVeda and its dashboards.")
 
 
 @app.get("/robots.txt", include_in_schema=False)
@@ -1416,7 +1416,7 @@ def download():
     bundled = _STATIC_DIR / "downloads" / "TallyConnector.zip"
     if not bundled.exists():
         raise HTTPException(404, "Connector download not configured")
-    return FileResponse(bundled, filename="TallyConnector.zip", headers={"Cache-Control": "no-store"})
+    return FileResponse(bundled, filename="TallyVeda.zip", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/healthz", include_in_schema=False)

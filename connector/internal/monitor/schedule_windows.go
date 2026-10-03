@@ -43,8 +43,8 @@ const taskXML = `<?xml version="1.0" encoding="UTF-16"?>
 
 func schedule(exe string) error {
 	start := time.Now().AddDate(0, 0, 1).Format("2006-01-02") + "T09:00:00"
-	desc := fmt.Sprintf("Sends daily updates of your Tally accounts to the banks you chose. To stop, run "+
-		"TallyConnector and click 'Stop daily updates', or run: \"%s\" -monitor-stop", exe)
+	desc := fmt.Sprintf("Sends daily updates of your Tally accounts to the organisation you chose. To stop, open "+
+		"TallyVeda (TallyConnector.exe) and click 'Stop daily updates', or run: \"%s\" -monitor-stop", exe)
 	def := fmt.Sprintf(taskXML, html.EscapeString(desc), start, html.EscapeString(exe))
 
 	d, err := Dir()

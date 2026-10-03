@@ -3,545 +3,446 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ a.applicant_name }} · {{ bank_name }}</title>
+<title>{{ a.applicant_name }} · {{ bank_name }} · TallyVeda</title>
+<link rel="stylesheet" href="/static/app.css?v=3">
 <style>
-  .syncnote { margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; background: #fff7e0; color: #7a5200; }
-  :root {
-    color-scheme: light;
-    --surface: #f5f6f8; --surface-2: #eceef3; --card: #ffffff; --line: #e2e5eb;
-    --text: #101828; --text-2: #475467; --muted: #667085;
-    --accent: #3b5bdb; --accent-ink: #ffffff; --brand: #111c3a;
-    --good: #12a150; --warning: #f2a900; --serious: #ea6b2d; --critical: #d92d20;
-    --series-1: #3b5bdb; --series-2: #0fa3a3;
-    --age-1: #c5cff8; --age-2: #9aabf1; --age-3: #6f86e8; --age-4: #3b5bdb; --age-5: #2b43a8; --age-6: #1b2c75;
+  .head { align-items: flex-start; }
+  .head > div:first-child { flex: 1 1 420px; }
+  .title-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .utabs .n { font-size: 12px; font-weight: 700; color: var(--critical-text); margin-left: 4px; }
+  .scrollx { position: relative; }
+
+  /* Key numbers: one strip, fixed column count per tab so rows stay even. */
+  .kstrip { grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); }
+  .kstrip > div { border-bottom: 1px solid var(--line-soft); margin-bottom: -1px; min-width: 0; }
+  .kstrip .stat-v { font-size: 26px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kstrip .sev.na { background: var(--surface-2); color: var(--muted); }
+  .kstrip .bullet { margin-top: 6px; }
+  @media (max-width: 1280px) { .kstrip { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); } }
+  @media (max-width: 640px) {
+    .kstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kstrip > div { padding: 14px; }
+    .kstrip .stat-l { flex-wrap: wrap; }
+    .kstrip .stat-v { font-size: 20px; }
+    .kstrip .spark { width: 100%; }
   }
 
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--surface); color: var(--text);
-    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
-  h2 { font-size: 16px; margin: 0; }
-  h3 { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 18px 0 8px; text-transform: uppercase; letter-spacing: .04em; }
-  a { color: var(--accent); text-decoration: none; cursor: pointer; }
-  small { display: block; color: var(--muted); font-size: 12px; }
-  .num { font-variant-numeric: tabular-nums; }
-  .muted { color: var(--muted); } .small { font-size: 12px; margin: 10px 0 0; }
-  .pos { color: var(--good); } .neg { color: var(--critical); }
+  .changes > li { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+  .changes .t { font-weight: 500; }
+  .changes .d { font-size: 14px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; max-width: 300px; }
+  @media (max-width: 640px) {
+    .changes > li { grid-template-columns: 72px minmax(0, 1fr); }
+    .changes .d { grid-column: 2; text-align: left; max-width: none; font-size: 13px; }
+  }
 
-  .wrap { max-width: 1320px; margin: 0 auto; padding: 24px; }
+  .card.pad > .card-head, .card.pad > h2 { padding: 0; margin-bottom: 12px; }
+  .rail .kv:first-of-type { border-top: 0; }
+  .rail .kv > span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .on-good { color: var(--good-text); font-weight: 600; }
+  .mix-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin-top: 12px; }
+  .mix-legend a { margin-left: auto; font-weight: 600; }
 
-  .appbar { display: flex; align-items: center; gap: 24px; padding: 12px 24px; background: var(--card);
-    border-bottom: 1px solid var(--line); }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-  .brand em { font-style: normal; color: var(--muted); font-weight: 400; }
-  .logo { width: 28px; height: 28px; border-radius: 7px; background: var(--text); color: var(--card);
-    display: grid; place-items: center; font-size: 11px; letter-spacing: .02em; }
-  .tabs-top { display: flex; gap: 4px; }
-  .tabs-top a { color: var(--text-2); padding: 6px 12px; border-radius: 6px; display: flex; gap: 6px; align-items: center; }
-  .tabs-top a.on { background: var(--surface-2); color: var(--text); font-weight: 600; }
-  .search { margin-left: auto; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line);
-    border-radius: 8px; padding: 6px 10px; color: var(--muted); width: 260px; background: var(--surface); }
-  .search input { border: 0; outline: 0; background: transparent; font: inherit; width: 100%; }
+  .flags { list-style: none; margin: 0; padding: 0 0 6px; }
+  .flags li { padding: 10px 20px 10px 17px; display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line-soft); border-left: 3px solid transparent; font-size: 13px; color: var(--text-2); }
+  .flags li b { font-size: 14px; color: var(--text); font-weight: 600; }
+  .flags li.f-critical, .flags li.f-high { border-left-color: var(--critical); }
+  .flags li.f-serious, .flags li.f-medium { border-left-color: var(--serious); }
 
-  .title-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; gap: 16px; }
-  .sub { margin: 4px 0 0; color: var(--text-2); }
-  .btn { font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-ink); border: 0;
-    border-radius: 6px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
-  .btn.ghost { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+  .mgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 14px; align-items: start; }
+  .mbox { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .mbox h3 { margin: 0; }
+  .mbox .v { font-weight: 600; }
+  .mbox .kv { padding: 6px 0; }
+  .mbox form { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+  .mbox form input { flex: 1 1 180px; min-width: 0; }
+  .code { font-family: var(--mono); letter-spacing: .06em; white-space: nowrap; }
+  .share-code { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .share-code .code { font-size: 28px; font-weight: 700; color: var(--text); }
+  .reports td { white-space: nowrap; }
+  .reports td.changes-cell { white-space: normal; min-width: 240px; max-width: 360px; font-size: 13px; color: var(--muted); }
+  .reports td.changes-cell b { color: var(--text); font-weight: 600; }
+  .reports .act form { display: inline; margin: 0 0 0 6px; }
+  .empty-state { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 
-  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; }
-  .s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s6 { grid-column: span 6; }
-  .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
-  .s5 { grid-column: span 5; align-self: stretch; } .s7 { grid-column: span 7; }
-  .ch-m { display: none; }
-  .stack-col { display: grid; gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px;
-    box-shadow: 0 1px 2px rgba(11, 11, 11, .04); min-width: 0; }
-  .card.flush { padding: 0; overflow: hidden; }
-  .card.flush .card-head { padding: 16px 18px 12px; margin: 0; }
-  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-  .card-foot { padding: 12px 18px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); }
-
-  .kpi { display: flex; flex-direction: column; gap: 8px; min-height: 148px; align-self: stretch; }
-  .k-label { color: var(--text-2); font-size: 13px; }
-  .k-val { font-size: 30px; font-weight: 650; letter-spacing: -.02em; line-height: 1.1; }
-  .k-foot { font-size: 12px; color: var(--muted); }
-  .k-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
-  .k-list li { display: flex; align-items: center; gap: 8px; } .k-list b { margin-left: auto; color: var(--text); }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .delta { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 600; }
-  .mini-cols { display: flex; align-items: flex-end; gap: 4px; height: 36px; }
-  .mini-cols span { flex: 1; background: var(--age-1); border-radius: 3px 3px 0 0; max-width: 24px; }
-  .mini-cols span.on { background: var(--series-1); }
-  .spark { display: block; overflow: visible; }
-
-  .stack { display: flex; width: 100%; background: var(--card); }
-  .stack span { display: block; min-width: 3px; }
-  .stack span:first-child { border-radius: 4px 0 0 4px; } .stack span:last-child { border-radius: 0 4px 4px 0; }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-top: 8px; }
-  .legend.tight { margin: 8px 0 14px; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
-  .legend i.ln { height: 2px; width: 14px; border-radius: 1px; vertical-align: 3px; }
-  .legend.wrap3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 12px 0 4px; }
-  .legend b { color: var(--text); font-weight: 600; }
-
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
-  .chips a { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--text-2); }
-  .chips a.on { background: var(--text); color: var(--card); border-color: var(--text); }
-
-  .tbl { width: 100%; border-collapse: collapse; }
-  .tbl th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); padding: 8px 12px;
-    border-bottom: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
-  .tbl td { white-space: nowrap; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  .tbl tr:last-child td { border-bottom: 0; }
-  .tbl tbody tr:hover { background: var(--surface); }
-  .tbl td:first-child { box-shadow: inset 3px 0 0 transparent; }
-  .tbl tr.row-attention td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
-  .tbl tr.row-watch td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
-  .tbl td b { font-weight: 600; } .tbl .r, .tbl td.num { text-align: right; } .tbl .c { text-align: center; }
-  .tbl td.num small { font-weight: 600; }
-  .tbl td small { display: block; }
-  .tbl td.num small { display: inline; margin-left: 8px; }
-  .tbl .empty { color: var(--muted); font-style: italic; }
-  .meter { width: 64px; height: 6px; background: var(--surface-2); border-radius: 3px; display: inline-block; margin-right: 8px; vertical-align: middle; }
-  .meter span { display: block; height: 100%; border-radius: 3px; }
-  .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
-    background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; }
-  .count.crit { background: var(--critical); }
-  .fresh { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 13px; white-space: nowrap; }
-  .fresh.bad { color: var(--critical); font-weight: 600; }
-  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 3px 9px 3px 8px;
-    border-radius: 999px; background: var(--surface-2); white-space: nowrap; }
-  .pill i { width: 7px; height: 7px; border-radius: 50%; }
-
-  .feed { list-style: none; margin: 0; padding: 0; }
-  .feed li { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); align-items: start; }
-  .feed li:first-child { border-top: 0; padding-top: 0; }
-  .feed b { display: block; font-weight: 600; font-size: 13px; } .feed span { color: var(--text-2); font-size: 13px; }
-  .feed time { color: var(--muted); font-size: 12px; } .ico { padding-top: 2px; }
-  .st { display: grid; grid-template-columns: 96px 1fr 28px; gap: 10px; align-items: center; margin-bottom: 10px; font-size: 13px; }
-  .st-n { text-align: right; color: var(--text-2); }
-
-  .bcards { display: grid; gap: 0; }
-  .bcard { padding: 14px 16px; border-top: 1px solid var(--line); }
-  .bc-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-  .bc-mid { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
-  .bc-mid .big { font-size: 18px; font-weight: 650; } .bc-mid small { text-align: right; font-weight: 600; }
-  .bc-stats { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
-  .bc-stats b { color: var(--text); }
-  .m-only { display: none; }
-
-  .back { display: inline-block; margin-bottom: 12px; font-size: 13px; }
-  .co-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-  .co-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 18px 0 16px; overflow-x: auto; scrollbar-width: none; }
-  .tabs a { padding: 10px 14px; color: var(--text-2); white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-  .tabs a.on { color: var(--text); font-weight: 600; border-color: var(--text); }
-  .changes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-  .chg { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; background: var(--card);
-    border: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
-  .chg b { color: var(--text); }
-  .chg svg { flex: none; } .c-critical svg { color: var(--critical); } .c-serious svg { color: var(--serious); } .c-warning svg { color: var(--warning); }
-  .chg-note { color: var(--muted); font-size: 12px; }
-
-  .hero-line { display: flex; align-items: baseline; gap: 12px; margin: 6px 0 0; flex-wrap: wrap; }
-  .hero { font-size: 34px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: normal; }
-  .hero.sm { font-size: 26px; }
-  .chart { width: 100%; height: auto; display: block; margin-top: 4px; overflow: visible; }
+  /* Server-rendered chart widgets (report/dashboard_charts.py). */
+  .chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart .grid { stroke: var(--line-soft); }
+  .chart .baseline { stroke: var(--line-strong); }
   .chart .tick { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
   .chart .val { font-size: 12px; font-weight: 600; fill: var(--text); }
   .chart .hit:hover path { filter: brightness(.92); }
-  .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; gap: 12px; }
-  .facts span { display: block; font-size: 12px; color: var(--muted); } .facts b { font-weight: 600; }
-  .facts small { display: inline; font-size: 12px; }
-
-  .inds { display: grid; gap: 2px; }
-  .ind { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(60px, 1fr) 52px 12px; gap: 10px; align-items: center; padding: 7px 0;
-    border-top: 1px solid var(--line); font-size: 13px; }
-  .ind-name { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ind-val { text-align: right; font-weight: 600; } .ind-st { font-size: 12px; line-height: 1; }
-  .bullet { position: relative; height: 8px; border-radius: 4px; overflow: visible; background: var(--surface-2); }
+  .ch-m { display: none; }
+  @media (max-width: 640px) { .ch-d { display: none; } .ch-m { display: block; } }
+  .spark { display: block; overflow: visible; margin-top: 4px; }
+  .stack { display: flex; width: 100%; }
+  .stack span { display: block; min-width: 3px; }
+  .stack span:first-child { border-radius: 4px 0 0 4px; } .stack span:last-child { border-radius: 0 4px 4px 0; }
+  .legend.wrap3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; margin: 12px 0 4px; }
+  .legend b { color: var(--text); font-weight: 600; }
+  @media (max-width: 640px) { .legend.wrap3 { grid-template-columns: 1fr 1fr; } }
+  .bullet { position: relative; height: 8px; border-radius: 4px; background: var(--surface-2); }
   .band { position: absolute; top: 0; bottom: 0; }
   .band:first-child { border-radius: 4px 0 0 4px; } .band:last-of-type { border-radius: 0 4px 4px 0; }
-  .b-good { background: rgba(12, 163, 12, .22); } .b-warning { background: rgba(250, 178, 25, .32); } .b-critical { background: rgba(208, 59, 59, .22); }
-  .bullet .mark { position: absolute; top: -4px; width: 3px; height: 16px; margin-left: -1.5px; border-radius: 2px; background: var(--text);
-    box-shadow: 0 0 0 2px var(--card); }
-
-  .hb { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 52px; gap: 10px; align-items: center; margin: 9px 0; font-size: 13px; }
+  .b-good { background: rgba(22, 163, 74, .22); } .b-warning { background: rgba(217, 119, 6, .28); } .b-critical { background: rgba(220, 38, 38, .22); }
+  .bullet .mark { position: absolute; top: -4px; width: 3px; height: 16px; margin-left: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--card); display: block; }
+  .hb { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 72px; gap: 10px; align-items: center; margin: 9px 0; font-size: 13px; }
   .hb-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
   .hb-track { height: 8px; background: var(--surface-2); border-radius: 4px; }
   .hb-fill { display: block; height: 100%; border-radius: 0 4px 4px 0; }
   .hb-val { text-align: right; font-weight: 600; }
-
-  .cycle { display: grid; gap: 8px; margin-top: 4px; }
-  .cy-row { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }
-  .cy-track { position: relative; height: 22px; }
-  .cy-seg { position: absolute; top: 0; bottom: 0; border-radius: 4px; color: #fff; font-size: 11px; font-weight: 600;
-    display: flex; align-items: center; padding-left: 8px; font-variant-numeric: tabular-nums; }
-  .cy-seg.neg { background: var(--series-2); }
-  .cy-axis { display: grid; grid-template-columns: 112px 54fr 95fr; gap: 0 10px; font-size: 11px; color: var(--muted); }
-  .cy-axis span:first-child { grid-column: 2; grid-row: 1; } .cy-axis span:nth-child(2) { grid-column: 3; grid-row: 1; }
-  .cy-axis span:last-child { grid-column: 3; grid-row: 1; text-align: right; }
+  .cycle { display: grid; gap: 8px; }
+  .cy-row { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); }
+  .cy-track { position: relative; height: 24px; }
+  .cy-seg { position: absolute; top: 0; bottom: 0; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 600; display: flex; align-items: center; padding-left: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .cy-row.tot { border-top: 1px solid var(--line); padding-top: 8px; color: var(--text); font-weight: 600; }
-
-  .flags { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .flags li { padding: 8px 10px 8px 12px; border-radius: 6px; background: var(--surface); border-left: 3px solid; font-size: 13px; }
-  .flags b { display: block; } .flags span { color: var(--text-2); }
-  .f-critical { border-color: var(--critical) !important; } .f-serious { border-color: var(--serious) !important; }
   .emis { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; }
   .emi { height: 14px; border-radius: 3px; background: var(--good); opacity: .75; }
   .emi.late { background: var(--critical); opacity: 1; }
-  .dues { display: flex; gap: 16px; font-size: 13px; color: var(--text-2); } .dues b { color: var(--text); margin-left: 4px; }
-
-  .msme .wrap { max-width: 1120px; }
-  .m-bar { justify-content: space-between; }
-  .greet { font-size: 26px; margin: 4px 0 16px; }
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .tile { display: flex; flex-direction: column; gap: 4px; min-height: 132px; }
-  .t-ico { width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); display: grid; place-items: center; color: var(--text-2); margin-bottom: 4px; flex: none; }
-  .t-val { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
-  .t-sub { font-size: 12px; color: var(--muted); }
-  .todo { list-style: none; margin: 0; padding: 0; }
-  .todo li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
-  .todo li:first-child { border-top: 0; padding-top: 0; }
-  .todo b { display: block; font-weight: 600; } .todo span { color: var(--text-2); font-size: 13px; }
-  .heat { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; }
-  .heat span { height: 44px; border-radius: 6px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; }
-  .heat em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--text); }
-  .heat em.lt { color: #fff; }
-  .heat-leg { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 10px; }
-  .ramp { width: 120px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--age-1), var(--age-6)); }
-  .bottom-nav { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--line); justify-content: space-around; padding: 8px 4px 10px; }
-  .bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); }
-  .bottom-nav a.on { color: var(--accent); }
-
-  @media (max-width: 1180px) {
-    .s3 { grid-column: span 6; } .s8, .s5, .s7 { grid-column: span 12; }
-    .tbl th:nth-child(5), .tbl td:nth-child(5) { display: none; }
-  }
-  @media (max-width: 900px) {
-    .s4, .s6, .s8 { grid-column: span 12; }
-    .msme .s4.tiles { grid-column: span 12; grid-template-columns: repeat(4, 1fr); }
-    .d-only { display: none; } .m-only { display: block; } .bottom-nav.m-only { display: flex; }
-    .tabs-top { display: none; }
-  }
-  @media (max-width: 640px) {
-    .wrap { padding: 16px; } .appbar { padding: 10px 16px; gap: 12px; }
-    .grid, .tiles, .stack-col { gap: 12px; }
-    .s3 { grid-column: span 6; }
-    .ch-d { display: none; } .ch-m { display: block; }
-    .k-label { font-size: 12px; } .k-list { font-size: 12px; } .k-list li { gap: 6px; }
-    .k-list li span:not(.dot) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .msme .s4.tiles { grid-template-columns: 1fr 1fr; }
-    .kpi { min-height: 0; padding: 14px; } .k-val { font-size: 24px; } .kpi .spark { width: 100%; }
-    .kpi .legend { display: none; }
-    .search { width: auto; flex: 1; } .brand em { display: none; }
-    .title-row .btn { padding: 8px 10px; }
-    .card { padding: 14px; } .hero { font-size: 28px; }
-    .facts { grid-template-columns: 1fr 1fr; }
-    .legend.wrap3 { grid-template-columns: 1fr 1fr; }
-    .co-head h1 { font-size: 20px; }
-    .tile { min-height: 0; padding: 14px; } .t-val { font-size: 19px; }
-    .heat span { height: 36px; }
-  }
-
-  .appbar { background: var(--brand); border-bottom: 0; color: #fff; }
-  .appbar .brand em { color: rgba(255, 255, 255, .6); }
-  .logo { background: var(--accent); color: #fff; }
-  .tabs-top a { color: rgba(255, 255, 255, .7); }
-  .tabs-top a.on { background: rgba(255, 255, 255, .12); color: #fff; }
-  .appbar .search { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .16); color: rgba(255, 255, 255, .7); }
-  .appbar .search input { color: #fff; } .appbar .search input::placeholder { color: rgba(255, 255, 255, .6); }
-  .appbar .fresh { color: rgba(255, 255, 255, .75); }
-  .card { border-color: var(--line); box-shadow: 0 1px 2px rgba(16, 24, 40, .05); }
-  .chips a.on { background: var(--accent); border-color: var(--accent); }
-  .pill.p-attention { background: rgba(217, 45, 32, .1); color: #a11b12; }
-  .pill.p-watch { background: rgba(242, 169, 0, .16); color: #7a5300; }
-  .pill.p-healthy { background: rgba(18, 161, 80, .12); color: #0b6b35; }
-  .tbl tbody tr:hover { background: #f8f9fc; }
-
-  .gtabs > input { position: absolute; opacity: 0; pointer-events: none; }
-  .gtabs > nav.tabs { margin-top: 18px; }
-  .gtabs > nav.tabs label { padding: 10px 14px; color: var(--text-2); white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
-  .gtabs > nav.tabs label:hover { color: var(--text); }
-  .gp { display: none; }
-  .mts { grid-column: span 12; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-  .mt { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
-    box-shadow: 0 1px 2px rgba(16, 24, 40, .05); min-width: 0; }
-  .mt-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .mt-label { font-size: 12px; color: var(--text-2); }
-  .mt-val { font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mt-sub { font-size: 12px; color: var(--muted); }
-  .mt .bullet { margin-top: 8px; } .mt .spark { margin-top: 6px; }
-  .mt-st { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-2); }
-  .mt-st i { width: 7px; height: 7px; border-radius: 50%; }
-  .facts.f2 { grid-template-columns: 1fr 1fr; }
-  .mb { display: grid; grid-template-columns: 70px 1fr; gap: 10px; align-items: center; margin: 12px 0; font-size: 13px; color: var(--text-2); }
-  .mb-bars { display: grid; gap: 4px; }
-  .mb-b { display: flex; align-items: center; height: 18px; border-radius: 0 4px 4px 0; padding-left: 6px; min-width: 40px; }
-  .mb-b em { font-style: normal; font-size: 11px; font-weight: 600; }
-  .mb-b.ly { background: var(--age-1); color: var(--text); } .mb-b.ty { background: var(--series-1); color: #fff; }
-  .rep { list-style: none; margin: 0; padding: 0; }
-  .rep li { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; }
-  .rep li:first-child { border-top: 0; padding-top: 0; } .rep span { color: var(--text-2); }
-  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 13px; }
-  .checks li::before { content: "✓"; color: var(--good); font-weight: 700; margin-right: 8px; }
-  .lowc { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--surface); border: 1px dashed var(--line); font-size: 13px; color: var(--text-2); }
+  .emi.na { background: var(--line); opacity: .6; }
+  .emi-lbl { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 11px; color: var(--muted); text-align: center; margin-top: 4px; }
+  .hero-line { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .hero { font-family: var(--display); font-size: 28px; font-weight: 650; letter-spacing: -.015em; }
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid var(--line-soft); margin-top: 14px; padding-top: 14px; }
+  .facts span { display: block; font-size: 13px; color: var(--muted); } .facts b { font-weight: 600; }
+  .lowc { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface); border: 1px dashed var(--line-strong); font-size: 13px; color: var(--text-2); }
   .lowc b { display: block; color: var(--text); }
-  .emi-lbl { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px; }
-  .watch { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .watch li { padding: 10px 12px; border-radius: 8px; background: var(--surface); font-size: 13px; border-left: 3px solid var(--series-2); }
-  .watch b { display: block; } .watch span { color: var(--text-2); }
-  .card.flush .tbl { margin: 0; }
-  @media (max-width: 1180px) { .mts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 900px) {
-    .msme .bottom-nav { display: none; }
-    .mtabs > nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; margin: 0; background: var(--card);
-      border-top: 1px solid var(--line); border-bottom: 0; justify-content: space-around; padding: 4px 0 8px; }
-    .mtabs > nav.tabs label { border-bottom: 0; border-top: 2px solid transparent; padding: 8px 6px; font-size: 12px; }
-    .mtabs .gps { padding-bottom: 64px; }
-  }
-  @media (max-width: 640px) {
-    .mts { gap: 12px; } .mt { padding: 12px; } .mt-val { font-size: 18px; }
-    .rep li { grid-template-columns: 1fr auto; } .rep li span { display: none; }
-  }
-
-  .scrollx { overflow-x: auto; }
-
-  a.name { color: var(--text); font-weight: 600; text-decoration: none; }
-  details.manage { margin: 18px 0; }
-  details.manage > summary { cursor: pointer; font-weight: 600; padding: 10px 14px; background: var(--card);
-    border: 1px solid var(--line); border-radius: 8px; list-style: none; }
-  details.manage > summary::-webkit-details-marker { display: none; }
-  details.manage[open] > summary { border-radius: 8px 8px 0 0; }
-  .manage-body { border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; padding: 14px; display: grid; gap: 14px; }
-  .mpanel { background: var(--surface-2); border-radius: 8px; padding: 12px 14px; display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
-  .mpanel .k { font-size: 12px; color: var(--text-2); } .mpanel .v { font-weight: 600; }
-  .inline { display: inline; }
-  .warn { color: #6b4a00; font-weight: 600; }
-  .emi.na { background: var(--line); opacity: .4; }
-  .co-head h1 { margin: 0; }
-  .empty-state { padding: 40px 20px; text-align: center; color: var(--text-2); }
-  .empty-state .btn { margin-top: 10px; }
-  .tbl .changes-cell { max-width: 320px; }
-
-  .share-code { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 12px 0 0; }
-  .share-code .code { font-size: 28px; font-weight: 700; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+  h3.sub-h { margin: 18px 0 4px; }
 </style>
-<link rel="stylesheet" href="/static/app.css?v=2">
 </head>
 <body>
-<main class="wrap">
-  <header class="appbar">
-    <div class="brand"><span class="logo">{{ bank_name[:2]|upper }}</span><span>{{ bank_name }} <em>SME desk</em></span></div>
-    <a class="btn ghost" href="{{ '/admin/msmes/' ~ a.id if readonly|default(false) else '/bank' }}" style="margin-left:auto">← {{ "Back" if readonly|default(false) else "Portfolio" }}</a>
-  </header>
+{% set ro = readonly|default(false) %}
+{% macro pill(status) -%}
+<span class="pill {{ status }}"><i></i>{{ {"attention": "Attention", "watch": "Watch", "healthy": "Healthy", "nodata": "No data", "awaiting_data": "Awaiting data"}.get(status, status|replace("_", " ")|capitalize) }}</span>
+{%- endmacro %}
+{% macro tile_status(st) -%}
+{% if st %}<span class="sev {{ {'green': 'good', 'amber': '', 'red': 'crit', 'na': 'na'}[st] }}">{{ STATUS_WORD[st] }}</span>{% endif %}
+{%- endmacro %}
+{% macro red_flags(flags) -%}
+<ul class="flags">{% for f in flags %}<li class="f-{{ f.severity }}"><b>{{ f.title }}</b><span>{{ f.detail }}</span></li>{% endfor %}</ul>
+{%- endmacro %}
+{% macro data_feed() -%}
+<section class="card pad" aria-label="Data feed">
+  <h2>Data feed</h2>
+  <div class="kv"><span>Updates</span><span class="{{ 'on-good' if a.monitoring_status == 'active' }}">{{ (monitoring_label ~ " · on") if a.monitoring_status == "active" else (monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered")) }}</span></div>
+  <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when if a.last_report_at else "Never" }}</span></div>
+  {% if a.monitor_last_seen_at %}<div class="kv"><span>Connector last seen</span><span>{{ a.monitor_last_seen_at|when }}</span></div>{% endif %}
+  {% if ready and ready[0].period_to %}<div class="kv"><span>Books up to</span><span>{{ ready[0].period_to }}</span></div>{% endif %}
+  <div class="kv"><span>Reports received</span><span>{{ reports|length }}</span></div>
+  <div class="kv"><span>Applicant email</span><span>{{ a.contact_email or "Not set" }}</span></div>
+  {% if a.otp_verified_at %}<div class="kv"><span>Consent verified</span><span>{{ a.otp_verified_at|when }}</span></div>{% endif %}
+</section>
+{%- endmacro %}
+{% set ready = reports|selectattr("status", "equalto", "ready")|list %}
+{% set overview = company.groups[0] if company else none %}
+{% set data_group = company.groups|selectattr("key", "equalto", "data")|first if company else none %}
+<div class="shell">
+  <aside class="side">
+    <div class="who"><span class="mark">{{ (bank_name.split()|map("first")|join)[:2]|upper }}</span><div><b>{{ bank_name }}</b><small>SME desk</small></div></div>
+    <nav aria-label="Main">
+      {% if ro %}
+      <a href="/admin/msmes/{{ a.id }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Back to admin</a>
+      {% else %}
+      <a href="/bank" class="on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Portfolio</a>
+      <a href="/bank?filter=alerts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/></svg>Alerts</a>
+      {% endif %}
+    </nav>
+    <div class="foot"><span class="product">TallyVeda</span></div>
+  </aside>
 
-  <div class="co-head">
-    <div><h1>{{ a.applicant_name }}</h1>
-      <p class="sub">{{ a.reference or "" }}{% if a.company_name %} · Tally company: {{ a.company_name }}{% endif %}
-        {% if a.consent_name %} · consent by {{ a.consent_name }}{% endif %}</p></div>
-    <div class="co-meta">
-      {% if company %}{{ health_pill(company.status)|safe }}{% endif %}
-      <span class="fresh">{{ "Updated " ~ (a.last_report_at|when) if a.last_report_at else "No data yet" }}{% if a.monitoring_status == "active" %} · daily{% endif %}</span>
-      {% if a.latest_report_id %}<a class="btn ghost" href="/bank/applications/{{ a.id }}/report">Full credit report</a>{% endif %}
+  <main class="work">
+    <header style="display:flex;flex-direction:column;gap:14px">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        {% if ro %}<a href="/admin/msmes/{{ a.id }}">Admin</a>{% else %}<a href="/bank">Portfolio</a>{% endif %}<span>/</span><span>{{ a.applicant_name }}</span>
+      </nav>
+      <div class="head">
+        <div>
+          <div class="title-line"><h1>{{ a.applicant_name }}</h1>{{ pill(company.status if company else a.status) }}</div>
+          <div class="meta">
+            {% if a.reference %}<span>{{ a.reference }}</span>{% endif %}
+            {% if a.company_name %}<span>Tally: {{ a.company_name }}</span>{% endif %}
+            {% if a.consent_name %}<span>Consent by {{ a.consent_name }}</span>{% endif %}
+            <span>{% if a.last_report_at %}{{ "Updated daily · last " if a.monitoring_status == "active" else "Updated " }}{{ a.last_report_at|when }}{% else %}No data yet{% endif %}</span>
+          </div>
+        </div>
+        <div class="actions">
+          {% if not ro and a.monitoring_status == "active" %}
+          <form method="post" action="/bank/applications/{{ a.id }}/monitoring/refresh" style="margin:0"><button class="btn ghost" type="submit"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Refresh now</button></form>
+          {% endif %}
+          {% if not ro %}
+          <a class="btn ghost" href="#manage" onclick="document.getElementById('manage').open = true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Manage</a>
+          {% endif %}
+          {% if a.latest_report_id %}<a class="btn" href="/bank/applications/{{ a.id }}/report">Full credit report</a>{% endif %}
+        </div>
+      </div>
+      {% if company %}
+      <nav class="utabs" aria-label="Sections">
+        {% for g in company.groups %}
+        <a class="{{ 'on' if g.key == active_tab }}" href="/bank/applications/{{ a.id }}?tab={{ g.key }}"{% if g.key == active_tab %} aria-current="page"{% endif %}>{{ g.label }}{% if g.key == "data" and g.charts.red_flags %}<span class="n">{{ g.charts.red_flags|length }}</span>{% endif %}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+    </header>
+
+    {% if sync %}
+    <div class="notice warn">
+      {% if sync.mode == "full" %}Receiving the books from Tally: {{ sync.months_done }} of {{ sync.months_total }} months received{% if not sync.have_masters %} (ledgers not yet received){% endif %}.
+      The report is built once every month has arrived.{% else %}Receiving today's update from Tally.{% endif %}
+      Last activity {{ sync.updated_at|when }}.
     </div>
-  </div>
-
-{% if sync %}
-  <div class="syncnote">
-    {% if sync.mode == "full" %}Receiving the books from Tally: {{ sync.months_done }} of {{ sync.months_total }} months received{% if not sync.have_masters %} (ledgers not yet received){% endif %}.
-    The report is built once every month has arrived.{% else %}Receiving today's update from Tally.{% endif %}
-    Last activity {{ sync.updated_at|when }}.
-  </div>
-  {% endif %}
-
-  {% if not readonly|default(false) %}
-  <details class="manage"{% if not company %} open{% endif %}>
-    <summary>Manage (code, monitoring, MSME login)</summary>
-    <div class="manage-body">
-      <div class="mpanel">
-        <div><div class="k">One-time code</div><div class="v">{% if a.code %}<span class="code">{{ a.code|code }}</span>{% else %}used{% endif %}</div></div>
-        <form class="inline" method="post" action="/bank/applications/{{ a.id }}/code"><button class="btn" type="submit">{{ "New code" if a.code else "Request again" }}</button></form>
-      </div>
-      <div class="mpanel">
-        <div><div class="k">Applicant's email (for consent verification)</div>
-          <div class="v">{{ a.contact_email or "Not set" }}{% if a.otp_verified_at %} · consent verified {{ a.otp_verified_at|when }}{% endif %}</div></div>
-        <form class="inline" method="post" action="/bank/applications/{{ a.id }}/contact"><input name="contact_email" type="email" value="{{ a.contact_email or "" }}" placeholder="owner@company.in" required> <button class="btn" type="submit">Save</button></form>
-      </div>
-      <div class="mpanel">
-        <div><div class="k">Daily monitoring</div><div class="v">{{ monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered") }}</div></div>
-        {% if a.monitoring_status == "active" %}
-        <div><div class="k">Last data received</div><div class="v">{{ a.last_report_at|when }}</div></div>
-        <div><div class="k">Client last checked in</div><div class="v">{{ a.monitor_last_seen_at|when }}</div></div>
-        <div><div class="k">Next refresh</div><div class="v">{{ "Requested, on next check-in" if a.force_refresh else ("Due now" if due else "A day after the last report") }}</div></div>
-        <form class="inline" method="post" action="/bank/applications/{{ a.id }}/monitoring/refresh"><button class="btn" type="submit">Refresh now</button></form>
-        <form class="inline" method="post" action="/bank/applications/{{ a.id }}/monitoring/stop" onsubmit="return confirm('Stop daily updates from this client?')"><button class="btn" type="submit">Stop monitoring</button></form>
-        {% endif %}
-      </div>
-      {% if overdue %}<p class="warn">No data for over {{ overdue_days }} days: the client's computer or Tally may be off.</p>{% endif %}
-      <div class="mpanel">
-        <div><div class="k">MSME dashboard login</div><div class="v">{{ "Issued: " + msme_login.username if msme_login else "Not issued" }}</div></div>
-        <form class="inline" method="post" action="/bank/applications/{{ a.id }}/msme-login"><button class="btn" type="submit">{{ "Reset password" if msme_login else "Create login" }}</button></form>
-        <span class="muted small">Gives the applicant their own read-only view at /msme. The password is shown once, right after creating or resetting it.</span>
-      </div>
-      <div>
-        <h3>Reports</h3>
-        <div class="scrollx"><table class="tbl">
-          <thead><tr><th>Received</th><th>Type</th><th>Books up to</th><th>Status</th><th>Changes vs previous</th><th></th></tr></thead>
-          <tbody>
-          {% for r in reports %}
-          <tr>
-            <td>{{ r.created_at|when }}</td>
-            <td>{{ "First upload" if r.source == "initial" else "Refresh" }}</td>
-            <td>{{ r.period_to or "" }}</td>
-            <td>{{ r.status }}{% if r.error %}<div class="muted">{{ r.error }}</div>{% endif %}</td>
-            <td class="changes-cell">
-              {% for f in r.alerts[:3] %}<div class="muted small"><b style="color:var(--text)">{{ f.title }}</b> {{ f.detail }}</div>{% endfor %}
-              {% if r.alerts|length > 3 %}<div class="muted small">+{{ r.alerts|length - 3 }} more</div>{% endif %}
-              {% if r.status == "ready" and not r.alerts %}<span class="muted small">{{ "—" if loop.last else "No material changes" }}</span>{% endif %}
-            </td>
-            <td>
-              {% if r.status == "ready" %}<a class="btn" href="/bank/reports/{{ r.id }}">View</a>{% endif %}
-              {% if r.has_raw %}<form class="inline" method="post" action="/bank/reports/{{ r.id }}/recompute"><button class="btn" type="submit">Recompute</button></form>{% endif %}
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="6" class="muted">No data received yet.</td></tr>
-          {% endfor %}
-          </tbody>
-        </table></div>
-      </div>
-    </div>
-  </details>
-  {% endif %}
-
-  {% if not company %}
-  <div class="card empty-state">
-    <h2>No report yet</h2>
-    {% if a.code %}
-    <p class="muted">Send {{ a.applicant_name }} this code and the Tally Connector. They enter it in the connector to share their books.</p>
-    <p class="share-code"><span class="code">{{ a.code|code }}</span><span class="muted small">works once · valid until {{ a.code_expires_at|when }} UTC</span></p>
-    {% else %}
-    <p class="muted">Waiting for the first upload from the connector. The code has been used; use Manage → Request again for a new one.</p>
     {% endif %}
-  </div>
-  {% else %}
-  <nav class="tabs">
-    {% for g in company.groups %}
-    <a class="{{ 'on' if g.key == active_tab }}" href="/bank/applications/{{ a.id }}?tab={{ g.key }}">{{ g.label }}</a>
-    {% endfor %}
-  </nav>
+    {% if overdue %}<div class="notice bad">No data for over {{ overdue_days }} days: the client's computer or Tally may be off.</div>{% endif %}
 
-  {% for g in company.groups if g.key == active_tab %}
-  <div class="grid">
-    <div class="mts">
+
+    {% if company %}
+    {% for g in company.groups if g.key == active_tab %}
+    {% set n = g.tiles|length %}
+    <section class="strip kstrip" aria-label="Key numbers" style="--cols: {{ n if n <= 6 else 4 }}">
       {% for t in g.tiles %}
-      <div class="mt">
-        <div class="mt-top"><span class="mt-label">{{ t.label }}</span>
-          {% if t.status %}<span class="mt-st" title="{{ STATUS_WORD[t.status] }}"><i style="background:var(--{{ {'green':'good','amber':'warning','red':'critical','na':'muted'}[t.status] }})"></i>{{ STATUS_WORD[t.status] }}</span>{% endif %}</div>
-        <span class="mt-val num">{{ t.value }}</span>
-        {% if t.context %}<span class="mt-sub">{{ t.context }}</span>{% endif %}
+      <div>
+        <span class="stat-l">{{ t.label }}{{ tile_status(t.status) }}</span>
+        <span class="stat-v" title="{{ t.value }}">{{ t.value }}</span>
+        {% if t.context %}<span class="stat-s">{{ t.context }}</span>{% endif %}
         {% if t.gauge %}{{ bullet_gauge(t.gauge.value, t.gauge.lo, t.gauge.hi, t.gauge.bands, label=t.label ~ ": " ~ t.value)|safe }}{% endif %}
         {% if t.sparkline %}{{ spark(t.sparkline)|safe }}{% endif %}
       </div>
       {% endfor %}
+    </section>
+
+    <div class="split">
+      <div class="main-col">
+        {% if g.key == "overview" %}
+        <section class="card flush" aria-label="What changed since yesterday">
+          <div class="card-head"><h2>What changed since yesterday</h2>
+            <span class="note">Since yesterday's update{% if ready|length > 1 %} · report of {{ ready[0].created_at|day }} vs {{ ready[1].created_at|day }}{% endif %}</span></div>
+          {% if g.charts.since_yesterday %}
+          <ul class="list changes">
+            {% for ch in g.charts.since_yesterday %}
+            <li><span class="sev {{ 'crit' if ch.severity == 'high' }}">{{ "Critical" if ch.severity == "high" else "Watch" }}</span><span class="t">{{ ch.title }}</span><span class="d">{{ ch.detail }}</span></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="empty">No material changes since the previous report.</p>
+          {% endif %}
+        </section>
+        <section class="card pad">
+          <div class="card-head"><h2>Monthly sales</h2>
+            <div class="legend"><span><i style="background:var(--series-1)"></i>This year</span>{% if g.charts.monthly_sales_ly %}<span><i class="line" style="background:var(--series-2)"></i>Last year</span>{% endif %}</div></div>
+          {{ monthly_chart(g.charts.monthly_sales, g.charts.monthly_sales_months|map("replace", " 20", " \'")|list, last_year=g.charts.monthly_sales_ly)|safe }}
+        </section>
+        {% endif %}
+
+        {% if g.key == "sales" %}
+        <section class="card pad">
+          <div class="card-head"><h2>Monthly sales</h2>
+            <div class="legend"><span><i style="background:var(--series-1)"></i>This year</span>{% if g.charts.monthly_sales_ly %}<span><i class="line" style="background:var(--series-2)"></i>Last year</span>{% endif %}</div></div>
+          {{ monthly_chart(g.charts.monthly_sales, g.charts.monthly_sales_months|map("replace", " 20", " \'")|list, last_year=g.charts.monthly_sales_ly)|safe }}
+        </section>
+        {% if g.charts.retention %}
+        <section class="card pad">
+          <div class="card-head"><h2>Customer retention</h2></div>
+          <p class="hero-line"><span class="hero num">{{ g.charts.retention.net_revenue_retention|pct }}</span><span class="muted">of last year's sales from customers still buying</span></p>
+          {{ stacked_bar([(g.charts.retention.net_revenue_retention, "var(--series-1)", "Retained"), (1 - g.charts.retention.net_revenue_retention, "var(--line)", "Lost")], height=12)|safe if g.charts.retention.net_revenue_retention is not none }}
+          <div class="facts"><div><span>New customers</span><b>{{ g.charts.retention.new }}</b></div><div><span>Lost customers</span><b>{{ g.charts.retention.lost }}</b></div></div>
+        </section>
+        {% endif %}
+        {% endif %}
+
+        {% if g.key == "profit" %}
+        <section class="card pad">
+          <div class="card-head"><h2>Profitability</h2></div>
+          <p class="muted">The key profit figures for the last 12 months are above. See the full credit report for the profit and loss statement.</p>
+        </section>
+        {% endif %}
+
+        {% if g.key == "recv" %}
+        {% set bar, leg = ageing_stack(g.charts.ageing) %}
+        <section class="card pad">
+          <div class="card-head"><h2>Receivables ageing</h2></div>
+          {{ bar|safe }}<div class="legend wrap3">{{ leg|safe }}</div>
+          <h3 class="sub-h">Largest balances</h3>
+          {{ hbars(g.charts.largest, value_fmt=inr, color="var(--age-4)")|safe }}
+        </section>
+        {% endif %}
+
+        {% if g.key == "pay" %}
+        {% set bar, leg = ageing_stack(g.charts.ageing) %}
+        <section class="card pad">
+          <div class="card-head"><h2>Payables ageing</h2></div>
+          {{ bar|safe }}<div class="legend wrap3">{{ leg|safe }}</div>
+          <h3 class="sub-h">Largest balances</h3>
+          {{ hbars(g.charts.largest, value_fmt=inr, color="var(--series-2)")|safe }}
+        </section>
+        {% endif %}
+
+        {% if g.key == "wc" %}
+        {% set total = (g.charts.cycle.dio or 0) + (g.charts.cycle.dso or 0) %}
+        <section class="card pad">
+          <div class="card-head"><h2>Cash cycle</h2></div>
+          <div class="cycle">
+            <div class="cy-row"><span>Stock held</span><div class="cy-track"><span class="cy-seg" style="left:0;width:{{ ((g.charts.cycle.dio or 0) / total * 100) if total else 0 }}%;background:var(--age-4)">{{ g.charts.cycle.dio|days }}</span></div></div>
+            <div class="cy-row"><span>Customers pay</span><div class="cy-track"><span class="cy-seg" style="left:{{ ((g.charts.cycle.dio or 0) / total * 100) if total else 0 }}%;width:{{ ((g.charts.cycle.dso or 0) / total * 100) if total else 0 }}%;background:var(--age-6)">{{ g.charts.cycle.dso|days }}</span></div></div>
+            <div class="cy-row"><span>Supplier credit</span><div class="cy-track"><span class="cy-seg" style="left:0;width:{{ ((g.charts.cycle.dpo or 0) / total * 100) if total else 0 }}%;background:var(--series-2)">{{ g.charts.cycle.dpo|days }}</span></div></div>
+            <div class="cy-row tot"><span>Cash tied up</span><div class="cy-track"><span class="cy-seg" style="left:{{ ((g.charts.cycle.dpo or 0) / total * 100) if total else 0 }}%;width:{{ ((g.charts.cycle.ccc or 0) / total * 100) if total else 0 }}%;background:var(--brand)">{{ g.charts.cycle.ccc|days }}</span></div></div>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if g.key == "debt" %}
+        <section class="card flush">
+          <div class="card-head"><h2>Loans</h2></div>
+          <div class="scrollx"><table class="tbl"><thead><tr><th>Lender / ledger</th><th>Type</th><th class="num">Outstanding</th><th class="num">Repaid, 12 mo</th></tr></thead><tbody>
+          {% for l in g.charts.loans %}<tr><td><b>{{ l.name }}</b></td><td>{{ l.type }}</td><td class="num">{{ l.outstanding|inr }}</td><td class="num">{{ l.repaid|inr if l.repaid else "—" }}</td></tr>
+          {% else %}<tr><td colspan="4" class="empty">No loans found in the books.</td></tr>{% endfor %}
+          </tbody></table></div>
+        </section>
+        <section class="card pad">
+          <div class="card-head"><h2>Repayment record</h2>{% if g.charts.emi %}<div class="legend"><span><i style="background:var(--good)"></i>On time</span><span><i style="background:var(--critical)"></i>Late</span><span><i style="background:var(--line)"></i>No repayment</span></div>{% endif %}</div>
+          {% if g.charts.emi %}<div class="emis">{{ emi_grid(g.charts.emi, g.charts.emi_months)|safe }}</div>
+          <div class="emi-lbl">{% for mk in g.charts.emi_months %}<span>{{ month_label(mk)[:1] }}</span>{% endfor %}</div>
+          {% else %}<p class="muted">No term loans with regular repayments found.</p>{% endif %}
+        </section>
+        {% endif %}
+
+        {% if g.key == "bank" %}
+        <section class="card pad">
+          <div class="card-head"><h2>Month-end bank balance</h2><span class="note">₹</span></div>
+          {{ monthly_chart(g.charts.balance_values, g.charts.balance_months|map("replace", " 20", " \'")|list)|safe }}
+        </section>
+        {% endif %}
+
+        {% if g.key == "tax" %}
+        <section class="card pad">
+          <div class="card-head"><h2>GST collected each month</h2><span class="note">₹</span></div>
+          {{ monthly_chart(g.charts.gst_values, g.charts.gst_months|map("replace", " 20", " \'")|list)|safe }}
+        </section>
+        {% endif %}
+
+        {% if g.key == "data" %}
+        <section class="card flush">
+          <div class="card-head"><h2>Red flags</h2>{% if g.charts.red_flags %}<span class="count">{{ g.charts.red_flags|length }}</span>{% endif %}</div>
+          {% if g.charts.red_flags %}{{ red_flags(g.charts.red_flags) }}{% else %}<p class="empty">No red flags.</p>{% endif %}
+        </section>
+        {% if g.charts.related_party %}
+        <section class="card pad">
+          <div class="card-head"><h2>Low confidence</h2></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+          {% for rp in g.charts.related_party %}<p class="lowc"><b>Possible related party</b> {{ rp.name }} ({{ rp.category }}): name overlap with the company's own name only; Tally has no address or director field to check further.</p>{% endfor %}
+          </div>
+        </section>
+        {% endif %}
+        {% endif %}
+      </div>
+
+      <aside class="rail">
+        {% set mix = overview.charts.indicator_mix %}
+        {% set checks = (mix.green or 0) + (mix.amber or 0) + (mix.red or 0) %}
+        <section class="card pad" aria-label="Bank policy indicators">
+          <div class="card-head"><h2>Bank policy indicators</h2><span class="note">{{ checks }} check{{ "s" if checks != 1 }}</span></div>
+          <div class="bar-mix" style="height:10px" title="{{ mix.green }} green · {{ mix.amber }} amber · {{ mix.red }} red">
+            {% for v, c in [(mix.green, "var(--good)"), (mix.amber, "var(--warning)"), (mix.red, "var(--critical)")] if v %}<span style="flex:{{ v }};background:{{ c }}"></span>{% endfor %}
+          </div>
+          <div class="mix-legend"><span><b>{{ mix.green }}</b> green</span><span><b>{{ mix.amber }}</b> amber</span><span><b>{{ mix.red }}</b> red</span>{% if a.latest_report_id %}<a href="/bank/applications/{{ a.id }}/report">View all</a>{% endif %}</div>
+        </section>
+
+        {% if active_tab != "data" %}
+        <section class="card flush" aria-label="Red flags">
+          <div class="card-head"><h2>Red flags</h2>{% if data_group.charts.red_flags %}<span class="count">{{ data_group.charts.red_flags|length }}</span>{% endif %}</div>
+          {% if overview.charts.red_flags %}
+          {{ red_flags(overview.charts.red_flags) }}
+          {% if data_group.charts.red_flags|length > overview.charts.red_flags|length %}<p style="padding:0 20px 14px"><a href="/bank/applications/{{ a.id }}?tab=data">See all {{ data_group.charts.red_flags|length }}</a></p>{% endif %}
+          {% else %}<p class="empty">No red flags.</p>{% endif %}
+        </section>
+        {% endif %}
+
+        {{ data_feed() }}
+      </aside>
     </div>
-
-    {% if g.key == "overview" %}
-    {% if g.charts.since_yesterday %}
-    <div class="card s12"><div class="card-head"><h2>Since yesterday</h2></div>
-      <div class="changes">
-        {% for ch in g.charts.since_yesterday %}<span class="chg c-{{ 'critical' if ch.severity == 'high' else 'warning' }}"><b>{{ ch.title }}</b> {{ ch.detail }}</span>{% endfor %}
-      </div></div>
-    {% endif %}
-    <div class="card s8"><div class="card-head"><h2>Monthly sales</h2>
-      <div class="legend"><span><i style="background:var(--series-1)"></i>This year</span>{% if g.charts.monthly_sales_ly %}<span><i class="ln" style="background:var(--series-2)"></i>Last year</span>{% endif %}</div></div>
-      {{ monthly_chart(g.charts.monthly_sales, g.charts.monthly_sales_months, last_year=g.charts.monthly_sales_ly)|safe }}</div>
-    <div class="card s4"><div class="card-head"><h2>Indicators</h2><span class="muted">bank policy</span></div>
-      {{ stacked_bar([
-          (g.charts.indicator_mix.green, "var(--good)", g.charts.indicator_mix.green ~ " green"),
-          (g.charts.indicator_mix.amber, "var(--warning)", g.charts.indicator_mix.amber ~ " amber"),
-          (g.charts.indicator_mix.red, "var(--critical)", g.charts.indicator_mix.red ~ " red"),
-        ], height=8)|safe }}
-      <div class="legend tight"><span><i style="background:var(--good)"></i>{{ g.charts.indicator_mix.green }} green</span>
-        <span><i style="background:var(--warning)"></i>{{ g.charts.indicator_mix.amber }} amber</span>
-        <span><i style="background:var(--critical)"></i>{{ g.charts.indicator_mix.red }} red</span></div></div>
-    <div class="card s6"><div class="card-head"><h2>Red flags</h2>{% if g.charts.red_flags %}<span class="count crit">{{ g.charts.red_flags|length }}</span>{% endif %}</div>
-      {% if g.charts.red_flags %}<ul class="flags">{% for f in g.charts.red_flags %}<li class="f-{{ f.severity }}"><b>{{ f.title }}</b><span>{{ f.detail }}</span></li>{% endfor %}</ul>
-      {% else %}<p class="muted">No red flags.</p>{% endif %}</div>
+    {% endfor %}
+    {% else %}
+    <div class="split">
+      <div class="main-col">
+        <section class="card pad empty-state">
+          <h2>No report yet</h2>
+          {% if a.code %}
+          <p class="muted">Send {{ a.applicant_name }} this code and the TallyVeda connector. They enter it in the connector to share their books.</p>
+          <p class="share-code"><span class="code">{{ a.code|code }}</span><span class="muted">works once · valid until {{ a.code_expires_at|when }} UTC</span></p>
+          {% else %}
+          <p class="muted">Waiting for the first upload from the connector. The code has been used; use Manage, then Request again, for a new one.</p>
+          {% endif %}
+        </section>
+      </div>
+      <aside class="rail">{{ data_feed() }}</aside>
+    </div>
     {% endif %}
 
-    {% if g.key == "sales" %}
-    <div class="card s8"><div class="card-head"><h2>Monthly sales</h2>
-      <div class="legend"><span><i style="background:var(--series-1)"></i>This year</span>{% if g.charts.monthly_sales_ly %}<span><i class="ln" style="background:var(--series-2)"></i>Last year</span>{% endif %}</div></div>
-      {{ monthly_chart(g.charts.monthly_sales, g.charts.monthly_sales_months, last_year=g.charts.monthly_sales_ly)|safe }}</div>
-    {% if g.charts.retention %}
-    <div class="card s4"><div class="card-head"><h2>Customer retention</h2></div>
-      <p class="hero-line"><span class="hero sm num">{{ g.charts.retention.net_revenue_retention|pct }}</span><span class="muted">of last year's sales from customers still buying</span></p>
-      {{ stacked_bar([(g.charts.retention.net_revenue_retention, "var(--series-1)", "Retained"), (1 - g.charts.retention.net_revenue_retention, "var(--line)", "Lost")], height=12)|safe if g.charts.retention.net_revenue_retention is not none }}
-      <div class="facts f2"><div><span>New customers</span><b>{{ g.charts.retention.new }}</b></div><div><span>Lost customers</span><b>{{ g.charts.retention.lost }}</b></div></div></div>
+    {% if not ro %}
+    <details class="panel" id="manage"{% if not company %} open{% endif %}>
+      <summary>Manage: code, monitoring, MSME login and reports</summary>
+      <div class="body">
+        <div class="mgrid">
+          <div class="mbox">
+            <h3>One-time code</h3>
+            <div class="v">{% if a.code %}<span class="code">{{ a.code|code }}</span>{% else %}Used{% endif %}</div>
+            <form method="post" action="/bank/applications/{{ a.id }}/code"><button class="btn ghost sm" type="submit">{{ "New code" if a.code else "Request again" }}</button></form>
+          </div>
+          <div class="mbox">
+            <h3>Applicant's email</h3>
+            <span class="muted">For consent verification. {{ a.contact_email or "Not set" }}{% if a.otp_verified_at %} · consent verified {{ a.otp_verified_at|when }}{% endif %}</span>
+            <form method="post" action="/bank/applications/{{ a.id }}/contact"><input name="contact_email" type="email" value="{{ a.contact_email or "" }}" placeholder="owner@company.in" aria-label="Applicant's email" required><button class="btn ghost sm" type="submit">Save</button></form>
+          </div>
+          <div class="mbox">
+            <h3>Daily monitoring</h3>
+            <div class="v">{{ monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered") }}</div>
+            {% if a.monitoring_status == "active" %}
+            <div>
+              <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when }}</span></div>
+              <div class="kv"><span>Client last checked in</span><span>{{ a.monitor_last_seen_at|when }}</span></div>
+              <div class="kv"><span>Next refresh</span><span>{{ "Requested, on next check-in" if a.force_refresh else ("Due now" if due else "A day after the last report") }}</span></div>
+            </div>
+            <div class="btns">
+              <form method="post" action="/bank/applications/{{ a.id }}/monitoring/refresh"><button class="btn ghost sm" type="submit">Refresh now</button></form>
+              <form method="post" action="/bank/applications/{{ a.id }}/monitoring/stop" onsubmit="return confirm('Stop daily updates from this client?')"><button class="btn warn sm" type="submit">Stop monitoring</button></form>
+            </div>
+            {% endif %}
+          </div>
+          <div class="mbox">
+            <h3>MSME dashboard login</h3>
+            <div class="v">{{ "Issued: " + msme_login.username if msme_login else "Not issued" }}</div>
+            <span class="muted">Gives the applicant their own read-only view at /msme. The password is shown once, right after creating or resetting it.</span>
+            <form method="post" action="/bank/applications/{{ a.id }}/msme-login"><button class="btn ghost sm" type="submit">{{ "Reset password" if msme_login else "Create login" }}</button></form>
+          </div>
+        </div>
+        <div>
+          <h3 style="margin-bottom:8px">Reports</h3>
+          <div class="scrollx card"><table class="tbl reports">
+            <thead><tr><th>Received</th><th>Type</th><th>Books up to</th><th>Status</th><th>Changes vs previous</th><th><span class="sr">Actions</span></th></tr></thead>
+            <tbody>
+            {% for r in reports %}
+            <tr>
+              <td>{{ r.created_at|when }}</td>
+              <td>{{ "First upload" if r.source == "initial" else "Refresh" }}</td>
+              <td>{{ r.period_to or "" }}</td>
+              <td>{{ pill(r.status) }}{% if r.error %}<div class="muted" style="white-space:normal">{{ r.error }}</div>{% endif %}</td>
+              <td class="changes-cell">
+                {% for f in r.alerts[:3] %}<div><b>{{ f.title }}</b> {{ f.detail }}</div>{% endfor %}
+                {% if r.alerts|length > 3 %}<div>+{{ r.alerts|length - 3 }} more</div>{% endif %}
+                {% if r.status == "ready" and not r.alerts %}{{ "—" if loop.last else "No material changes" }}{% endif %}
+              </td>
+              <td class="act">
+                {% if r.status == "ready" %}<a class="btn ghost sm" href="/bank/reports/{{ r.id }}">View</a>{% endif %}
+                {% if r.has_raw %}<form method="post" action="/bank/reports/{{ r.id }}/recompute"><button class="btn ghost sm" type="submit">Recompute</button></form>{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="empty">No data received yet.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </details>
     {% endif %}
-    {% endif %}
-
-    {% if g.key == "recv" %}
-    {% set bar, leg = ageing_stack(g.charts.ageing) %}
-    <div class="card s7"><div class="card-head"><h2>Receivables ageing</h2></div>{{ bar|safe }}<div class="legend wrap3">{{ leg|safe }}</div>
-      <h3>Largest balances</h3>{{ hbars(g.charts.largest, value_fmt=inr, color="var(--age-4)")|safe }}</div>
-    {% endif %}
-
-    {% if g.key == "pay" %}
-    {% set bar, leg = ageing_stack(g.charts.ageing) %}
-    <div class="card s7"><div class="card-head"><h2>Payables ageing</h2></div>{{ bar|safe }}<div class="legend wrap3">{{ leg|safe }}</div>
-      <h3>Largest balances</h3>{{ hbars(g.charts.largest, value_fmt=inr, color="var(--series-2)")|safe }}</div>
-    {% endif %}
-
-    {% if g.key == "wc" %}
-    {% set total = (g.charts.cycle.dio or 0) + (g.charts.cycle.dso or 0) %}
-    <div class="card s12"><div class="card-head"><h2>Cash cycle</h2></div>
-      <div class="cycle">
-        <div class="cy-row"><span>Stock held</span><div class="cy-track"><span class="cy-seg" style="left:0;width:{{ ((g.charts.cycle.dio or 0) / total * 100) if total else 0 }}%;background:var(--age-3)">{{ g.charts.cycle.dio|days }}</span></div></div>
-        <div class="cy-row"><span>Customers pay</span><div class="cy-track"><span class="cy-seg" style="left:{{ ((g.charts.cycle.dio or 0) / total * 100) if total else 0 }}%;width:{{ ((g.charts.cycle.dso or 0) / total * 100) if total else 0 }}%;background:var(--age-5)">{{ g.charts.cycle.dso|days }}</span></div></div>
-        <div class="cy-row"><span>Supplier credit</span><div class="cy-track"><span class="cy-seg neg" style="left:0;width:{{ ((g.charts.cycle.dpo or 0) / total * 100) if total else 0 }}%;background:var(--series-2)">{{ g.charts.cycle.dpo|days }}</span></div></div>
-        <div class="cy-row tot"><span>Cash tied up</span><div class="cy-track"><span class="cy-seg" style="left:{{ ((g.charts.cycle.dpo or 0) / total * 100) if total else 0 }}%;width:{{ ((g.charts.cycle.ccc or 0) / total * 100) if total else 0 }}%;background:var(--brand)">{{ g.charts.cycle.ccc|days }}</span></div></div>
-      </div></div>
-    {% endif %}
-
-    {% if g.key == "debt" %}
-    <div class="card s7 flush"><div class="card-head"><h2>Loans</h2></div>
-      <div class="scrollx"><table class="tbl"><thead><tr><th>Lender / ledger</th><th>Type</th><th class="r">Outstanding</th><th class="r">Repaid, 12 mo</th></tr></thead><tbody>
-      {% for l in g.charts.loans %}<tr><td><b>{{ l.name }}</b></td><td>{{ l.type }}</td><td class="num">{{ l.outstanding|inr }}</td><td class="num">{{ l.repaid|inr if l.repaid else "—" }}</td></tr>
-      {% else %}<tr><td colspan="4" class="muted">No loans found in the books.</td></tr>{% endfor %}
-      </tbody></table></div></div>
-    <div class="card s5"><div class="card-head"><h2>Repayment record</h2></div>
-      {% if g.charts.emi %}<div class="emis">{{ emi_grid(g.charts.emi, g.charts.emi_months)|safe }}</div>
-      <div class="emi-lbl">{% for mk in g.charts.emi_months %}<span>{{ month_label(mk)[:1] }}</span>{% endfor %}</div>
-      {% else %}<p class="muted">No term loans with regular repayments found.</p>{% endif %}</div>
-    {% endif %}
-
-    {% if g.key == "bank" %}
-    <div class="card s8"><div class="card-head"><h2>Month-end bank balance</h2><span class="muted">₹</span></div>
-      {{ monthly_chart(g.charts.balance_values, g.charts.balance_months)|safe }}</div>
-    {% endif %}
-
-    {% if g.key == "tax" %}
-    <div class="card s12"><div class="card-head"><h2>GST collected each month</h2><span class="muted">₹</span></div>
-      {{ monthly_chart(g.charts.gst_values, g.charts.gst_months)|safe }}</div>
-    {% endif %}
-
-    {% if g.key == "data" %}
-    <div class="card s6"><div class="card-head"><h2>Red flags</h2>{% if g.charts.red_flags %}<span class="count crit">{{ g.charts.red_flags|length }}</span>{% endif %}</div>
-      {% if g.charts.red_flags %}<ul class="flags">{% for f in g.charts.red_flags %}<li class="f-{{ f.severity }}"><b>{{ f.title }}</b><span>{{ f.detail }}</span></li>{% endfor %}</ul>
-      {% else %}<p class="muted">No red flags.</p>{% endif %}</div>
-    {% if g.charts.related_party %}
-    <div class="card s6"><div class="card-head"><h2>Low confidence</h2></div>
-      {% for rp in g.charts.related_party %}<p class="lowc"><b>Possible related party</b> {{ rp.name }} ({{ rp.category }}) — name overlap with the company's own name only; Tally has no address/director field to check further.</p>{% endfor %}
-      {% if not g.charts.related_party %}<p class="muted">None found.</p>{% endif %}</div>
-    {% endif %}
-    {% endif %}
-  </div>
-  {% endfor %}
-  {% endif %}
-</main>
+  </main>
+</div>
 </body>
 </html>

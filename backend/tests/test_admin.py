@@ -42,7 +42,7 @@ def test_direct_tenant_is_seeded_and_platform_admin_is_not_a_bank_user(client):
 
     client.get("/admin", auth=PLATFORM)  # triggers _ensure_seed_platform_admin
     direct = store.get_tenant(store.direct_tenant_id())
-    assert direct and direct["kind"] == "direct" and direct["name"] == "Tally Connector"
+    assert direct and direct["kind"] == "direct" and direct["name"] == "TallyVeda"
     bank_users = store.list_users(tenant_id=store.direct_tenant_id(), role="bank")
     assert bank_users == []  # the platform admin never appears as a bank user
 

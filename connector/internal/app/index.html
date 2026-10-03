@@ -3,153 +3,342 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tally Connector</title>
+<title>TallyVeda</title>
 <style>
   :root {
     color-scheme: light;
-    --surface: #f5f6fa; --surface-2: #eef0f6; --card: #ffffff; --line: #e6e8ef; --line-2: #d9dce6;
-    --text: #0f172a; --text-2: #475569; --muted: #64748b;
-    --accent: #4f46e5; --accent-2: #6366f1; --accent-ink: #ffffff; --accent-soft: #eef2ff;
-    --good: #16a34a; --warning: #f59e0b; --critical: #dc2626;
-    --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px -12px rgba(15, 23, 42, .10);
+    --page: #f6f7fb; --card: #ffffff; --line: #e3e6ee; --line-2: #cbd2e1; --soft: #eef0f6;
+    --text: #0f172a; --text-2: #475569; --muted: #64748b; --label: #334155;
+    --accent: #4338ca; --accent-hover: #3730a3; --accent-soft: #eef2ff; --accent-line: #dfe3fb; --accent-mid: #a5b4fc;
+    --navy: #14162e; --navy-2: #23264a; --navy-line: #2a2d4d; --navy-text: #e2e5f3; --navy-muted: #8d93b8; --navy-soft: #b8bdd9;
+    --good: #16a34a; --good-ink: #166534; --good-bg: #ecfdf3; --good-line: #bbf7d0;
+    --warn-ink: #92400e; --warn-bg: #fffbeb; --warn-line: #fde68a;
+    --bad: #dc2626; --bad-ink: #991b1b; --bad-bg: #fef2f2; --bad-line: #fecaca;
+    --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; color: var(--text); font: 14px/1.5 "Segoe UI", -apple-system, Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased;
-    background: radial-gradient(1000px 340px at 50% -140px, #e8ebff 0%, rgba(232, 235, 255, 0) 70%), var(--surface); min-height: 100vh; }
-  main { max-width: 580px; margin: 0 auto; padding: 36px 16px 48px; }
-  .brandrow { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font-weight: 600; font-size: 15px; }
-  .logo { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700;
-    background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%); box-shadow: 0 4px 12px -4px rgba(79, 70, 229, .6); }
-  h1 { font-size: 26px; line-height: 1.2; letter-spacing: -.015em; margin: 0 0 8px; font-weight: 650; }
-  .sub { color: var(--text-2); margin: 0 0 24px; font-size: 14px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; margin-bottom: 14px; box-shadow: var(--shadow);
-    transition: opacity .2s; }
-  .card.off { opacity: .5; pointer-events: none; box-shadow: none; }
-  .step { display: flex; gap: 12px; align-items: center; font-weight: 600; font-size: 15px; margin-bottom: 12px; }
-  .num { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--surface-2); color: var(--text-2); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
-  .card:not(.off):not(.ok) .num { background: var(--accent-soft); color: var(--accent); }
-  .ok .num { background: var(--good); color: #fff; }
-  label { display: block; font-size: 13px; font-weight: 500; color: var(--text-2); margin: 12px 0 5px; }
-  input[type=text], input[type=email], select { width: 100%; font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: #fff;
-    color: var(--text); outline: none; transition: border-color .15s, box-shadow .15s; }
-  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(79, 70, 229, .14); }
-  input.code { font: 600 20px ui-monospace, Consolas, monospace; letter-spacing: .14em; text-transform: uppercase; }
-  button { font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 10px; border: 1px solid var(--accent); color: var(--accent-ink); cursor: pointer; margin-top: 14px;
-    background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent) 100%); box-shadow: 0 1px 2px rgba(15, 23, 42, .08), inset 0 1px 0 rgba(255, 255, 255, .18);
-    transition: filter .15s, box-shadow .15s, transform .12s; }
-  button:hover:not(:disabled) { filter: brightness(1.05); box-shadow: 0 4px 14px -6px rgba(79, 70, 229, .55); }
+  body { margin: 0; color: var(--text); background: var(--page); -webkit-font-smoothing: antialiased;
+    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
+  a { color: var(--accent); } a:hover { color: #312e81; }
+  .hidden { display: none !important; }
+
+  .app { min-height: 100vh; display: grid; grid-template-columns: clamp(380px, 34vw, 520px) minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .side { background: var(--navy); color: var(--navy-text); padding-left: 44px; padding-right: 44px; }
+  .side-top { grid-area: 1 / 1; padding-top: 40px; padding-bottom: 40px; display: flex; flex-direction: column; gap: 40px; }
+  .side-bot { grid-area: 2 / 1; padding-bottom: 40px; display: flex; flex-direction: column; justify-content: flex-end; gap: 22px; }
+  main { grid-area: 1 / 2 / 3 / 3; min-width: 0; padding: 40px 56px 56px; display: flex; flex-direction: column; gap: 28px; }
+
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 16px; color: #fff; }
+  .mark { width: 36px; height: 36px; border-radius: 10px; background: #6366f1; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; }
+  .intro { display: flex; flex-direction: column; gap: 12px; }
+  h1 { margin: 0; font-family: var(--display); font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -.02em; color: #fff; text-wrap: balance; }
+  .intro p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--navy-soft); }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .steps li { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 12px; }
+  .steps .dot { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700;
+    color: var(--navy-muted); border: 1.5px solid #3b3f66; }
+  .steps .st { display: flex; flex-direction: column; gap: 2px; }
+  .steps .t { font-size: 15px; font-weight: 600; color: #9ca1c4; }
+  .steps .h { font-size: 13px; color: var(--navy-muted); }
+  .steps li.active { background: var(--navy-2); }
+  .steps li.active .dot { background: #6366f1; border-color: #6366f1; color: #fff; }
+  .steps li.done .dot { background: var(--good); border-color: var(--good); color: #fff; }
+  .steps li.active .t, .steps li.done .t { color: #fff; }
+
+  .trust { list-style: none; margin: 0; padding: 20px 0 0; border-top: 1px solid var(--navy-line); display: flex; flex-direction: column; gap: 12px; font-size: 14px; color: #c9cde6; }
+  .trust li { display: flex; gap: 10px; align-items: flex-start; }
+  .trust svg { flex: none; margin-top: 1px; }
+  .foot { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; color: var(--navy-muted); }
+  .foot a { color: var(--navy-soft); }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .chip-status { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 500;
+    background: var(--soft); color: var(--text-2); border: 1px solid var(--line); }
+  .chip-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .chip-status.ok { background: var(--good-bg); color: var(--good-ink); border-color: var(--good-line); } .chip-status.ok i { background: var(--good); }
+  .chip-status.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-line); } .chip-status.warn i { background: #f59e0b; }
+  .chip-status.bad { background: var(--bad-bg); color: var(--bad-ink); border-color: var(--bad-line); } .chip-status.bad i { background: var(--bad); }
+  .stepno { font-size: 13px; color: var(--muted); }
+
+  .panel { max-width: 760px; display: flex; flex-direction: column; gap: 24px; }
+  .panel.narrow { max-width: 640px; }
+  .head { display: flex; flex-direction: column; gap: 8px; }
+  h2 { margin: 0; font-family: var(--display); font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -.015em; }
+  .head p, .lead { margin: 0; font-size: 15px; color: var(--text-2); line-height: 1.6; }
+  .muted { color: var(--muted); font-size: 14px; margin: 0; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+
+  .fld { display: flex; flex-direction: column; gap: 6px; }
+  .lbl { font-size: 13px; font-weight: 600; color: var(--label); }
+  .inp { font: inherit; font-size: 15px; color: var(--text); background: #fff; border: 1px solid var(--line-2); border-radius: 10px; padding: 12px 14px;
+    min-height: 48px; width: 100%; outline: none; transition: border-color .15s, box-shadow .15s; }
+  .inp:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(67, 56, 202, .14); }
+  .inp.code { font-family: var(--mono); font-size: 26px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; min-height: 64px; max-width: 360px; }
+  .inp.otp { font-size: 22px; min-height: 56px; max-width: 260px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 18px; }
+
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  button { font: inherit; font-weight: 600; font-size: 15px; border-radius: 10px; padding: 0 22px; min-height: 48px; border: 1px solid var(--accent);
+    background: var(--accent); color: #fff; cursor: pointer; transition: background .15s, transform .12s; }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
   button:active:not(:disabled) { transform: translateY(1px); }
   button:disabled { opacity: .45; cursor: default; }
-  button.secondary { background: #fff; color: var(--text); border: 1px solid var(--line-2); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); }
-  button.secondary:hover:not(:disabled) { background: var(--surface); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); filter: none; }
+  button.secondary { background: #fff; color: var(--text); border-color: var(--line-2); }
+  button.secondary:hover:not(:disabled) { background: var(--page); }
+  button.small { min-height: 38px; font-size: 14px; padding: 0 16px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .err { color: var(--critical); font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
-  .muted { color: var(--text-2); font-size: 13px; }
-  .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text); margin-top: 14px; }
-  .consent input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
-  ol.help { font-size: 13px; padding-left: 20px; margin: 10px 0 0; color: var(--text-2); }
-  ol.help li { margin-bottom: 4px; }
-  .bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 14px 0 8px; }
-  .bar i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #8b5cf6); transition: width .3s; }
-  .done { font-size: 16px; font-weight: 600; color: var(--good); }
-  .hidden { display: none; }
-  .note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface); color: var(--text-2); border: 1px solid var(--line); }
-  .note.warn { background: #fff7e6; color: #7a5200; border-color: #fde7b0; }
-  .note.bad { background: #fef2f2; color: #8a1c13; border-color: #fbd5d5; }
-  .notice { margin: 16px 0 4px; padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); color: var(--text-2);
-            font-size: 13px; line-height: 1.55; border: 1px solid #e0e7ff; }
-  .notice:empty { display: none; }
-  .notice b { color: var(--text); }
-  .notice a { color: var(--accent); }
-  .foot { font-size: 12px; text-align: center; margin-top: 18px; } .foot a { color: var(--muted); }
-  #otpBox { margin-top: 12px; }
-  #otpBox .code { max-width: 200px; }
-  #otpBox button { margin-right: 8px; }
-  .small { font-size: 12px; margin: 4px 0 8px; }
-  .co { padding: 12px 0; border-top: 1px solid var(--line); }
-  .co:first-child { border-top: 0; padding-top: 0; }
-  .co b { display: block; }
-  .co button { margin: 8px 8px 0 0; }
+
+  .err { color: var(--bad); font-size: 14px; white-space: pre-wrap; }
+  .err:empty { display: none; }
+
+  .req { background: var(--card); border: 1px solid var(--line); border-radius: 14px; display: grid; overflow: hidden;
+    grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }
+  .req > div { padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; box-shadow: 1px 0 0 #eef0f5, 0 1px 0 #eef0f5; }
+  .req span { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .req b { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; font-size: 13px; font-weight: 500; color: var(--label); background: var(--soft); border-radius: 999px; padding: 6px 12px; }
+  .check { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; cursor: pointer; }
+  .check input { width: 20px; height: 20px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+  .check .ct { display: flex; flex-direction: column; gap: 4px; }
+  .check .ct b { font-size: 15px; }
+  .check .ct span { font-size: 14px; color: var(--text-2); line-height: 1.5; }
+  .check.consent { background: var(--accent-soft); border-color: var(--accent-line); }
+  .check.consent #consentText { font-size: 14px; line-height: 1.6; color: #1e1b4b; }
+
+  ol.help { margin: 0; padding-left: 22px; color: var(--text-2); font-size: 15px; line-height: 1.6; }
+  ol.help li { margin-bottom: 6px; }
+
+  .prog { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+  .prog-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  #stage { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+  #pct { font-family: var(--display); font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bar { height: 10px; border-radius: 999px; background: var(--soft); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .3s; }
+  .months { display: flex; flex-direction: column; gap: 10px; }
+  .months .lbl { color: var(--text-2); }
+  #monthGrid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; }
+  #monthGrid div { height: 30px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 600; background: var(--soft); color: var(--muted); }
+  #monthGrid div.sent { background: var(--accent); color: #fff; }
+  #monthGrid div.reading { background: var(--accent-mid); color: #1e1b4b; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; background: var(--soft); border: 1px solid #d6dae5; }
+  .legend i.sent { background: var(--accent); border-color: var(--accent); }
+  .legend i.reading { background: var(--accent-mid); border-color: var(--accent-mid); }
+
+  .note { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; color: var(--text-2); background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 14px 18px; line-height: 1.55; }
+  .note::before { content: ""; flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; border: 2px solid var(--accent);
+    background: linear-gradient(var(--accent), var(--accent)) center 3px / 2px 6px no-repeat, linear-gradient(var(--accent), var(--accent)) center 10px / 2px 2px no-repeat; }
+  .note.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-line); }
+  .note.warn::before { border-color: #d97706; background: linear-gradient(#d97706, #d97706) center 3px / 2px 6px no-repeat, linear-gradient(#d97706, #d97706) center 10px / 2px 2px no-repeat; }
+  .note.bad { background: var(--bad-bg); color: var(--bad-ink); border-color: var(--bad-line); }
+  .note.bad::before { border-color: var(--bad); background: linear-gradient(var(--bad), var(--bad)) center 3px / 2px 6px no-repeat, linear-gradient(var(--bad), var(--bad)) center 10px / 2px 2px no-repeat; }
+
+  .done-box { display: flex; flex-direction: column; gap: 14px; }
+  .done-title { display: flex; gap: 14px; align-items: center; margin: 0; font-family: var(--display); font-size: 24px; font-weight: 700; color: var(--good-ink); }
+  .done-title::before { content: "\2713"; flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--good); color: #fff; display: grid; place-items: center; font-size: 20px; }
+  #summary { white-space: pre-wrap; margin: 0; color: var(--text-2); line-height: 1.6; }
+
+  .mon { max-width: 760px; }
+  .mon h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  .co { padding: 14px 0; border-top: 1px solid var(--line); }
+  .co:first-child { border-top: 0; padding-top: 6px; }
+  .co b { display: block; font-size: 15px; }
+  .co .muted { margin-top: 2px; }
+  .co button { margin: 10px 10px 0 0; }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto; }
+    .side { padding-left: 16px; padding-right: 16px; }
+    .side-top { grid-area: 1 / 1; padding-top: 22px; padding-bottom: 22px; gap: 20px; }
+    main { grid-area: 2 / 1; padding: 24px 16px 36px; gap: 22px; }
+    .side-bot { grid-area: 3 / 1; padding-top: 4px; padding-bottom: 28px; }
+    h1 { font-size: 26px; }
+    .intro p { font-size: 14px; }
+    h2 { font-size: 24px; }
+    .steps { flex-direction: row; gap: 6px; }
+    .steps li { flex: 1 1 0; flex-direction: column; gap: 6px; padding: 10px 4px; text-align: center; }
+    .steps .dot { width: 26px; height: 26px; font-size: 12px; }
+    .steps .t { font-size: 12px; line-height: 1.25; }
+    .steps .h { display: none; }
+    .inp.code { font-size: 22px; letter-spacing: .14em; }
+    #monthGrid { gap: 4px; }
+    #monthGrid div { height: 26px; font-size: 10px; }
+  }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<main>
-  <div class="brandrow"><span class="logo">TC</span>Tally Connector</div>
-  <h1>Share your Tally accounts securely</h1>
-  <p class="sub">Tally Connector reads your company's books of account from Tally on this computer and sends them,
-    encrypted, to the organisation that requested them. It only reads data and never changes anything in Tally.</p>
+<div class="app">
+  <aside class="side side-top">
+    <div class="brand"><span class="mark" aria-hidden="true">TV</span>TallyVeda</div>
+    <div class="intro">
+      <h1>Share your Tally books securely</h1>
+      <p>TallyVeda reads your company's books of account from Tally on this computer and sends them, encrypted, to the
+        organisation that requested them. It only reads data and never changes anything in Tally.</p>
+    </div>
+    <ol class="steps" aria-label="Steps">
+      <li id="st1"><span class="dot">1</span><span class="st"><span class="t">Connect to Tally</span><span class="h" id="st1h">Looking for Tally</span></span></li>
+      <li id="st2"><span class="dot">2</span><span class="st"><span class="t">Enter access code</span><span class="h">From the requesting organisation</span></span></li>
+      <li id="st3"><span class="dot">3</span><span class="st"><span class="t">Review and consent</span><span class="h">Choose company, confirm</span></span></li>
+      <li id="st4"><span class="dot">4</span><span class="st"><span class="t">Share</span><span class="h">Runs in the background</span></span></li>
+    </ol>
+  </aside>
 
-  <section class="card hidden" id="mon">
-    <div class="step"><span class="num">✓</span>Companies connected on this computer</div>
-    <div id="monList"></div>
-    <div id="monErr" class="err"></div>
-  </section>
+  <main>
+    <div class="topbar">
+      <div class="chip-status" id="tallyChip" role="status"><i></i><span id="tallyChipText">Looking for Tally…</span></div>
+      <div class="stepno" id="stepNo">Step 1 of 4</div>
+    </div>
+    <div id="checkErr" class="err"></div>
 
-  <section class="card" id="s1">
-    <div class="step"><span class="num">1</span>Connect to Tally</div>
-    <div id="tallyMsg" class="muted">Looking for Tally…</div>
-    <div id="tallyHelp" class="hidden">
-      <ol class="help">
-        <li>Open TallyPrime and load your company.</li>
-        <li>Press <b>F1 (Help) → Settings → Connectivity</b>. In Tally.ERP 9: <b>F12 → Advanced Configuration</b>.</li>
-        <li>Set <b>TallyPrime acts as</b> to <b>Both</b> (or Server) and <b>Port</b> to <b>9000</b>. Accept and restart Tally if asked.</li>
-      </ol>
+    <section class="panel narrow" id="s1">
+      <div class="head">
+        <h2>Connect to Tally</h2>
+        <p id="tallyMsg">Looking for Tally…</p>
+      </div>
+      <div id="tallyHelp" class="box hidden">
+        <ol class="help">
+          <li>Open TallyPrime and load your company.</li>
+          <li>Press <b>F1 (Help) → Settings → Connectivity</b>. In Tally.ERP 9: <b>F12 → Advanced Configuration</b>.</li>
+          <li>Set <b>TallyPrime acts as</b> to <b>Both</b> (or Server) and <b>Port</b> to <b>9000</b>. Accept and restart Tally if asked.</li>
+        </ol>
+      </div>
       <p class="muted">This page checks again automatically every few seconds.</p>
-    </div>
-  </section>
+    </section>
 
-  <section class="card off" id="s2">
-    <div class="step"><span class="num">2</span>Enter your access code</div>
-    <p class="muted small">The 8-character code shared with you by the organisation requesting your data.</p>
-    <input type="text" id="code" class="code" placeholder="XXXX-XXXX" maxlength="9" autocomplete="off">
-    <button id="verifyBtn">Continue</button>
-    <div id="verifyErr" class="err"></div>
-    <div id="verifyOk" class="muted hidden"></div>
-    <div id="otpBox" class="hidden">
-      <p class="muted" id="otpMsg"></p>
-      <input type="text" id="otp" class="code" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-      <button id="otpBtn">Verify</button>
-      <button id="otpResend" class="secondary">Send a new code</button>
-      <div id="otpErr" class="err"></div>
-    </div>
-  </section>
+    <section class="panel narrow hidden" id="s2">
+      <div class="head">
+        <h2>Enter your access code</h2>
+        <p>The organisation that requested your books sent you an 8-character code by email or message.</p>
+      </div>
+      <div class="fld">
+        <label class="lbl" for="code">Access code</label>
+        <input type="text" id="code" class="inp code" placeholder="XXXX-XXXX" maxlength="9" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="actions"><button id="verifyBtn">Continue</button></div>
+      <div id="verifyErr" class="err"></div>
+      <div id="verifyOk" class="note hidden"></div>
+      <div id="otpBox" class="box hidden">
+        <div class="fld">
+          <p class="lead" id="otpMsg"></p>
+          <label class="lbl" for="otp">Verification code</label>
+          <input type="text" id="otp" class="inp code otp" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        </div>
+        <div class="actions" style="margin-top: 16px">
+          <button id="otpBtn">Verify</button>
+          <button id="otpResend" class="secondary">Send a new code</button>
+        </div>
+        <div id="otpErr" class="err" style="margin-top: 10px"></div>
+      </div>
+      <p class="muted">Don't have a code? Ask the person who sent you this download link.</p>
+    </section>
 
-  <section class="card off" id="s3">
-    <div class="step"><span class="num">3</span>Review and give consent</div>
-    <label for="company">Company in Tally</label>
-    <select id="company"></select>
-    <label for="name">Your full name</label>
-    <input type="text" id="name" autocomplete="name">
-    <div class="notice" id="notice"></div>
-    <div class="consent"><input type="checkbox" id="agree"><span id="consentText"></span></div>
-    <div class="consent hidden" id="monOpt"><input type="checkbox" id="monitoring"><span id="monOptText"></span></div>
-    <button id="startBtn" disabled>I agree, share my data</button>
-    <div id="startErr" class="err"></div>
-  </section>
+    <section class="panel hidden" id="s3">
+      <div class="head">
+        <h2>Review and give consent</h2>
+        <p>Check the request, choose the company, then confirm.</p>
+      </div>
+      <div class="req">
+        <div><span>Requested by</span><b id="reqBy"></b></div>
+        <div id="reqForCell"><span>For</span><b id="reqFor"></b></div>
+        <div><span>Period</span><b id="reqPeriod"></b></div>
+        <div id="reqRefCell"><span>Reference</span><b id="reqRef"></b></div>
+      </div>
+      <div class="grid2">
+        <div class="fld">
+          <label class="lbl" for="company">Company in Tally</label>
+          <select id="company" class="inp"></select>
+        </div>
+        <div class="fld">
+          <label class="lbl" for="name">Your full name</label>
+          <input type="text" id="name" class="inp" autocomplete="name">
+        </div>
+      </div>
+      <div class="fld">
+        <span class="lbl">What will be shared</span>
+        <div class="chips">
+          <span class="chip">Ledgers and balances</span>
+          <span class="chip">Vouchers</span>
+          <span class="chip">Outstanding bills</span>
+          <span class="chip">Stock values</span>
+          <span class="chip">Technical diagnostics</span>
+        </div>
+      </div>
+      <label class="check hidden" id="monOpt">
+        <input type="checkbox" id="monitoring">
+        <span class="ct"><b id="monOptTitle">Keep it up to date daily</b><span id="monOptText"></span></span>
+      </label>
+      <label class="check consent">
+        <input type="checkbox" id="agree">
+        <span id="consentText"></span>
+      </label>
+      <div class="actions">
+        <button id="startBtn" disabled>I agree, share my data</button>
+        <button id="backBtn" class="secondary">Back</button>
+      </div>
+      <div id="startErr" class="err"></div>
+    </section>
 
-  <section class="card off" id="s4">
-    <div class="step"><span class="num">4</span>Sharing</div>
-    <div class="bar"><i id="barFill"></i></div>
-    <div id="stage" class="muted">Waiting…</div>
-    <p class="muted" id="bgNote">You can keep working in Tally while this runs. You may also close this window; sharing continues in the background.</p>
-    <div id="waitMsg" class="note hidden"></div>
-    <div id="jobErr" class="err"></div>
-    <div id="hint" class="note bad hidden"></div>
-    <div id="notes" class="note hidden">Some optional details were not available in Tally and were skipped. This does not affect your submission.</div>
-    <div id="doneMsg" class="hidden">
-      <p class="done" id="doneTitle">Your data has been shared successfully.</p>
-      <p class="muted" id="summary" style="white-space: pre-wrap"></p>
-      <p class="muted">You can now close this window.</p>
-      <button id="another" class="secondary">Connect another company</button>
+    <section class="panel hidden" id="s4">
+      <div class="head" id="shareHead">
+        <h2 id="shareTitle">Sharing your books</h2>
+        <p id="bgNote"></p>
+      </div>
+      <div class="prog" id="progCard">
+        <div class="prog-top"><span id="stage">Waiting…</span><span id="pct">0%</span></div>
+        <div class="bar"><i id="barFill"></i></div>
+        <div class="months hidden" id="monthsBox">
+          <span class="lbl">Months sent (newest first)</span>
+          <div id="monthGrid"></div>
+          <div class="legend"><span><i class="sent"></i>Sent</span><span><i class="reading"></i>Reading</span><span><i></i>Waiting</span></div>
+        </div>
+      </div>
+      <div id="waitMsg" class="note hidden"></div>
+      <div id="jobErr" class="err"></div>
+      <div id="hint" class="note bad hidden"></div>
+      <div id="notes" class="note hidden">Some optional details were not available in Tally and were skipped. This does not affect your submission.</div>
+      <div class="actions hidden" id="failActions"><button id="shareBack" class="secondary">Back</button></div>
+      <div id="doneMsg" class="done-box hidden">
+        <p class="done-title" id="doneTitle">Your data has been shared successfully.</p>
+        <p id="summary"></p>
+        <p class="muted">You can now close this window.</p>
+        <div class="actions"><button id="another" class="secondary">Connect another company</button></div>
+      </div>
+    </section>
+
+    <section class="box mon hidden" id="mon">
+      <h3>Companies connected on this computer</h3>
+      <div id="monList"></div>
+      <div id="monErr" class="err"></div>
+    </section>
+  </main>
+
+  <aside class="side side-bot">
+    <ul class="trust">
+      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path></svg><span>Read-only. It never edits, adds or deletes anything in Tally.</span></li>
+      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg><span>Encrypted from this computer to the requesting organisation.</span></li>
+      <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>Works in the background. Keep using Tally as normal.</span></li>
+    </ul>
+    <div class="foot">
+      <span>TallyVeda {{VERSION}}</span>
+      <a href="{{SERVER}}/privacy" target="_blank" rel="noopener">Privacy Notice</a>
+      <a href="{{SERVER}}/terms" target="_blank" rel="noopener">Terms</a>
+      <a href="#" id="checkBtn">Having trouble? Run a connection check</a>
     </div>
-  </section>
-  <p class="foot muted">Tally Connector {{VERSION}} · <a href="{{SERVER}}/privacy" target="_blank" rel="noopener">Privacy Notice</a> · <a href="{{SERVER}}/terms" target="_blank" rel="noopener">Terms</a> · <a href="#" id="checkBtn">Having trouble? Run a connection check</a></p>
-</main>
+  </aside>
+</div>
 <script>
 const TOKEN = "{{TOKEN}}";
 const $ = (id) => document.getElementById(id);
-let info = null, tallyOk = false, months = 24, lastJob = "share";
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+let info = null, tallyOk = false, months = 24, lastJob = "share", companies = [];
+// view is the step panel on screen; the flags drive the stepper's ticks.
+let view = 1, verified = false, started = false, jobDone = false, shareMonths = [], monthSeen = false;
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -162,32 +351,57 @@ async function api(path, body) {
   return data;
 }
 
-function mark(id, ok) { $(id).classList.toggle("ok", ok); }
-function enable(id, on) { $(id).classList.toggle("off", !on); }
+function show(n) {
+  view = n;
+  [1, 2, 3, 4].forEach(i => $("s" + i).classList.toggle("hidden", i !== n));
+  renderSteps();
+  window.scrollTo(0, 0);
+}
+
+function renderSteps() {
+  const done = [tallyOk, verified, started, jobDone];
+  [1, 2, 3, 4].forEach(n => {
+    const li = $("st" + n), active = n === view && !(n === 4 && jobDone);
+    li.className = active ? "active" : done[n - 1] ? "done" : "";
+    li.querySelector(".dot").textContent = !active && done[n - 1] ? "✓" : String(n);
+    if (active) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+  });
+  $("stepNo").textContent = `Step ${view} of 4`;
+}
+
+function setChip(kind, text) {
+  $("tallyChip").className = "chip-status " + kind;
+  $("tallyChipText").textContent = text;
+}
 
 async function checkTally() {
   try {
     const s = await api("/api/tally");
     if (s.ok && s.companies && s.companies.length) {
       tallyOk = true;
+      companies = s.companies;
+      const n = s.companies.length, what = n === 1 ? "company" : "companies";
+      setChip("ok", `Connected to Tally · ${n} ${what} open`);
+      $("st1h").textContent = `Found ${n} open ${what}`;
       $("tallyMsg").textContent = `Connected to Tally. Companies open: ${s.companies.map(c => c.name).join(", ")}`;
       $("tallyHelp").classList.add("hidden");
-      mark("s1", true);
       const sel = $("company"), current = sel.value;
       sel.innerHTML = "";
       s.companies.forEach(c => { const o = document.createElement("option"); o.value = o.textContent = c.name; sel.appendChild(o); });
       if (current) sel.value = current;
-      enable("s2", true);
+      if (view === 1) show(2); else renderSteps();
       updateConsent();
       return;
     }
     tallyOk = false;
-    mark("s1", false);
+    setChip(s.ok ? "warn" : "bad", s.ok ? "Tally is open, but no company is loaded" : "Tally not found on this computer");
+    $("st1h").textContent = "Waiting for Tally";
     $("tallyMsg").textContent = s.ok ? "Tally is running, but no company is open. Please open your company in Tally."
                                      : "Tally could not be found on this computer. Please open Tally and check its connectivity settings.";
     $("tallyHelp").classList.toggle("hidden", s.ok);
+    renderSteps();
   } catch (e) {
-    $("tallyMsg").textContent = "Tally Connector could not check Tally: " + e.message;
+    $("tallyMsg").textContent = "TallyVeda could not check Tally: " + e.message;
   }
   setTimeout(checkTally, 4000);
 }
@@ -205,8 +419,9 @@ $("verifyBtn").onclick = async () => {
     info = await api("/api/verify", { code: $("code").value });
     months = info.months || 24;
     $("monOpt").classList.toggle("hidden", !info.monitoring_offered);
-    $("monOptText").textContent = `Keep ${info.bank_name} updated: send changes automatically each day while Tally is ` +
-      `open on this computer. You can stop this at any time from this page.`;
+    $("monOptTitle").textContent = `Keep ${info.bank_name} updated daily`;
+    $("monOptText").textContent = "Send changes automatically each day while Tally is open on this computer. " +
+      "You can stop this at any time from this page.";
     $("verifyOk").textContent = `${info.bank_name} has requested ${months} months of accounting data for ${info.applicant_name}` +
       (info.reference ? ` (reference ${info.reference})` : "") + ".";
     $("verifyOk").classList.remove("hidden");
@@ -230,8 +445,13 @@ $("verifyBtn").onclick = async () => {
 
 function unlockConsent() {
   $("otpBox").classList.add("hidden");
-  mark("s2", true);
-  enable("s3", true);
+  verified = true;
+  $("reqBy").textContent = info.bank_name;
+  $("reqFor").textContent = info.applicant_name || "";
+  $("reqForCell").classList.toggle("hidden", !info.applicant_name);
+  $("reqRef").textContent = info.reference || "";
+  $("reqRefCell").classList.toggle("hidden", !info.reference);
+  show(3);
   updateConsent();
 }
 
@@ -263,26 +483,86 @@ $("otpBtn").onclick = async () => {
   }
 };
 
+// period mirrors extract.Window (the last `months` months up to today, never
+// before the company's books begin), so the consent shows the dates recorded.
+function period() {
+  const now = new Date();
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let from = new Date(to.getFullYear(), to.getMonth() - months, to.getDate() + 1);
+  const c = companies.find(x => x.name === $("company").value);
+  const m = c && /^(\d{4})-(\d{2})-(\d{2})$/.exec(c.books_from || "");
+  if (m) {
+    const bf = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (from < bf) from = bf;
+  }
+  return [from, to];
+}
+const fmtDay = (d) => `${String(d.getDate()).padStart(2, "0")} ${MON[d.getMonth()]} ${d.getFullYear()}`;
+const fmtMonth = (d) => `${MON[d.getMonth()]} ${d.getFullYear()}`;
+
 function updateConsent() {
   if (!info) return;
-  const notice = $("notice");
-  notice.replaceChildren(
-    el("b", "How your data will be used. "),
-    document.createTextNode(`Your books of account for the last ${months} months (ledgers, vouchers, outstanding ` +
-      `bills and stock values) will be sent encrypted to Tally Connector and shared with ${info.bank_name} and the ` +
-      `banks and financial institutions it works with, solely to assess and process your credit application. ` +
-      `Technical diagnostics, such as the Tally version and connection logs, are also sent to help resolve problems. ` +
-      `You can stop future updates at any time from this page. `));
+  const [from, to] = period();
+  $("reqPeriod").textContent = `${fmtMonth(from)} – ${fmtMonth(to)}`;
   const link = el("a", "Read the Privacy Notice");
   link.href = "{{SERVER}}/privacy";
   link.target = "_blank";
   link.rel = "noopener";
-  notice.append(link);
-  $("consentText").textContent = `I confirm that I am authorised to share the accounting data of ${$("company").value}, ` +
-    `and I consent to it being shared as described above.`;
+  $("consentText").replaceChildren(
+    "I confirm that I am authorised to share the accounting data of ", el("b", $("company").value),
+    ", and I consent to its books of account (ledgers, vouchers, outstanding bills and stock values) for ",
+    el("b", fmtDay(from)), " to ", el("b", fmtDay(to)), " being sent encrypted to TallyVeda and shared with ",
+    el("b", info.bank_name), " and the banks and financial institutions it works with, solely to assess and process " +
+    "my credit application. Technical diagnostics are also sent to help resolve problems. ", link);
   $("startBtn").disabled = !($("agree").checked && $("name").value.trim() && tallyOk);
 }
 ["agree", "name", "company"].forEach(id => $(id).addEventListener("input", updateConsent));
+$("company").addEventListener("change", updateConsent);
+$("backBtn").onclick = () => show(2);
+
+function resetShare(title, note) {
+  jobDone = false;
+  monthSeen = false;
+  shareMonths = [];
+  $("shareTitle").textContent = title;
+  $("bgNote").textContent = note;
+  $("jobErr").textContent = "";
+  ["doneMsg", "failActions", "hint", "monthsBox"].forEach(id => $(id).classList.add("hidden"));
+  ["progCard", "shareHead"].forEach(id => $(id).classList.remove("hidden"));
+  $("barFill").style.width = "0%";
+  $("pct").textContent = "0%";
+  $("stage").textContent = "Waiting…";
+}
+const SHARE_NOTE = "You can keep working in Tally while this runs. You may also close this window; sharing continues in the background.";
+
+function buildMonths() {
+  const [from, to] = period();
+  const grid = $("monthGrid"), first = new Date(from.getFullYear(), from.getMonth(), 1);
+  grid.replaceChildren();
+  for (let d = new Date(to.getFullYear(), to.getMonth(), 1); d >= first; d = new Date(d.getFullYear(), d.getMonth() - 1, 1)) {
+    const cell = el("div", MON[d.getMonth()].slice(0, 1));
+    cell.title = fmtMonth(d);
+    grid.append(cell);
+    shareMonths.push({ label: fmtMonth(d), cell });
+  }
+}
+
+// A first share reads vouchers month by month, newest first, naming the month
+// in the stage; once one has been seen, a stage without one means all are
+// sent. A share the server already holds only reads changes, so no grid.
+function showMonths(j) {
+  if (!shareMonths.length) return;
+  const m = /vouchers for ([A-Z][a-z]{2} \d{4})/.exec(j.stage || "");
+  const idx = m ? shareMonths.findIndex(x => x.label === m[1]) : -1;
+  if (idx >= 0 && !monthSeen) {
+    monthSeen = true;
+    $("monthsBox").classList.remove("hidden");
+  }
+  const allSent = j.done || (monthSeen && idx < 0);
+  shareMonths.forEach((x, i) => {
+    x.cell.className = allSent || (idx >= 0 && i < idx) ? "sent" : i === idx ? "reading" : "";
+  });
+}
 
 $("startBtn").onclick = async () => {
   $("startErr").textContent = "";
@@ -291,8 +571,10 @@ $("startBtn").onclick = async () => {
     await api("/api/start", { code: $("code").value, company: $("company").value, months, consent_name: $("name").value,
                               monitoring: !!(info.monitoring_offered && $("monitoring").checked) });
     lastJob = "share";
-    enable("s4", true);
-    ["s1", "s2", "s3"].forEach(id => enable(id, false));
+    started = true;
+    resetShare("Sharing your books", SHARE_NOTE);
+    buildMonths();
+    show(4);
     poll();
   } catch (e) {
     $("startErr").textContent = e.message;
@@ -327,28 +609,39 @@ async function poll() {
     setTimeout(poll, 2000);
     return;
   }
-  $("barFill").style.width = Math.round(j.fraction * 100) + "%";
+  const pct = Math.round(j.fraction * 100);
+  $("barFill").style.width = pct + "%";
+  $("pct").textContent = pct + "%";
   $("stage").textContent = j.stage;
   showActivity(j);
+  showMonths(j);
   if (j.error) {
     $("jobErr").textContent = j.error;
+    started = false;
     loadMonitor();
-    ["s2", "s3"].forEach(id => enable(id, true));
+    $("failActions").classList.remove("hidden");
     $("startBtn").disabled = false;
+    renderSteps();
     return;
   }
   if (j.done) {
-    mark("s4", true);
-    ["bgNote", "stage"].forEach(id => $(id).classList.add("hidden"));
+    jobDone = true;
+    ["shareHead", "progCard"].forEach(id => $(id).classList.add("hidden"));
     const check = lastJob === "check";
     $("doneTitle").textContent = check ? "Connection check complete." : "Your data has been shared successfully.";
     $("summary").textContent = check ? "The results have been sent to our support team." : j.summary;
     $("doneMsg").classList.remove("hidden");
+    renderSteps();
     loadMonitor();
     return;
   }
   setTimeout(poll, 700);
 }
+
+$("shareBack").onclick = () => {
+  show(verified ? 3 : tallyOk ? 2 : 1);
+  updateConsent();
+};
 
 function el(tag, text, cls) {
   const e = document.createElement(tag);
@@ -369,14 +662,14 @@ async function loadMonitor() {
       let text = c.pending ? "The first share did not finish. It continues from where it stopped." :
         c.daily ? "Daily updates are on. " + (c.last_success ? `Last sent ${new Date(c.last_success).toLocaleString()}.` : "") : "";
       if (c.last_error) text += ` Last attempt: ${c.last_error}.`;
-      row.append(el("div", text, "muted"));
+      row.append(el("p", text, "muted"));
       if (c.pending) {
-        const b = el("button", "Continue sharing");
+        const b = el("button", "Continue sharing", "small");
         b.onclick = () => resume(c.id);
         row.append(b);
       }
       if (c.daily) {
-        const b = el("button", "Stop daily updates", "secondary");
+        const b = el("button", "Stop daily updates", "secondary small");
         b.onclick = () => stopDaily(c);
         row.append(b);
       }
@@ -389,8 +682,10 @@ async function resume(id) {
   $("monErr").textContent = "";
   try {
     await api("/api/resume", { id });
-    enable("s4", true);
-    ["s1", "s2", "s3"].forEach(id => enable(id, false));
+    lastJob = "share";
+    started = true;
+    resetShare("Sharing your books", SHARE_NOTE);
+    show(4);
     poll();
   } catch (e) {
     $("monErr").textContent = e.message;
@@ -411,24 +706,26 @@ async function stopDaily(c) {
 $("another").onclick = () => location.reload();
 
 // Tally check: finds which request, if any, makes this Tally stop answering,
-// and sends the result to support (with the code typed below, if any).
+// and sends the result to support (with the code typed on this page, if any).
 $("checkBtn").onclick = async (e) => {
   e.preventDefault();
   if (!confirm("Run a connection check? It takes a minute or two and sends the results to our support team. Please save your work in Tally first.")) return;
+  $("checkErr").textContent = "";
   lastJob = "check";
   try {
     await api("/api/diagnose", { code: $("code").value, company: $("company").value });
-    enable("s4", true);
-    ["s1", "s2", "s3"].forEach(id => enable(id, false));
+    resetShare("Running a connection check", "This takes a minute or two. Please keep Tally open until it finishes.");
+    show(4);
     poll();
   } catch (e) {
-    $("tallyMsg").textContent = e.message;
+    $("checkErr").textContent = e.message;
   }
 };
 
 // Heartbeat: the connector exits a little while after this tab is closed.
 setInterval(() => api("/api/ping").catch(() => {}), 10000);
 api("/api/ping").catch(() => {});
+renderSteps();
 loadMonitor();
 checkTally();
 </script>

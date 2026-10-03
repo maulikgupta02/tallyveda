@@ -26,7 +26,7 @@ PLATFORM_ADMIN_USER = os.environ.get("TC_PLATFORM_ADMIN_USER", "platform" if DEV
 PLATFORM_ADMIN_PASSWORD = os.environ.get("TC_PLATFORM_ADMIN_PASSWORD", "platform" if DEV else "")
 # Name of the operator's own built-in "direct" tenant (MSMEs with no bank),
 # shown as the counterparty name in the connector's consent text for them.
-PLATFORM_NAME = os.environ.get("TC_PLATFORM_NAME", "Tally Connector")
+PLATFORM_NAME = os.environ.get("TC_PLATFORM_NAME", "TallyVeda")
 CODE_TTL_HOURS = int(os.environ.get("TC_CODE_TTL_HOURS", "72"))
 MAX_UPLOAD_MB = int(os.environ.get("TC_MAX_UPLOAD_MB", "300"))
 DEFAULT_MONTHS = int(os.environ.get("TC_DEFAULT_MONTHS", "24"))

@@ -23,13 +23,13 @@ cat > versioninfo.json <<JSON
                     "ProductVersion": {"Major": ${V1:-0}, "Minor": ${V2:-0}, "Patch": ${V3:-0}, "Build": 0},
                     "FileFlagsMask": "3f", "FileOS": "040004", "FileType": "01"},
   "StringFileInfo": {
-    "CompanyName": "Tally Connector",
-    "FileDescription": "Tally Connector - shares Tally accounts with your lender",
+    "CompanyName": "TallyVeda",
+    "FileDescription": "TallyVeda - shares Tally accounts with your lender",
     "FileVersion": "$VERSION",
     "InternalName": "TallyConnector",
-    "LegalCopyright": "Tally Connector",
+    "LegalCopyright": "TallyVeda",
     "OriginalFilename": "TallyConnector.exe",
-    "ProductName": "Tally Connector",
+    "ProductName": "TallyVeda",
     "ProductVersion": "$VERSION"
   },
   "VarFileInfo": {"Translation": {"LangID": "0409", "CharsetID": "04B0"}},

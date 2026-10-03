@@ -1,4 +1,6 @@
-# Tally Connector
+# TallyVeda
+
+Product name since 2026-10-04 (was "Tally Connector"). The repo, the exe (`TallyConnector.exe`), its data folder and scheduled task keep the old name so installed copies keep upgrading.
 
 Lets a bank pull a loan applicant's books straight from Tally and get an automatic credit report covering revenue, customer concentration and spread, receivables and payables ageing, working capital, the balance sheet, leverage, banking and cash behaviour, GST, and red flags.
 
@@ -164,7 +166,7 @@ This produces one `dist/TallyConnector.exe` for 64-bit Windows 10/11 (ARM Window
 | `TC_CONNECTOR_URL` | – | If set, `/download` redirects here instead (e.g. a GitHub Releases asset) — takes priority over `TC_CONNECTOR_EXE`, and is the only option that works on Render's ephemeral filesystem |
 | `TC_MONITOR_OVERDUE_DAYS` | 3 | Monitored clients with no data for longer are shown as overdue |
 | `TC_PLATFORM_ADMIN_USER` / `TC_PLATFORM_ADMIN_PASSWORD` | none | Optional. Seed the first `/admin` (platform admin) login on first startup of an empty database, if both are set. `TC_DEV=1` falls back to `platform`/`platform` for local runs. Unlike `TC_ADMIN_USER`/`TC_ADMIN_PASSWORD`, leaving these unset is fine — `/admin` just has no working login until one is created (`python -m app.manage create-platform-admin`) |
-| `TC_PLATFORM_NAME` | Tally Connector | Name of the operator's own built-in "direct" tenant (MSMEs with no bank) — shown as the counterparty name in the connector's consent text for a direct client |
+| `TC_PLATFORM_NAME` | TallyVeda | Name of the operator's own built-in "direct" tenant (MSMEs with no bank) — shown as the counterparty name in the connector's consent text for a direct client |
 | `TC_PUBLIC_URL` | `https://tally-connector-1lir.onrender.com` | Canonical origin for the public marketing home page (`/`) — its `<link rel="canonical">`, Open Graph/Twitter tags, JSON-LD, `robots.txt`'s `Sitemap:` line and `sitemap.xml`. Change it once a real domain is bought |
 
 Run the backend behind TLS (nginx, a load balancer, or similar). The connector sends financial data, so the server URL must be `https://` in production.

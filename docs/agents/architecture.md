@@ -271,7 +271,7 @@ Three user roles now exist: `bank` (scoped to one tenant's applications, `/bank`
 `/admin`). A tenant has a `kind`: `bank` (a real bank customer, with its own `status` of
 `active`/`suspended`) or `direct` — exactly one row, fixed id `store.direct_tenant_id()`,
 created lazily by `store.ensure_direct_tenant`/`main._ensure_seed_platform_admin` the first
-time it's needed, named by `TC_PLATFORM_NAME` (default "Tally Connector"). The direct tenant
+time it's needed, named by `TC_PLATFORM_NAME` (default "TallyVeda"). The direct tenant
 holds two kinds of thing: MSME applications with no bank at all (created from `/admin/msmes`
 with no bank chosen), and every `platform`-role user (since `users.tenant_id` is `NOT NULL` and
 a platform admin isn't a bank user of anywhere). Direct-tenant applications are visible only to

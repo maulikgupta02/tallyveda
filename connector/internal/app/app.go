@@ -33,7 +33,7 @@ const (
 	// The consent recorded with every share; the connector page shows the same words.
 	ConsentText = "I confirm that I am authorised to share the accounting data of %[2]s, and I consent to its books of " +
 		"account (ledgers, vouchers, outstanding bills and stock values) for %[3]s to %[4]s being sent encrypted to " +
-		"Tally Connector and shared with %[1]s and the banks and financial institutions it works with, solely to " +
+		"TallyVeda and shared with %[1]s and the banks and financial institutions it works with, solely to " +
 		"assess and process my credit application. Technical diagnostics are also sent to help resolve problems."
 	MonitoringConsentText = " I also consent to updates being sent automatically each day while Tally is open on " +
 		"this computer, until I or %[1]s stop them."
@@ -92,7 +92,7 @@ func hint(err string) string {
 	e := strings.ToLower(err)
 	switch {
 	case strings.Contains(e, "already being synced"):
-		return "This company is already being shared from another Tally Connector window. Please close that window or wait for it to finish."
+		return "This company is already being shared from another TallyVeda window. Please close that window or wait for it to finish."
 	case strings.Contains(e, "code is not valid"), strings.Contains(e, "has expired"):
 		return "This access code has already been used or has expired. Please request a new code."
 	case strings.Contains(e, "took too long"), strings.Contains(e, "still busy"), strings.Contains(e, "restart tally"):
@@ -101,10 +101,10 @@ func hint(err string) string {
 	case strings.Contains(e, "not open in tally"), strings.Contains(e, "loaded"):
 		return "Please open this company in Tally, then select Continue sharing."
 	case strings.Contains(e, "tally is not reachable"), strings.Contains(e, "tally is not open"):
-		return "Tally Connector cannot reach Tally. Please make sure Tally is open with your company, and that " +
+		return "TallyVeda cannot reach Tally. Please make sure Tally is open with your company, and that " +
 			"F1 > Settings > Connectivity is set to \"Both\" on port 9000."
 	case strings.Contains(e, "server"), strings.Contains(e, "upload failed"), strings.Contains(e, "dial tcp"):
-		return "Tally Connector could not reach its server. Please check your internet connection, then select Continue sharing."
+		return "TallyVeda could not reach its server. Please check your internet connection, then select Continue sharing."
 	case strings.Contains(e, "no vouchers were found"):
 		return "Tally has no entries for this company in the requested period. Please check that the right company is selected."
 	}
@@ -156,7 +156,7 @@ func (a *App) guard(h http.HandlerFunc) http.HandlerFunc {
 
 func (a *App) index(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" || r.URL.Query().Get("t") != a.token {
-		http.Error(w, "Open the link shown in the connector window.", http.StatusForbidden)
+		http.Error(w, "Open the link shown in the TallyVeda window.", http.StatusForbidden)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -483,7 +483,7 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 	defer monitor.ShipLogs(b.URL, st.Token)()
 	summary, err := extract.Sync(ctx, t, o, st.Plan, &upload.Session{B: b, Token: st.Token, SyncID: st.SyncID}, progress)
 	if err != nil {
-		return "", fmt.Errorf("%w. Press \"Continue sharing\" above to carry on from where it stopped", err)
+		return "", fmt.Errorf("%w. Select \"Continue sharing\" on this page to carry on from where it stopped", err)
 	}
 	summary = fmt.Sprintf("%s has been shared with %s. %s", company.Name, info.BankName, summary)
 	if setupErr != nil {

@@ -104,7 +104,7 @@ Gaps between that and the code today (checked 2026-10-02):
   user across tenants (reset/disable/enable/delete, with a guard against disabling/deleting the
   last active platform admin), and an audit log of every admin action. Tenants gained a `kind`
   (`bank` | `direct`) and `status` (`active` | `suspended`, bank tenants only); one built-in
-  direct tenant (named by `TC_PLATFORM_NAME`, default "Tally Connector") holds MSMEs with no
+  direct tenant (named by `TC_PLATFORM_NAME`, default "TallyVeda") holds MSMEs with no
   bank, visible only to platform admins and to the MSME's own login. A disabled user, or any
   user of a suspended bank, can't log in anywhere (`/bank`, `/msme` or `/admin`). State-changing
   form POSTs under `/admin` and `/bank` are now CSRF-guarded (`main.py`'s `_csrf_guard`) — see

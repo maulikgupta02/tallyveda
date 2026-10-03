@@ -49,28 +49,33 @@ verbatim**. When adding a new page, copy that block exactly rather than retyping
 adding a token any page needs, add it to the block in all six files at once so they never
 diverge again.
 
-## App theme (2026-10-04, current; supersedes Colors/Typography/Spacing below where they differ)
-The bank, MSME and admin pages load `backend/app/static/app.css?v=N` right after their own
-inline `<style>`, so it restyles the shared components without markup changes. Bump `?v=` when
-editing it. Not loaded by `home.html`, `legal.html` or `report.html` (own look / print).
-- **Palette:** indigo `--accent #4f46e5` (gradient to `--accent-2 #6366f1`, logo and KPI bars
-  to `#8b5cf6`), teal `--series-2 #0d9488`, surface `#f5f6fa` with a faint indigo radial glow at
-  the top, cards `#fff` with `--line #e6e8ef`, text `#0f172a`/`#475569`/`#64748b`. Status
-  colors stay reserved (good `#16a34a`, warning `#f59e0b`, serious `#f97316`, critical
-  `#dc2626`). The categorical pair passed `validate_palette.js`.
-- **Type:** IBM Plex Sans (body) and Bricolage Grotesque (h1/h2, KPI values), self-hosted in
-  `static/fonts/`. KPI and table header labels are 11–11.5px uppercase, `.06em` tracking.
-- **Shape:** cards radius 16 + soft shadow; inputs and buttons radius 10; pills fully round.
-- **App bar:** full-bleed, sticky, frosted white; logo is a gradient tile; admin nav is a
-  segmented pill (`.tabs-top`). Section tabs (`.tabs`) are a segmented card.
-- **Buttons:** one gradient primary per area (e.g. "+ New request"); everything else
-  `.btn.ghost`; destructive-but-common actions `.btn.ghost.warn` (red text);
-  irreversible ones `.btn.danger`.
-- **Raw enum values** (`awaiting_data`) are shown as `Awaiting data` via
-  `replace("_", " ")|capitalize`.
-- **Connector page** (`connector/internal/app/index.html`) copies the same tokens inline (it
-  is served offline from the exe, so system fonts, no app.css): brand row, 16px cards, active
-  step number in `--accent-soft`, gradient progress bar, consent notice in `--accent-soft`.
+## App shell (2026-10-04, current; supersedes Colors/Typography/Spacing/Components below)
+Approved on the design canvas https://claude.ai/artifact/Vdb98GXVhSSTwmSiqRqrZh (five artboards:
+connector, bank portfolio, borrower, MSME dashboard, admin MSMEs). Product name: **TallyVeda**,
+mark "TV".
+- **Shared CSS:** the bank, MSME and admin pages link `backend/app/static/app.css?v=N` and keep
+  only page-specific CSS (chart internals) inline. Bump `?v=` when editing it. `home.html`,
+  `legal.html` and `report.html` keep their own styles.
+- **Shell:** `.shell` = dark navy sidebar `.side` (`--side #14162e`; `.who` with `.mark`, nav
+  links with `a.on` and `.cnt`/`.cnt.hot` counts, `.foot`) + `.work` area. Below 900px the
+  sidebar turns into a top bar with a scrolling nav row. The MSME dashboard uses `.topbar` +
+  `.pills-nav` + `.page` (1280 max) instead, since it has no sidebar.
+- **Page anatomy:** `.head` (h1, `.sub`/`.meta`, `.actions`), then a `.strip` of headline
+  numbers in one card, then `.split` (`.main-col` + `.rail` of 320px+) or `.cols`.
+- **Palette:** ground `#f6f7fb`, cards white with `--line #e3e6ee`, text `#0f172a`/`#475569`/
+  `#64748b`, accent indigo `--accent #4338ca` (solid, no gradients), chart series `#4f46e5` bars
+  (`#c7d2fe` for past months) and teal `#0d9488` for last year. Status colours are reserved and
+  always carry a word: `.pill.crit/.warn/.good` (with an `<i>` dot) and `.sev` badges
+  ("Critical", "Watch").
+- **Type:** IBM Plex Sans body, Bricolage Grotesque for h1 and `.stat-v` numbers, self-hosted.
+  Table headers and `.sev` are 11–12px uppercase.
+- **Buttons:** one `.btn` primary per area; `.btn.ghost` for the rest; `.btn.warn` for
+  destructive-but-common (stop updates, suspend); `.btn.danger` for irreversible (delete).
+- **Tables:** `.tbl` inside `.scrollx`; numbers right-aligned `.num`; first column `.name`
+  (bold name + small ref). Raw enum values are humanised.
+- **Connector page** (`connector/internal/app/index.html`): two panes, navy left (mark,
+  headline, stepper, trust points, footer) and the current step only on the right. System fonts
+  only (it is served offline by the exe).
 
 ## Colors
 The single `:root` block, identical across all six files above:

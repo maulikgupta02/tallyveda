@@ -423,7 +423,7 @@ func Lock(c *Config) (func(), error) {
 	}
 	release, ok := tryLock(filepath.Join(d, "sync-"+c.ID()+".lock"))
 	if !ok {
-		return nil, fmt.Errorf("%s is already being synced by another connector window", c.Company)
+		return nil, fmt.Errorf("%s is already being synced by another TallyVeda window", c.Company)
 	}
 	return release, nil
 }

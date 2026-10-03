@@ -163,13 +163,13 @@ FAQ = [
 
 LEAD_KINDS = ["A bank or NBFC", "An MSME", "A CA or advisor"]
 
-TITLE = "Tally Connector — Bank-Grade MSME Credit Analysis from Tally"
+TITLE = "TallyVeda — Bank-Grade MSME Credit Analysis from Tally"
 DESCRIPTION = (
     "Turn an MSME's TallyPrime or Tally.ERP 9 books into a bank-grade credit report in "
     "minutes, refreshed daily, for faster MSME credit assessment and monitoring."
 )
 # Bump when the home page's visible content changes meaningfully (sitemap.xml's <lastmod>).
-HOME_LASTMOD = "2026-10-02"
+HOME_LASTMOD = "2026-10-04"
 
 
 def json_ld(public_url: str) -> dict:
@@ -181,20 +181,20 @@ def json_ld(public_url: str) -> dict:
             {
                 "@type": "Organization",
                 "@id": f"{public_url}/#org",
-                "name": "Tally Connector",
+                "name": "TallyVeda",
                 "url": public_url,
-                "logo": f"{public_url}/static/og-image.png",
+                "logo": f"{public_url}/static/icon-tv-192.png",
             },
             {
                 "@type": "WebSite",
                 "@id": f"{public_url}/#website",
-                "name": "Tally Connector",
+                "name": "TallyVeda",
                 "url": public_url,
                 "publisher": {"@id": f"{public_url}/#org"},
             },
             {
                 "@type": "SoftwareApplication",
-                "name": "Tally Connector",
+                "name": "TallyVeda",
                 "url": public_url,
                 "applicationCategory": ["BusinessApplication", "FinanceApplication"],
                 "operatingSystem": "Windows",

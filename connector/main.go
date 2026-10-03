@@ -112,7 +112,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not start: %v", err)
 	}
-	log.Printf("Tally Connector %s: UI at %s", version, url)
+	log.Printf("TallyVeda %s: UI at %s", version, url)
 	fmt.Println("Your browser should open automatically. If it doesn't, open this address:")
 	fmt.Printf("\n    %s\n\n", url)
 	if !*noBrowser {
