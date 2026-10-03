@@ -46,7 +46,7 @@ h3 { letter-spacing: .06em; }
 /* ---- App bar: full width, sticky, frosted ---------------------------------- */
 .wrap > .appbar, body > .appbar {
   position: sticky; top: 0; z-index: 30;
-  margin: -24px calc(50% - 50vw) 28px; padding: 12px calc(50vw - 50% + 24px);
+  margin: -24px calc(50% - 50vw) 28px; padding: 12px calc(50vw - 50%);
   background: rgba(255, 255, 255, .82); color: var(--text);
   -webkit-backdrop-filter: saturate(180%) blur(14px); backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
@@ -160,3 +160,7 @@ details.manage > summary { font-weight: 600; padding: 14px 18px; }
   nav.tabs, .tabs { width: auto; overflow-x: auto; scrollbar-width: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.btn.ghost.warn { color: var(--critical); border-color: #f3c4c4; }
+.btn.ghost.warn:hover { background: var(--critical-soft); }
+.card + .card.flush, .card + .card.s12 { margin-top: 14px; }

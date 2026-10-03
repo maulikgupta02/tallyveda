@@ -118,6 +118,7 @@
     .card { padding: 14px; } .title-row .btn { padding: 8px 10px; }
   }
 </style>
+<link rel="stylesheet" href="/static/app.css?v=2">
 </head>
 <body>
 <main class="wrap">
@@ -167,7 +168,7 @@
       <label>Status<select name="status">
           <option value="">All</option>
           {% for s in ["awaiting_data", "processing", "ready", "failed"] %}
-          <option value="{{ s }}" {{ "selected" if filters.status == s }}>{{ s }}</option>
+          <option value="{{ s }}" {{ "selected" if filters.status == s }}>{{ s.replace("_", " ")|capitalize }}</option>
           {% endfor %}
         </select></label>
       <label class="check"><input type="checkbox" name="overdue" {{ "checked" if filters.overdue }}> Overdue only</label>
@@ -183,8 +184,8 @@
       <tr>
         <td><a class="name" href="/admin/msmes/{{ a.id }}">{{ a.applicant_name }}</a><small>{{ a.reference or "" }}</small></td>
         <td><span class="pill p-{{ a.tenant_kind }}">{{ a.tenant_name }}</span></td>
-        <td>{{ a.status }}</td>
-        <td>{{ a.monitoring_status }}</td>
+        <td>{{ a.status.replace("_", " ")|capitalize }}</td>
+        <td>{{ (a.monitoring_status or "off").replace("_", " ")|capitalize }}</td>
         <td>{{ a.last_report_at|when if a.last_report_at else "Never" }}</td>
         <td><a class="btn ghost" href="/admin/msmes/{{ a.id }}">Open</a></td>
       </tr>

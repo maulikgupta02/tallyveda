@@ -121,6 +121,7 @@
     .card { padding: 14px; } .title-row .btn { padding: 8px 10px; }
   }
 </style>
+<link rel="stylesheet" href="/static/app.css?v=2">
 </head>
 <body>
 <main class="wrap">
@@ -161,25 +162,25 @@
     <div class="manage-body">
       <div class="mpanel">
         <div><div class="k">One-time code</div><div class="v">{% if a.code %}<span class="code">{{ a.code|code }}</span>{% else %}used{% endif %}</div></div>
-        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/code"><button class="btn" type="submit">{{ "New code" if a.code else "Request again" }}</button></form>
+        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/code"><button class="btn ghost" type="submit">{{ "New code" if a.code else "Request again" }}</button></form>
       </div>
       <div class="mpanel">
         <div><div class="k">Applicant's email (for consent verification)</div>
           <div class="v">{{ a.contact_email or "Not set" }}{% if a.otp_verified_at %} · consent verified {{ a.otp_verified_at|when }}{% endif %}</div></div>
-        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/contact"><input name="contact_email" type="email" value="{{ a.contact_email or "" }}" placeholder="owner@company.in" required> <button class="btn" type="submit">Save</button></form>
+        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/contact"><input name="contact_email" type="email" value="{{ a.contact_email or "" }}" placeholder="owner@company.in" required> <button class="btn ghost" type="submit">Save</button></form>
       </div>
       <div class="mpanel">
         <div><div class="k">Monitoring</div><div class="v">{{ monitoring_label }}</div></div>
         {% if a.monitoring_status == "active" %}
         <div><div class="k">Last data</div><div class="v">{{ a.last_report_at|when }}</div></div>
-        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/monitoring/refresh"><button class="btn" type="submit">Refresh now</button></form>
-        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/monitoring/stop" onsubmit="return confirm('Stop daily updates from this client?')"><button class="btn" type="submit">Stop monitoring</button></form>
+        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/monitoring/refresh"><button class="btn ghost" type="submit">Refresh now</button></form>
+        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/monitoring/stop" onsubmit="return confirm('Stop daily updates from this client?')"><button class="btn ghost warn" type="submit">Stop monitoring</button></form>
         {% endif %}
       </div>
       {% if overdue %}<p class="warn">No data for over {{ overdue_days }} days.</p>{% endif %}
       <div class="mpanel">
         <div><div class="k">MSME dashboard login</div><div class="v">{{ "Issued: " + msme_login.username if msme_login else "Not issued" }}</div></div>
-        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/msme-login"><button class="btn" type="submit">{{ "Reset password" if msme_login else "Create login" }}</button></form>
+        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/msme-login"><button class="btn ghost" type="submit">{{ "Reset password" if msme_login else "Create login" }}</button></form>
       </div>
       <div>
         <h3>Report history</h3>

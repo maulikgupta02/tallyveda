@@ -49,6 +49,29 @@ verbatim**. When adding a new page, copy that block exactly rather than retyping
 adding a token any page needs, add it to the block in all six files at once so they never
 diverge again.
 
+## App theme (2026-10-04, current; supersedes Colors/Typography/Spacing below where they differ)
+The bank, MSME and admin pages load `backend/app/static/app.css?v=N` right after their own
+inline `<style>`, so it restyles the shared components without markup changes. Bump `?v=` when
+editing it. Not loaded by `home.html`, `legal.html` or `report.html` (own look / print).
+- **Palette:** indigo `--accent #4f46e5` (gradient to `--accent-2 #6366f1`, logo and KPI bars
+  to `#8b5cf6`), teal `--series-2 #0d9488`, surface `#f5f6fa` with a faint indigo radial glow at
+  the top, cards `#fff` with `--line #e6e8ef`, text `#0f172a`/`#475569`/`#64748b`. Status
+  colors stay reserved (good `#16a34a`, warning `#f59e0b`, serious `#f97316`, critical
+  `#dc2626`). The categorical pair passed `validate_palette.js`.
+- **Type:** IBM Plex Sans (body) and Bricolage Grotesque (h1/h2, KPI values), self-hosted in
+  `static/fonts/`. KPI and table header labels are 11–11.5px uppercase, `.06em` tracking.
+- **Shape:** cards radius 16 + soft shadow; inputs and buttons radius 10; pills fully round.
+- **App bar:** full-bleed, sticky, frosted white; logo is a gradient tile; admin nav is a
+  segmented pill (`.tabs-top`). Section tabs (`.tabs`) are a segmented card.
+- **Buttons:** one gradient primary per area (e.g. "+ New request"); everything else
+  `.btn.ghost`; destructive-but-common actions `.btn.ghost.warn` (red text);
+  irreversible ones `.btn.danger`.
+- **Raw enum values** (`awaiting_data`) are shown as `Awaiting data` via
+  `replace("_", " ")|capitalize`.
+- **Connector page** (`connector/internal/app/index.html`) copies the same tokens inline (it
+  is served offline from the exe, so system fonts, no app.css): brand row, 16px cards, active
+  step number in `--accent-soft`, gradient progress bar, consent notice in `--accent-soft`.
+
 ## Colors
 The single `:root` block, identical across all six files above:
 ```

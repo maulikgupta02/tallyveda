@@ -118,6 +118,7 @@
     .card { padding: 14px; } .title-row .btn { padding: 8px 10px; }
   }
 </style>
+<link rel="stylesheet" href="/static/app.css?v=2">
 </head>
 <body>
 <main class="wrap">
@@ -215,7 +216,7 @@
         {% for a in msmes %}
         <tr>
           <td><a class="name" href="/admin/msmes/{{ a.id }}">{{ a.applicant_name }}</a></td>
-          <td>{{ a.status }}</td>
+          <td>{{ a.status.replace("_", " ")|capitalize }}</td>
           <td><a class="btn ghost" href="/admin/msmes/{{ a.id }}">Open</a></td>
         </tr>
         {% else %}
