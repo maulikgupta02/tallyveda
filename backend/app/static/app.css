@@ -1,0 +1,162 @@
+/* Shared look for the bank, MSME and admin dashboards (design.md, "App theme").
+   Loaded after each page's own <style>, so it restyles the shared components
+   (appbar, cards, KPIs, tabs, tables, pills, buttons, forms) without touching
+   markup. Page-specific layout stays in the page. */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/static/fonts/ibm-plex-sans.woff2") format("woff2-variations"), url("/static/fonts/ibm-plex-sans.woff2") format("woff2");
+  font-weight: 400 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/static/fonts/bricolage-grotesque.woff2") format("woff2-variations"), url("/static/fonts/bricolage-grotesque.woff2") format("woff2");
+  font-weight: 500 700; font-style: normal; font-display: swap;
+}
+
+:root {
+  --surface: #f5f6fa; --surface-2: #eef0f6; --card: #ffffff; --line: #e6e8ef; --line-2: #d9dce6;
+  --text: #0f172a; --text-2: #475569; --muted: #64748b;
+  --accent: #4f46e5; --accent-2: #6366f1; --accent-ink: #ffffff; --accent-soft: #eef2ff; --brand: #0f172a;
+  --good: #16a34a; --warning: #f59e0b; --serious: #f97316; --critical: #dc2626;
+  --good-soft: #ecfdf3; --warning-soft: #fff7e6; --critical-soft: #fef2f2;
+  --series-1: #4f46e5; --series-2: #0d9488;
+  --age-1: #e0e7ff; --age-2: #c7d2fe; --age-3: #a5b4fc; --age-4: #818cf8; --age-5: #6366f1; --age-6: #4338ca;
+  --radius: 16px; --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px -12px rgba(15, 23, 42, .10);
+  --shadow-hover: 0 2px 4px rgba(15, 23, 42, .05), 0 16px 32px -16px rgba(15, 23, 42, .18);
+  --font: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --display: "Bricolage Grotesque", "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+}
+
+html { overflow-x: clip; }
+body {
+  font-family: var(--font); font-size: 14px; line-height: 1.5; color: var(--text);
+  background: radial-gradient(1200px 380px at 50% -160px, #e8ebff 0%, rgba(232, 235, 255, 0) 70%), var(--surface);
+  background-attachment: fixed; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+.num, .k-val, .t-val, .mt-val, .tbl td { font-variant-numeric: tabular-nums; }
+h1, h2 { font-family: var(--display); letter-spacing: -.015em; }
+h1 { font-size: 28px; font-weight: 650; line-height: 1.2; }
+h2 { font-size: 16px; font-weight: 600; }
+h3 { letter-spacing: .06em; }
+::selection { background: #c7d2fe; }
+
+/* ---- App bar: full width, sticky, frosted ---------------------------------- */
+.wrap > .appbar, body > .appbar {
+  position: sticky; top: 0; z-index: 30;
+  margin: -24px calc(50% - 50vw) 28px; padding: 12px calc(50vw - 50% + 24px);
+  background: rgba(255, 255, 255, .82); color: var(--text);
+  -webkit-backdrop-filter: saturate(180%) blur(14px); backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--line); border-radius: 0; box-shadow: none;
+}
+.appbar .brand { font-weight: 600; color: var(--text); font-size: 15px; }
+.appbar .brand em { color: var(--muted); }
+.appbar .logo {
+  width: 32px; height: 32px; border-radius: 10px; font-size: 12px; font-weight: 700; letter-spacing: .02em;
+  background: linear-gradient(135deg, var(--accent) 0%, #8b5cf6 100%); color: #fff;
+  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, .6);
+}
+.appbar .fresh { color: var(--text-2); }
+.appbar .btn.ghost, .appbar a.btn { background: var(--card); color: var(--text); border: 1px solid var(--line); }
+.tabs-top { background: var(--surface-2); padding: 4px; border-radius: 12px; gap: 2px; }
+.tabs-top a { color: var(--text-2); padding: 6px 14px; border-radius: 9px; font-weight: 500; transition: color .15s, background .15s; }
+.tabs-top a:hover { color: var(--text); }
+.tabs-top a.on { background: var(--card); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, .08); }
+.appbar .search { background: var(--surface); border-color: var(--line); color: var(--muted); border-radius: 10px; }
+.appbar .search input { color: var(--text); }
+
+/* ---- Page header ------------------------------------------------------------ */
+.title-row { margin-bottom: 24px; }
+.sub { color: var(--text-2); font-size: 14px; }
+.co-head { margin-bottom: 8px; }
+
+/* ---- Buttons and forms ---------------------------------------------------- */
+.btn, button.btn, a.btn {
+  font-family: var(--font); font-weight: 600; font-size: 13.5px; border-radius: 10px; padding: 9px 16px;
+  background: linear-gradient(180deg, var(--accent-2) 0%, var(--accent) 100%); color: #fff; border: 1px solid var(--accent);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: transform .12s ease, box-shadow .15s ease, filter .15s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { filter: brightness(1.05); box-shadow: 0 4px 14px -6px rgba(79, 70, 229, .55); }
+.btn:active { transform: translateY(1px); }
+.btn.ghost, .btn.secondary, a.btn.ghost {
+  background: var(--card); color: var(--text); border: 1px solid var(--line-2); box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+}
+.btn.ghost:hover { background: var(--surface); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); filter: none; }
+.btn.danger { background: var(--critical); border-color: var(--critical); }
+input[type="text"], input[type="email"], input[type="number"], input[type="password"], input:not([type]), select, textarea {
+  font-family: var(--font); font-size: 14px; color: var(--text); background: var(--card);
+  border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 12px; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(79, 70, 229, .14); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- Cards and KPIs ----------------------------------------------------------- */
+.grid { gap: 18px; }
+.card { border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 20px; }
+.card.flush .card-head { padding: 18px 20px 14px; }
+.card-head h2 { font-size: 16px; }
+.card-head a { font-size: 13px; font-weight: 500; }
+.kpi { position: relative; overflow: hidden; transition: box-shadow .2s, transform .2s; }
+.kpi:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+.kpi::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), #8b5cf6); opacity: .85;
+}
+.k-label, .mt-label, .t-label, .tile .k { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.k-val, .t-val, .mt-val { font-family: var(--display); font-weight: 650; letter-spacing: -.02em; }
+.k-val { font-size: 34px; }
+.tile, .mt { border-radius: var(--radius); box-shadow: var(--shadow); border-color: var(--line); }
+.delta, .pos, .neg { font-weight: 600; }
+
+/* ---- Section tabs ------------------------------------------------------------- */
+nav.tabs, .tabs {
+  border-bottom: 0; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 5px; box-shadow: var(--shadow); width: max-content; max-width: 100%;
+}
+.tabs a, .gtabs > nav.tabs label {
+  border: 0; border-radius: 10px; margin: 0; padding: 8px 14px; font-weight: 500; color: var(--text-2); transition: background .15s, color .15s;
+}
+.tabs a:hover, .gtabs > nav.tabs label:hover { background: var(--surface); color: var(--text); }
+.tabs a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; border: 0; }
+
+/* ---- Tables ------------------------------------------------------------------- */
+.tbl th {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  background: #f8f9fc; padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+.tbl td { padding: 13px 14px; border-bottom: 1px solid #eef0f5; }
+.tbl tbody tr { transition: background .12s; }
+.tbl tbody tr:hover { background: #f8f9ff; }
+.tbl td a { font-weight: 600; }
+
+/* ---- Pills, chips, counts ---------------------------------------------------- */
+.pill { border-radius: 999px; padding: 4px 10px 4px 9px; font-weight: 600; background: var(--surface-2); }
+.chips a { border-radius: 999px; padding: 5px 12px; font-weight: 500; background: var(--card); border-color: var(--line-2); transition: all .15s; }
+.chips a:hover { border-color: var(--accent); color: var(--accent); }
+.chips a.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.count { background: var(--accent); }
+
+/* ---- Alerts, flags, feeds ---------------------------------------------------- */
+.flags li { border-radius: var(--radius-sm); background: var(--surface); border-left-width: 3px; padding: 10px 12px 10px 14px; }
+.feed li { padding: 12px 0; border-top-color: #eef0f5; }
+.feed b a { font-weight: 600; }
+
+/* ---- Manage panels (details) ---------------------------------------------- */
+details.manage { border-radius: var(--radius); border-color: var(--line); box-shadow: var(--shadow); background: var(--card); }
+details.manage > summary { font-weight: 600; padding: 14px 18px; }
+.mpanel { border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); }
+.syncnote { border-radius: var(--radius-sm); border: 1px solid #fde7b0; }
+
+/* ---- Small screens -------------------------------------------------------- */
+@media (max-width: 900px) {
+  .wrap > .appbar, body > .appbar { margin: -16px calc(50% - 50vw) 20px; padding: 10px 16px; }
+  h1 { font-size: 24px; }
+  .k-val { font-size: 28px; }
+  .tabs-top { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+  nav.tabs, .tabs { width: auto; overflow-x: auto; scrollbar-width: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

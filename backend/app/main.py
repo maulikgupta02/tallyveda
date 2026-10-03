@@ -1411,9 +1411,12 @@ def admin_leads(user: dict = Depends(platform_user)):
 def download():
     if config.CONNECTOR_URL:
         return RedirectResponse(config.CONNECTOR_URL)
-    if not config.CONNECTOR_EXE or not Path(config.CONNECTOR_EXE).exists():
+    if config.CONNECTOR_EXE and Path(config.CONNECTOR_EXE).exists():
+        return FileResponse(config.CONNECTOR_EXE, filename="TallyConnector.exe")
+    bundled = _STATIC_DIR / "downloads" / "TallyConnector.zip"
+    if not bundled.exists():
         raise HTTPException(404, "Connector download not configured")
-    return FileResponse(config.CONNECTOR_EXE, filename="TallyConnector.exe")
+    return FileResponse(bundled, filename="TallyConnector.zip", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/healthz", include_in_schema=False)
