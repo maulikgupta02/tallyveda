@@ -43,6 +43,12 @@
   names on TallyPrime 4+, and Day Book performance on companies with >100k vouchers. Any
   change to `connector/internal/tally/` should be treated as unverified until tested against
   real Tally, regardless of how clean the mock-based tests look.
+- **Windows Defender flagged and stopped the connector (2026-10-04),** which may explain the
+  "connector went silent" stalls. 0.2.7 removes PowerShell and the Tally-window screenshot
+  (`internal/support` now uses Win32 calls only), keeps symbols (no `-s -w`), embeds version info
+  and an asInvoker manifest (`build.sh` runs goversioninfo), and ships 64-bit. Still unsigned:
+  submit each release to Microsoft (wdsi/filesubmission) as a false positive. Code signing is
+  the real fix and costs money unless the project is open source (SignPath).
 - **Root cause found (2026-10-04, connector 0.2.4 logs from the MSME, TallyPrime on Windows 10,
   8 GB RAM, about 1 GB free, 5 ledgers, 1 stock item):** every master field answers in about
   10 ms. A balance request whose MasterId range contained **Profit & Loss A/c** froze Tally for

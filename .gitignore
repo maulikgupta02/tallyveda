@@ -6,3 +6,5 @@ connector/dist/
 
 # Agent design mockups (local only)
 /docs/agents/mockups/
+connector/resource_windows_amd64.syso
+connector/versioninfo.json
