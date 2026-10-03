@@ -91,6 +91,16 @@
   .btn.primary { background: var(--accent); color: #ffffff; }
   .btn.ghost-dark { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); color: #ffffff; }
   .signin-link { color: #ffffff; text-decoration: none; font-size: 15px; padding: 10px 12px; min-height: 44px; display: inline-flex; align-items: center; }
+  .dl-link { color: rgba(255,255,255,.8); }
+  .hero-dl { font-size: 15px; color: rgba(255,255,255,.78); margin: 0; }
+  .hero-dl a { color: #ffffff; font-weight: 600; }
+  .dl-card { display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); margin-top: 8px; scroll-margin-top: 96px; }
+  .dl-card h3 { margin: 0; font-size: 18px; }
+  .dl-card p { margin: 0; font-size: 15px; color: var(--text-2); }
+  .dl-card ol { margin: 0; padding-left: 20px; font-size: 15px; color: var(--text-2); display: flex; flex-direction: column; gap: 4px; }
+  .dl-card .btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; }
+  .dl-card small { font-size: 13px; color: var(--muted, #64748b); }
+  @media (max-width: 720px) { .header-actions .dl-link { display: none; } }
 
   /* hero */
   .hero { background: var(--brand); color: #ffffff; padding: 72px 0 96px; }
@@ -272,6 +282,7 @@
       <a href="#faq">FAQ</a>
     </nav>
     <div class="header-actions">
+      <a href="/download" class="signin-link dl-link">Download</a>
       <a href="/bank" class="signin-link">Sign in</a>
       <a href="#demo" class="btn primary">Book a demo</a>
     </div>
@@ -289,6 +300,7 @@
         <a href="#demo" class="btn primary">Book a demo</a>
         <a href="#how" class="btn ghost-dark">See how it works</a>
       </div>
+      <p class="hero-dl">Got an access code from your lender? <a href="#download">Download the TallyVeda connector</a>.</p>
       <ul class="hero-facts">
         <li>Read-only: changes nothing in Tally</li>
         <li>24 months of books in one pass</li>
@@ -498,6 +510,17 @@
         <li>Busy and quiet months from your own history</li>
         <li>Stop sharing any time, from the same tool</li>
       </ul>
+      <div class="dl-card" id="download">
+        <h3>Download the TallyVeda connector</h3>
+        <p>For the computer where your Tally runs. You need the 8-character access code your lender sent you.</p>
+        <ol>
+          <li>Download the zip and extract it (right-click, Extract All).</li>
+          <li>Open Tally with your company loaded.</li>
+          <li>Run TallyVeda, enter your code and approve sharing.</li>
+        </ol>
+        <a class="btn primary" href="/download"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows (.zip)</a>
+        <small>Windows 10 or 11, 64-bit. Works with TallyPrime and Tally.ERP 9. The zip includes step-by-step guides for Tally on your own computer and for Tally on cloud (TallyPrime on AWS or a hosted server).</small>
+      </div>
     </div>
   </div>
 </section>
@@ -563,7 +586,7 @@
 <footer class="site">
   <div class="wrap">
     <span class="fbrand">TallyVeda</span>
-    <span><a href="/privacy">Privacy Notice</a> · <a href="/terms">Terms of Use</a></span>
+    <span><a href="/download">Download connector</a> · <a href="/privacy">Privacy Notice</a> · <a href="/terms">Terms of Use</a></span>
     <span>Tally, TallyPrime and Tally.ERP 9 are trademarks of Tally Solutions Pvt. Ltd. TallyVeda is not affiliated with Tally Solutions.</span>
   </div>
 </footer>

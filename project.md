@@ -48,6 +48,9 @@ go build -o /tmp/throwaway-binary .
 # connector — real distributable build (NOT run in this sandbox — produces the actual
 # dist/ binaries; only run this intentionally, see connector/build.sh)
 SERVER=https://tally.yourbank.in VERSION=1.0.0 ./build.sh
+# then package what /download serves (TallyVeda.zip): the exe plus both user guides
+cd dist && zip -j TallyConnector-$VERSION.zip TallyConnector.exe ../guides/*.txt \
+  && cp TallyConnector-$VERSION.zip ../../backend/app/static/downloads/TallyConnector.zip
 
 # mock Tally, for local dev instead of a real Tally install (verified: serves on :9000,
 # answers a ping with "TallyPrime Server is Running")

@@ -1,0 +1,62 @@
+TallyVeda - sharing your Tally accounts securely
+================================================
+
+TallyVeda reads your company's books of account from Tally on your computer
+and shares them, encrypted, with the organisation that sent you an access code,
+for assessing and processing your credit application. It only reads data; it
+never changes anything in Tally.
+
+Tally on the cloud (TallyPrime on AWS, or a hosted or Remote Desktop server)?
+Follow HOW-TO-USE-TALLY-ON-CLOUD.txt instead.
+
+You need
+- A Windows 10 or 11 computer (64-bit) with TallyPrime or Tally.ERP 9.
+- The 8-character access code you received (for example ABCD-2345). Each code
+  works once and is valid for 3 days.
+
+1. Enable Tally's data connection (one time only)
+   TallyPrime: press F1 (Help) > Settings > Connectivity > Client/Server
+   configuration. Set "TallyPrime is acting as" to "Both" and Port to 9000.
+   Save with Ctrl+A and restart Tally.
+   Tally.ERP 9: F12 Configure > Advanced Configuration > "Tally.ERP 9 is acting
+   as: Both", port 9000.
+
+2. Open Tally and load your company.
+
+3. Extract this zip (right-click > Extract All), then double-click
+   TallyConnector.exe in the extracted folder. Nothing is installed and no
+   administrator rights are needed. If Windows shows "Windows protected your
+   PC", select "More info" and then "Run anyway".
+
+4. A page opens in your browser. Enter your access code, choose your company,
+   read how your data will be used, and give your consent. Small companies take
+   a few minutes; larger ones longer. You can keep working in Tally meanwhile,
+   or close the page; sharing continues in the background. If the computer is
+   switched off part-way, open TallyVeda again and select "Continue
+   sharing": it resumes where it stopped. Please keep a laptop plugged in and
+   open until sharing is complete.
+
+5. Optional: choose daily updates so the latest figures are shared each day
+   while Tally is open. You do not need to open TallyVeda again, and you
+   can stop updates at any time from the same page.
+
+6. More than one company? Load it in Tally, open TallyVeda again and use
+   the access code you received for that company.
+
+If your antivirus blocks TallyVeda
+This can happen with new programs that are not yet widely known. Please do not
+turn off your antivirus. Instead, in Windows Security go to Virus & threat
+protection > Manage settings > Exclusions > Add an exclusion > Folder, and add
+the folder you extracted TallyVeda to, and
+C:\Users\<your user name>\AppData\Roaming\TallyConnector.
+If the file was removed, restore it from Protection history.
+
+If Tally stops responding
+Close Tally (from Task Manager if needed), open it again with your company, then
+open TallyVeda and select "Continue sharing". If the problem continues,
+select "Having trouble? Run a connection check" at the bottom of the page; the
+results are sent to our support team automatically.
+
+Your data is shared only as described on the consent screen. Technical
+diagnostics (such as the Tally version and connection logs) are sent to help
+resolve problems.

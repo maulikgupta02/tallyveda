@@ -169,7 +169,7 @@ DESCRIPTION = (
     "minutes, refreshed daily, for faster MSME credit assessment and monitoring."
 )
 # Bump when the home page's visible content changes meaningfully (sitemap.xml's <lastmod>).
-HOME_LASTMOD = "2026-10-04"
+HOME_LASTMOD = "2026-10-05"
 
 
 def json_ld(public_url: str) -> dict:

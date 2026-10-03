@@ -1,0 +1,106 @@
+TallyVeda - if your Tally runs on the cloud
+===========================================
+
+Use this guide if you open Tally through the internet instead of on your own
+computer. For Tally installed on your own computer, see HOW-TO-USE.txt.
+
+First, find out which kind of cloud Tally you have:
+
+  A. "TallyPrime on AWS" / "TallyPrime Powered by AWS" from Tally Solutions.
+     You open Tally through the "Virtual Computer Connection" app and manage
+     users in Tally's Self Service Portal.
+  B. Tally on a Windows server you reach by Remote Desktop (a hosting
+     provider, an AWS, Azure or Google Cloud server, or your office server),
+     where you see the whole Windows desktop of that server.
+  C. Hosted Tally where only the Tally window opens on your screen (no
+     server desktop), often called "Tally on Cloud" by hosting providers.
+  D. "TallyPrime Cloud Access" from Tally Solutions.
+
+If you are not sure, ask whoever set up your Tally, or your Tally partner.
+
+In every case: never open Tally's port 9000 to the internet. TallyVeda does
+not need it, and Tally's data connection has no password.
+
+
+A. TallyPrime on AWS (Tally Solutions)
+--------------------------------------
+TallyVeda cannot be installed on the AWS virtual computer. Instead it runs on
+your own Windows computer and reaches Tally through Tally's "Sync with Local
+Applications" feature.
+
+One-time setup, done by the owner of your TallyPrime on AWS subscription:
+1. Log in to Tally's Self Service Portal. Go to Actions > Settings > Advanced
+   Settings and set "Allow synchronising Virtual Office with local
+   applications" to Yes.
+2. In Manage Users, turn on "Allow to sync local applications" for the user
+   who will share the data.
+
+On the Windows computer you use to open Tally (Windows 10 or 11, 64-bit):
+3. Install or update the Virtual Computer Connection client to version 1.2
+   or later ("Update Client" in the portal). This needs administrator rights
+   on the computer. Sign out of the client and sign in again.
+4. Open the Virtual Computer Connection client, start TallyPrime and load
+   your company.
+5. In the client, open Settings > Sync Connectivity Information and wait
+   until it shows green, "Ready to Sync with TallyPrime". Yellow means
+   TallyPrime is not running; red means a connection problem.
+6. Note the port shown there. The simplest is to set it to 9000.
+   If you must use a different port, start TallyVeda with that port:
+   right-click TallyConnector.exe > Show more options > Create shortcut,
+   right-click the shortcut > Properties, and at the end of "Target" add
+   a space and  -tally http://localhost:PORT  (with your port number), then
+   start TallyVeda from that shortcut. TallyVeda remembers the address for
+   daily updates.
+7. Extract this zip (right-click > Extract All) and run TallyConnector.exe
+   (or your shortcut). Continue with step 4 of HOW-TO-USE.txt: enter your
+   access code, choose your company and give your consent.
+
+Every request goes over the internet to AWS, so sharing takes longer than with
+Tally on your own computer. Keep the computer on and the Virtual Computer
+Connection client open until sharing is complete.
+
+Daily updates run only while this computer is on, you are signed in to
+Windows, and the Virtual Computer Connection client is open with TallyPrime
+running. If the client is closed, the update waits and tries again on the
+next run.
+
+
+B. Tally on a Windows server you open by Remote Desktop
+-------------------------------------------------------
+Run TallyVeda on the server itself, next to Tally:
+1. Connect to the server by Remote Desktop and open Tally with your company.
+2. Enable Tally's data connection on the server (step 1 of HOW-TO-USE.txt).
+3. On the server, open Microsoft Edge or Google Chrome (older Windows Server
+   versions only have Internet Explorer, which cannot run the TallyVeda page),
+   download TallyVeda from the website, extract it and run
+   TallyConnector.exe. If downloads are blocked on the server, copy the zip
+   from your own computer into the Remote Desktop window.
+4. Continue with step 4 of HOW-TO-USE.txt.
+
+The server needs to reach the internet over HTTPS (port 443). No ports need
+to be opened towards the server.
+
+Daily updates: when you finish, close the Remote Desktop window
+("disconnect") instead of signing out. Signing out closes Tally and stops
+the updates. If the server restarts, open Tally again.
+
+
+C. Hosted Tally where only the Tally window opens
+--------------------------------------------------
+You cannot run TallyVeda yourself here, because it has to run on the server
+next to Tally. Send your hosting provider this guide and ask them to follow
+part B on the server for your user, or to give you full Remote Desktop
+access to it.
+
+
+D. TallyPrime Cloud Access
+--------------------------
+Tally Solutions does not currently allow other applications to connect to
+TallyPrime Cloud Access, so TallyVeda cannot read the books from it. Please
+tell the organisation that sent you the access code; they can suggest
+another way to share your books.
+
+
+Need help?
+Select "Having trouble? Run a connection check" at the bottom of the
+TallyVeda page. The results are sent to our support team automatically.
