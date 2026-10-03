@@ -2,6 +2,7 @@ package upload
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"tallyconnector/internal/extract"
@@ -91,3 +92,19 @@ func (b *Backend) SendLog(ctx context.Context, headers map[string]string, kind, 
 // TokenAuth and CodeAuth are the two ways to authorise SendLog.
 func TokenAuth(token string) map[string]string { return bearer(token) }
 func CodeAuth(code string) map[string]string   { return map[string]string{"X-Link-Code": code} }
+
+// SendOTP emails a one-time password to the request's registered address and
+// returns the masked address it went to.
+func (b *Backend) SendOTP(ctx context.Context, code string) (string, error) {
+	var out struct {
+		SentTo string `json:"sent_to"`
+	}
+	err := b.call(ctx, "/api/connector/otp/send", CodeAuth(code), []byte("{}"), &out)
+	return out.SentTo, err
+}
+
+// VerifyOTP confirms the one-time password; consent can be given afterwards.
+func (b *Backend) VerifyOTP(ctx context.Context, code, otp string) error {
+	body, _ := json.Marshal(map[string]string{"otp": otp})
+	return b.call(ctx, "/api/connector/otp/verify", CodeAuth(code), body, nil)
+}

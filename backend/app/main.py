@@ -49,6 +49,7 @@ import json
 import logging
 import secrets
 import re
+import threading
 import time
 import zlib
 from collections import defaultdict, deque
@@ -64,7 +65,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
 from starlette.middleware.gzip import GZipMiddleware
 
-from . import books, config, marketing, store
+from . import books, config, mailer, marketing, store
 from .analysis.alerts import compare, snapshot
 from .report import dashboard as dashboard_views, dashboard_charts as dc
 from .report import format as fmt
@@ -80,11 +81,50 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 _NOINDEX_PREFIXES = ("/bank", "/msme", "/admin", "/api")
 
 
+_housekeeping_lock = threading.Lock()
+_housekeeping_last = 0.0
+HOUSEKEEPING_EVERY = 6 * 3600
+
+
+def housekeeping() -> int:
+    """Retention: purge the raw books of companies that stopped sharing more
+    than TC_RETENTION_DAYS ago. Returns how many were purged."""
+    purged = 0
+    for a in store.retention_due(config.RETENTION_DAYS):
+        store.purge_raw(a["id"])
+        store.record_audit("system", "retention.purged", "application", a["id"],
+                           f"Raw books of {a['applicant_name']} deleted after {config.RETENTION_DAYS} days without sharing")
+        purged += 1
+    return purged
+
+
+def _maybe_housekeeping() -> None:
+    """Runs housekeeping in the background at most every few hours, driven by
+    ordinary traffic (the uptime pinger keeps it regular); no scheduler needed."""
+    global _housekeeping_last
+    if config.DEV:
+        return  # tests and local runs call housekeeping() directly
+    if time.time() - _housekeeping_last < HOUSEKEEPING_EVERY or not _housekeeping_lock.acquire(blocking=False):
+        return
+    _housekeeping_last = time.time()
+
+    def run():
+        try:
+            housekeeping()
+        except Exception:
+            log.exception("housekeeping failed")
+        finally:
+            _housekeeping_lock.release()
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 @app.middleware("http")
 async def _noindex_private_routes(request: Request, call_next):
     """Everything except the public marketing site is a private, per-tenant
     tool — never meant to rank. Belt-and-braces alongside robots.txt, since a
     crawler that already has a stale link shouldn't need to consult it."""
+    _maybe_housekeeping()
     response = await call_next(request)
     if request.url.path.startswith(_NOINDEX_PREFIXES):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
@@ -257,6 +297,9 @@ def connector_verify(body: VerifyIn, request: Request):
         "reference": a["reference"],
         "months": a["months"],
         "monitoring_offered": bool(a["monitoring_offered"]),
+        "otp_required": not store.otp_satisfied(a),
+        "otp_sent_to": store.mask_email(a.get("contact_email")),
+        "contact_missing": config.REQUIRE_OTP and not a.get("contact_email"),
     }
 
 
@@ -357,6 +400,53 @@ async def monitor_upload(request: Request, background: BackgroundTasks):
     return {"status": "received", "report_id": report_id}
 
 
+# ------------------------------------------------------------ consent OTP
+
+
+@app.post("/api/connector/otp/send")
+def otp_send(request: Request):
+    a = _check_code(request.headers.get("x-link-code", ""), request.client.host)
+    if not a.get("contact_email"):
+        raise HTTPException(409, "No email address is registered for this request. Please ask the requesting "
+                                 "organisation to add your email address.")
+    try:
+        otp = store.issue_otp(a["id"])
+    except ValueError as e:
+        raise HTTPException(429, str(e))
+    tenant = store.get_tenant(a["tenant_id"])
+    requester = tenant["name"] if tenant else config.PLATFORM_NAME
+    try:
+        mailer.send(a["contact_email"], f"Your {config.PLATFORM_NAME} verification code: {otp}",
+                    f"Your verification code is {otp}. It is valid for {config.OTP_TTL_MINUTES} minutes.\n\n"
+                    f"{requester} has requested the accounting data of {a['applicant_name']} through "
+                    f"{config.PLATFORM_NAME}. Enter this code in {config.PLATFORM_NAME} on your computer to confirm "
+                    f"that you are giving consent.\n\nIf you did not request this, you can ignore this email; "
+                    f"nothing will be shared without this code.\n")
+    except mailer.MailError as e:
+        raise HTTPException(502, str(e))
+    store.record_audit("connector", "otp.sent", "application", a["id"], f"Code sent to {store.mask_email(a['contact_email'])}")
+    return {"sent_to": store.mask_email(a["contact_email"])}
+
+
+class OtpIn(BaseModel):
+    otp: str
+
+
+@app.post("/api/connector/otp/verify")
+def otp_verify(body: OtpIn, request: Request):
+    a = _check_code(request.headers.get("x-link-code", ""), request.client.host)
+    result = store.check_otp(a["id"], body.otp)
+    if result != "ok":
+        raise HTTPException(400, {
+            "expired": "This verification code has expired. Please request a new one.",
+            "locked": "Too many incorrect attempts. Please request a new verification code.",
+            "wrong": "The verification code is incorrect. Please check it and try again.",
+        }[result])
+    store.record_audit("connector", "otp.verified", "application", a["id"],
+                       f"Email {store.mask_email(a['contact_email'])} verified")
+    return {"verified": True}
+
+
 # ------------------------------------------------------------ incremental sync
 # The connector sends a company's books in pieces (see books.py): start, then
 # masters / vouchers / present in any number of requests, then finish.
@@ -389,6 +479,11 @@ async def sync_start(request: Request):
     code = request.headers.get("x-link-code", "")
     if code:
         a = _check_code(code, request.client.host)
+        if not store.otp_satisfied(a):
+            raise HTTPException(403, "Please verify the code sent to your email address before giving consent.")
+        if a.get("otp_verified_email"):
+            body.consent["verified_email"] = a["otp_verified_email"]
+            body.consent["verified_at"] = a["otp_verified_at"]
         store.mark_uploaded(a["id"], body.company.get("name", ""), body.consent.get("accepted_by", ""), request.client.host)
         if a["monitoring_offered"] and body.monitoring_opt_in:
             out["token"], out["monitoring"] = store.start_monitoring(a["id"]), True
@@ -668,6 +763,29 @@ Home page: {public_url}/
 """
 
 
+LEGAL_UPDATED = "4 October 2026"
+
+
+def _legal(page: str, title: str, description: str) -> HTMLResponse:
+    html = templates.get_template("legal.html").render(
+        page=page, title=title, description=description, path=f"/{page}", public_url=config.PUBLIC_URL,
+        operator=config.OPERATOR_NAME, address=config.OPERATOR_ADDRESS, grievance_email=config.GRIEVANCE_EMAIL,
+        data_location=config.DATA_LOCATION, retention_days=config.RETENTION_DAYS, keep_raw_days=config.KEEP_RAW_DAYS,
+        updated=LEGAL_UPDATED, year=LEGAL_UPDATED[-4:],
+    )
+    return HTMLResponse(html)
+
+
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+def privacy_page():
+    return _legal("privacy", "Privacy Notice", "How Tally Connector collects, uses, shares and protects business data, and your rights.")
+
+
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+def terms_page():
+    return _legal("terms", "Terms of Use", "Terms for using Tally Connector and its dashboards.")
+
+
 @app.get("/robots.txt", include_in_schema=False)
 def robots_txt():
     return PlainTextResponse(ROBOTS_TXT.format(public_url=config.PUBLIC_URL))
@@ -687,6 +805,8 @@ def sitemap_xml():
         f"    <loc>{config.PUBLIC_URL}/</loc>\n"
         f"    <lastmod>{marketing.HOME_LASTMOD}</lastmod>\n"
         "  </url>\n"
+        f"  <url><loc>{config.PUBLIC_URL}/privacy</loc></url>\n"
+        f"  <url><loc>{config.PUBLIC_URL}/terms</loc></url>\n"
         "</urlset>\n"
     )
     return Response(xml, media_type="application/xml")
@@ -728,13 +848,26 @@ def dashboard(request: Request, filter: str = "", user: dict = Depends(bank_user
     )
 
 
+EMAIL_FORM_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _contact(email: str) -> str:
+    email = email.strip().lower()
+    if config.REQUIRE_OTP and not email:
+        raise HTTPException(400, "The applicant's email address is required: consent is confirmed with a code sent there.")
+    if email and not EMAIL_FORM_RE.match(email):
+        raise HTTPException(400, "Please enter a valid email address.")
+    return email
+
+
 @app.post("/bank/applications")
 def create_application_form(
     applicant_name: str = Form(...), reference: str = Form(""), months: int = Form(config.DEFAULT_MONTHS),
-    monitoring: str = Form(""), user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard),
+    monitoring: str = Form(""), contact_email: str = Form(""), user: dict = Depends(bank_user),
+    _csrf: None = Depends(_csrf_guard),
 ):
     store.create_application(user["tenant_id"], applicant_name.strip(), reference.strip(),
-                              max(6, min(months, 60)), monitoring == "on")
+                              max(6, min(months, 60)), monitoring == "on", _contact(contact_email))
     return RedirectResponse("/bank", status_code=303)
 
 
@@ -759,6 +892,14 @@ def regenerate(app_id: str, user: dict = Depends(bank_user), _csrf: None = Depen
     _get_or_404(app_id, user["tenant_id"])
     store.regenerate_code(app_id)
     return RedirectResponse("/bank", status_code=303)
+
+
+@app.post("/bank/applications/{app_id}/contact")
+def bank_contact(app_id: str, contact_email: str = Form(""), user: dict = Depends(bank_user),
+                 _csrf: None = Depends(_csrf_guard)):
+    _get_or_404(app_id, user["tenant_id"])
+    store.set_contact_email(app_id, _contact(contact_email))
+    return RedirectResponse(f"/bank/applications/{app_id}", status_code=303)
 
 
 @app.post("/bank/applications/{app_id}/monitoring/refresh")
@@ -839,6 +980,25 @@ def msme_dashboard(tab: str = "home", user: dict = Depends(msme_user)):
             msme = dashboard_views.msme_view(report)
     return _render_application(a, "msme.html", bank_name=config.BANK_NAME,
                                 msme=msme, active_tab=tab if tab in MSME_TABS else "home")
+
+
+@app.post("/msme/monitoring/stop")
+def msme_stop_updates(user: dict = Depends(msme_user), _csrf: None = Depends(_csrf_guard)):
+    """Withdrawing consent to further sharing is as easy as giving it."""
+    a = _get_or_404(user["application_id"])
+    store.stop_monitoring(a["id"], "client")
+    store.record_audit(user["username"], "msme.consent_withdrawn", "application", a["id"], "Stopped daily updates")
+    return RedirectResponse("/msme#privacy", status_code=303)
+
+
+@app.post("/msme/deletion")
+def msme_request_deletion(reason: str = Form(""), user: dict = Depends(msme_user), _csrf: None = Depends(_csrf_guard)):
+    a = _get_or_404(user["application_id"])
+    store.stop_monitoring(a["id"], "client")
+    store.request_deletion(a["id"], reason)
+    store.record_audit(user["username"], "msme.deletion_requested", "application", a["id"],
+                       "Requested deletion of the company's data")
+    return RedirectResponse("/msme#privacy", status_code=303)
 
 
 @app.get("/msme/report", include_in_schema=False)
@@ -927,6 +1087,7 @@ class ApplicationIn(BaseModel):
     reference: str = ""
     months: int = Field(default=config.DEFAULT_MONTHS, ge=6, le=60)
     monitoring: bool = False
+    contact_email: str = ""
 
 
 def _public(a: dict) -> dict:
@@ -946,14 +1107,17 @@ def _public(a: dict) -> dict:
         "monitoring_overdue": store.monitoring_overdue(a),
         "latest_report_id": a["latest_report_id"],
         "last_report_at": a["last_report_at"],
-        "resume": books.open_session(a["id"]) is not None,
+        "contact_email": a.get("contact_email"),
+        "consent_verified_email": a.get("otp_verified_email"),
+        "consent_verified_at": a.get("otp_verified_at"),
+        "deletion_requested_at": a.get("deletion_requested_at"),
     }
 
 
 @app.post("/api/bank/applications")
 def api_create(body: ApplicationIn, user: dict = Depends(bank_user)):
     return _public(store.create_application(user["tenant_id"], body.applicant_name, body.reference,
-                                             body.months, body.monitoring))
+                                             body.months, body.monitoring, _contact(body.contact_email)))
 
 
 @app.get("/api/bank/applications/{app_id}")
@@ -988,7 +1152,7 @@ def _audit(user: dict, action: str, target_type: str, target_id: str | None, sum
 def admin_overview(user: dict = Depends(platform_user)):
     return templates.get_template("admin_overview.html").render(
         user=user, counts=store.counts_overview(), audit=store.list_audit(limit=20),
-        platform_name=config.PLATFORM_NAME,
+        platform_name=config.PLATFORM_NAME, deletion_requests=store.deletion_requests(),
     )
 
 
@@ -1081,12 +1245,13 @@ def admin_msmes(bank: str = "", kind: str = "", status: str = "", overdue: str =
 @app.post("/admin/msmes")
 def admin_create_msme(applicant_name: str = Form(...), reference: str = Form(""),
                        months: int = Form(config.DEFAULT_MONTHS), monitoring: str = Form(""), bank_id: str = Form(""),
+                       contact_email: str = Form(""),
                        user: dict = Depends(platform_user), _csrf: None = Depends(_csrf_guard)):
     tenant_id = bank_id or store.direct_tenant_id()
     if bank_id:
         _bank_or_404(bank_id)
     a = store.create_application(tenant_id, applicant_name.strip(), reference.strip(),
-                                  max(6, min(months, 60)), monitoring == "on")
+                                  max(6, min(months, 60)), monitoring == "on", _contact(contact_email))
     _audit(user, "msme.create", "application", a["id"], f"Created MSME {a['applicant_name']}")
     return RedirectResponse(f"/admin/msmes/{a['id']}", status_code=303)
 
@@ -1100,6 +1265,15 @@ def admin_msme_detail(app_id: str, user: dict = Depends(platform_user)):
         overdue_days=config.MONITOR_OVERDUE_DAYS, monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
         connector_logs=store.list_connector_logs(app_id), sync=books.progress(app_id),
     )
+
+
+@app.post("/admin/msmes/{app_id}/contact")
+def admin_contact(app_id: str, contact_email: str = Form(""), user: dict = Depends(platform_user),
+                  _csrf: None = Depends(_csrf_guard)):
+    _get_or_404(app_id)
+    store.set_contact_email(app_id, _contact(contact_email))
+    _audit(user, "msme.contact", "application", app_id, "Changed the applicant's email")
+    return RedirectResponse(f"/admin/msmes/{app_id}", status_code=303)
 
 
 @app.post("/admin/msmes/{app_id}/code")

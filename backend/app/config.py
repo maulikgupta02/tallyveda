@@ -41,6 +41,28 @@ FULL_SYNC_DAYS = int(os.environ.get("TC_FULL_SYNC_DAYS", "30"))
 # file) and the rendered page are kept for this many days, plus the first
 # report and the last one of each month. Older pages are re-rendered on demand.
 KEEP_RAW_DAYS = int(os.environ.get("TC_KEEP_RAW_DAYS", "30"))
+# Once a company is no longer sharing (daily updates off or stopped) and nothing
+# has arrived for this many days, its raw books are deleted; report figures stay
+# as the record of the assessment until a deletion request is carried out.
+RETENTION_DAYS = int(os.environ.get("TC_RETENTION_DAYS", "180"))
+
+# Consent: each request carries the MSME's email, and the connector only accepts
+# consent after the one-time password sent there is entered (RBI digital lending
+# rules expect explicit, auditable consent). Needs the TC_SMTP_* settings; with
+# TC_REQUIRE_OTP=0 the step is skipped entirely. Off by default in TC_DEV.
+REQUIRE_OTP = os.environ.get("TC_REQUIRE_OTP", "0" if DEV else "1") == "1"
+OTP_TTL_MINUTES = 10
+SMTP_HOST = os.environ.get("TC_SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("TC_SMTP_PORT", "465"))
+SMTP_USER = os.environ.get("TC_SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("TC_SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("TC_SMTP_FROM", "") or SMTP_USER
+
+# Privacy notice and terms (/privacy, /terms).
+OPERATOR_NAME = os.environ.get("TC_OPERATOR_NAME", PLATFORM_NAME)
+OPERATOR_ADDRESS = os.environ.get("TC_OPERATOR_ADDRESS", "")
+GRIEVANCE_EMAIL = os.environ.get("TC_GRIEVANCE_EMAIL", "")
+DATA_LOCATION = os.environ.get("TC_DATA_LOCATION", "Singapore")
 # Optional: path to the built TallyConnector.exe, served at /download. Useful for a
 # local/VM deploy with the exe on disk, but a Render free web service's filesystem is
 # ephemeral and has no build step for it — set TC_CONNECTOR_URL instead (e.g. a GitHub

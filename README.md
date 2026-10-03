@@ -28,6 +28,23 @@ logged-in dashboards.
 
 The connector only reads from Tally and never writes to it.
 
+## Consent, privacy and retention
+
+- **Consent:** every request records the applicant's email (`contact_email`). With `TC_REQUIRE_OTP=1` and
+  `TC_SMTP_HOST/PORT/USER/PASSWORD/FROM` set, the connector emails a 6-digit code (10 minutes, 5 attempts, 30 s
+  between sends) and `/api/connector/sync/start` refuses a code-authorised start until it is verified. The verified
+  email and time are stored with the consent. `TC_REQUIRE_OTP=0` skips the step. It is off on the live POC
+  until email is configured.
+- **Notices:** `/privacy` and `/terms`, filled from `TC_OPERATOR_NAME`, `TC_OPERATOR_ADDRESS`,
+  `TC_GRIEVANCE_EMAIL` and `TC_DATA_LOCATION`, and linked from the connector, the home page and the MSME
+  dashboard.
+- **MSME controls:** on `/msme`, *Stop daily updates* withdraws consent for further sharing. *Request deletion*
+  records a request that appears on `/admin` and on the MSME's admin page, to be carried out within 90 days.
+- **Retention:** raw books (synced vouchers, uploaded bundles, connector logs) are deleted `TC_RETENTION_DAYS`
+  (default 180) after sharing ends. Report figures stay until a deletion request is carried out. This runs in
+  the background every few hours, driven by traffic.
+- **Breaches:** see `docs/security/incident-response.md`.
+
 ## Daily monitoring (optional)
 
 After the loan is given, the bank can keep receiving fresh books every day to spot early warning signs.

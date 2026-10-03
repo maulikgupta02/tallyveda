@@ -202,6 +202,7 @@
         <form class="inline-form" method="post" action="/admin/msmes">
           <input type="hidden" name="bank_id" value="{{ tenant.id }}">
           <label>Applicant<input name="applicant_name" required placeholder="Company name"></label>
+          <label>Applicant's email<input name="contact_email" type="email" required placeholder="owner@company.in"></label>
           <label>Reference<input name="reference" placeholder="e.g. LN-2026-0142"></label>
           <label>Months<input name="months" type="number" min="6" max="60" value="{{ default_months }}" style="width:80px"></label>
           <label class="check"><input type="checkbox" name="monitoring" checked> Daily monitoring</label>

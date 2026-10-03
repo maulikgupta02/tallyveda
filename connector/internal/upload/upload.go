@@ -21,6 +21,9 @@ type Info struct {
 	Reference         string `json:"reference"`
 	Months            int    `json:"months"`
 	MonitoringOffered bool   `json:"monitoring_offered"`
+	OTPRequired       bool   `json:"otp_required"`
+	OTPSentTo         string `json:"otp_sent_to"`
+	ContactMissing    bool   `json:"contact_missing"`
 }
 
 type UploadResult struct {

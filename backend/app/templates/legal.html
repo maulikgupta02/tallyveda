@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · {{ operator }}</title>
+<meta name="description" content="{{ description }}">
+<link rel="canonical" href="{{ public_url }}{{ path }}">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<style>
+  :root { color-scheme: light; --bg: #f6f7f9; --card: #fff; --line: #e4e7ec; --text: #101828; --text-2: #475467; --accent: #3b5bdb; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.65 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  header { background: #111c3a; color: #fff; }
+  header .wrap { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; }
+  header a { color: #fff; text-decoration: none; font-weight: 600; }
+  header nav a { font-weight: 400; opacity: .85; margin-left: 18px; font-size: 14px; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  main { padding: 32px 20px 56px; }
+  article { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 32px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .updated { color: var(--text-2); font-size: 13px; margin: 0 0 24px; }
+  h2 { font-size: 18px; margin: 28px 0 8px; }
+  p, li { color: #1d2939; }
+  ul { padding-left: 22px; }
+  a { color: var(--accent); }
+  .box { background: #eef2ff; border-radius: 10px; padding: 14px 16px; }
+  footer { color: var(--text-2); font-size: 13px; text-align: center; padding: 0 20px 32px; }
+  @media (max-width: 600px) { article { padding: 20px; } h1 { font-size: 24px; } }
+</style>
+</head>
+<body>
+<header><div class="wrap"><a href="/">{{ operator }}</a><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav></div></header>
+<main><div class="wrap"><article>
+<h1>{{ title }}</h1>
+<p class="updated">Last updated {{ updated }}</p>
+{% if page == "privacy" %}
+<p>This notice explains how {{ operator }} ("we") handles information when a business shares its accounting data through
+Tally Connector, and the rights you have. We process this data only with your consent, given in Tally Connector before
+anything is shared.</p>
+
+<h2>1. Who we are</h2>
+<p>{{ operator }}{% if address %}, {{ address }}{% endif %}, operates Tally Connector, which reads a business's books of
+account from Tally on its own computer and shares them with the organisation that requested them, for credit
+assessment.</p>
+
+<h2>2. What we collect</h2>
+<ul>
+  <li><b>Books of account</b> for the period you approve: account groups, ledgers (including the names, GSTINs and states
+    of customers and suppliers recorded in them), vouchers, outstanding bills and stock values.</li>
+  <li><b>Consent record</b>: the name of the person giving consent, the email address verified with a one-time code, the
+    date and time, the network (IP) address and the exact consent wording.</li>
+  <li><b>Technical diagnostics</b>: the Tally Connector version, the Tally version and add-on settings, computer memory
+    and connection logs, used only to keep the service working and to resolve problems.</li>
+</ul>
+<p>Tally Connector only reads data. It never changes anything in Tally.</p>
+
+<h2>3. Why we use it</h2>
+<ul>
+  <li>To share your books with the organisation that requested them, and with the banks and financial institutions it
+    works with, solely to assess and process your credit application.</li>
+  <li>If you choose daily updates, to keep that assessment current until you or the organisation stop them.</li>
+  <li>To give your business its own dashboard of the same analysis.</li>
+  <li>To operate, secure and support the service.</li>
+</ul>
+<p>We do not sell your data or use it for advertising.</p>
+
+<h2>4. Who we share it with</h2>
+<ul>
+  <li>The organisation that sent you the access code, and the banks and financial institutions it works with, for the
+    purpose above.</li>
+  <li>Service providers that host and run the service for us (cloud hosting, database and email), under confidentiality
+    and security obligations. Your data is currently stored on their servers in {{ data_location }}.</li>
+  <li>Authorities, where the law requires it.</li>
+</ul>
+
+<h2>5. How long we keep it</h2>
+<ul>
+  <li>Raw books are deleted {{ retention_days }} days after sharing ends (daily updates off or stopped and no new data
+    received).</li>
+  <li>The figures of each completed assessment are kept as the record of that assessment, until a deletion request is
+    carried out or the law requires otherwise.</li>
+  <li>Copies of the raw data behind older reports are kept for {{ keep_raw_days }} days, plus one per month.</li>
+</ul>
+
+<h2>6. How we protect it</h2>
+<p>Data is encrypted in transit, access is limited to authorised accounts with passwords stored only in hashed form,
+administrative actions are logged, and each organisation sees only the businesses it requested.</p>
+
+<h2>7. Your rights</h2>
+<ul>
+  <li><b>Withdraw consent</b> to further sharing at any time: select "Stop daily updates" in Tally Connector or on your
+    dashboard. Withdrawal does not affect sharing that already took place.</li>
+  <li><b>Access, correction and erasure</b>: see what we hold, ask us to correct it, or ask us to delete it. You can
+    request deletion from your dashboard or by writing to us.</li>
+  <li><b>Grievances</b>: we respond to requests and grievances within 90 days at most.</li>
+  <li><b>Nomination</b>: you may nominate a person to exercise these rights on your behalf.</li>
+  <li><b>Complaint</b>: if you are not satisfied with our response, you may complain to the Data Protection Board of
+    India.</li>
+</ul>
+
+<h2>8. Contact and grievance officer</h2>
+<div class="box">
+  {% if grievance_email %}Write to <a href="mailto:{{ grievance_email }}">{{ grievance_email }}</a> with the business name
+  and, if you have it, the reference of the request.{% else %}Contact the organisation that sent you the access code, or
+  write to us through <a href="/">our website</a>.{% endif %}
+</div>
+
+<h2>9. Changes</h2>
+<p>We will update this notice when our practices change and show the new date above. Material changes will be shown in
+Tally Connector before you share data again.</p>
+{% else %}
+<p>These terms apply to the use of Tally Connector and its dashboards, operated by {{ operator }}. By using them you agree
+to these terms.</p>
+
+<h2>1. The service</h2>
+<p>Tally Connector reads a business's books of account from Tally on its own computer and, with consent, shares them with
+the organisation that requested them, which sees an analysis of the books. The business can see the same analysis on
+its own dashboard. The analysis is an aid to assessment, not a credit decision, audit or financial advice.</p>
+
+<h2>2. Your responsibilities</h2>
+<ul>
+  <li>Only share data you are authorised to share on behalf of the business.</li>
+  <li>Keep access codes, one-time codes and dashboard passwords confidential.</li>
+  <li>Do not attempt to access data of other businesses or to disrupt the service.</li>
+</ul>
+
+<h2>3. Data</h2>
+<p>Data is handled as described in our <a href="/privacy">Privacy Notice</a>. The business remains responsible for the
+accuracy of its books in Tally.</p>
+
+<h2>4. Availability</h2>
+<p>We work to keep the service available and accurate but provide it "as is", without guarantees of uninterrupted
+operation. Tally Connector never changes data in Tally.</p>
+
+<h2>5. Liability</h2>
+<p>To the extent permitted by law, we are not liable for indirect or consequential loss, or for decisions made by any
+party on the basis of the analysis.</p>
+
+<h2>6. Trademarks</h2>
+<p>Tally, TallyPrime and Tally.ERP 9 are trademarks of Tally Solutions Pvt. Ltd. Tally Connector is not affiliated with
+Tally Solutions.</p>
+
+<h2>7. Law and disputes</h2>
+<p>These terms are governed by the laws of India. Questions and grievances can be raised as described in the
+<a href="/privacy">Privacy Notice</a>.</p>
+
+<h2>8. Changes</h2>
+<p>We may update these terms and will show the new date above.</p>
+{% endif %}
+</article></div></main>
+<footer>© {{ year }} {{ operator }} · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></footer>
+</body>
+</html>

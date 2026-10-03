@@ -121,6 +121,8 @@ func (a *App) Listen(port int) (string, error) {
 	mux.HandleFunc("/", a.index)
 	mux.HandleFunc("/api/tally", a.guard(a.tallyStatus))
 	mux.HandleFunc("/api/verify", a.guard(a.verify))
+	mux.HandleFunc("/api/otp/send", a.guard(a.otpSend))
+	mux.HandleFunc("/api/otp/verify", a.guard(a.otpVerify))
 	mux.HandleFunc("/api/start", a.guard(a.start))
 	mux.HandleFunc("/api/progress", a.guard(a.progress))
 	mux.HandleFunc("/api/ping", a.guard(a.ping))
@@ -161,6 +163,7 @@ func (a *App) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	page := strings.ReplaceAll(indexHTML, "{{TOKEN}}", a.token)
 	page = strings.ReplaceAll(page, "{{VERSION}}", a.Version)
+	page = strings.ReplaceAll(page, "{{SERVER}}", a.Backend.URL)
 	w.Write([]byte(page))
 }
 
@@ -182,6 +185,27 @@ func (a *App) tallyStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "banner": banner, "companies": companies, "url": a.Tally.URL})
+}
+
+func (a *App) otpSend(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Code string }
+	json.NewDecoder(r.Body).Decode(&in)
+	to, err := a.Backend.SendOTP(r.Context(), in.Code)
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]string{"sent_to": to})
+}
+
+func (a *App) otpVerify(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Code, OTP string }
+	json.NewDecoder(r.Body).Decode(&in)
+	if err := a.Backend.VerifyOTP(r.Context(), in.Code, in.OTP); err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"verified": true})
 }
 
 func (a *App) verify(w http.ResponseWriter, r *http.Request) {

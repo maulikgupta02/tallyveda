@@ -334,6 +334,7 @@
   <div class="card new-request" id="newRequest">
     <form class="new" method="post" action="/bank/applications">
       <label>Applicant<input name="applicant_name" required placeholder="Company name"></label>
+      <label>Applicant's email<input name="contact_email" type="email" required placeholder="owner@company.in"></label>
       <label>Loan reference<input name="reference" placeholder="e.g. LN-2026-0142"></label>
       <label>Months of data<input name="months" type="number" min="6" max="60" value="{{ default_months }}" style="width:90px"></label>
       <label class="check"><input type="checkbox" name="monitoring" checked> Offer daily monitoring</label>

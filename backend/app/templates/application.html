@@ -364,6 +364,11 @@
         <form class="inline" method="post" action="/bank/applications/{{ a.id }}/code"><button class="btn" type="submit">{{ "New code" if a.code else "Request again" }}</button></form>
       </div>
       <div class="mpanel">
+        <div><div class="k">Applicant's email (for consent verification)</div>
+          <div class="v">{{ a.contact_email or "Not set" }}{% if a.otp_verified_at %} · consent verified {{ a.otp_verified_at|when }}{% endif %}</div></div>
+        <form class="inline" method="post" action="/bank/applications/{{ a.id }}/contact"><input name="contact_email" type="email" value="{{ a.contact_email or "" }}" placeholder="owner@company.in" required> <button class="btn" type="submit">Save</button></form>
+      </div>
+      <div class="mpanel">
         <div><div class="k">Daily monitoring</div><div class="v">{{ monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered") }}</div></div>
         {% if a.monitoring_status == "active" %}
         <div><div class="k">Last data received</div><div class="v">{{ a.last_report_at|when }}</div></div>

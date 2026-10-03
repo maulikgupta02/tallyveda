@@ -145,7 +145,10 @@
     </div>
   </div>
 
-{% if sync %}
+{% if a.deletion_requested_at %}
+  <div class="syncnote">The MSME requested deletion of its data on {{ a.deletion_requested_at|when }}{% if a.deletion_reason %} ("{{ a.deletion_reason }}"){% endif %}. Use "Delete this MSME" below once nothing must be kept by law, within 90 days.</div>
+  {% endif %}
+  {% if sync %}
   <div class="syncnote">
     {% if sync.mode == "full" %}Receiving the books from Tally: {{ sync.months_done }} of {{ sync.months_total }} months received{% if not sync.have_masters %} (ledgers not yet received){% endif %}.
     The report is built once every month has arrived.{% else %}Receiving today's update from Tally.{% endif %}
@@ -159,6 +162,11 @@
       <div class="mpanel">
         <div><div class="k">One-time code</div><div class="v">{% if a.code %}<span class="code">{{ a.code|code }}</span>{% else %}used{% endif %}</div></div>
         <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/code"><button class="btn" type="submit">{{ "New code" if a.code else "Request again" }}</button></form>
+      </div>
+      <div class="mpanel">
+        <div><div class="k">Applicant's email (for consent verification)</div>
+          <div class="v">{{ a.contact_email or "Not set" }}{% if a.otp_verified_at %} · consent verified {{ a.otp_verified_at|when }}{% endif %}</div></div>
+        <form class="inline-btn" method="post" action="/admin/msmes/{{ a.id }}/contact"><input name="contact_email" type="email" value="{{ a.contact_email or "" }}" placeholder="owner@company.in" required> <button class="btn" type="submit">Save</button></form>
       </div>
       <div class="mpanel">
         <div><div class="k">Monitoring</div><div class="v">{{ monitoring_label }}</div></div>

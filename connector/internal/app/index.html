@@ -47,6 +47,9 @@
             font-size: 13px; line-height: 1.5; }
   .notice b { color: var(--text); }
   .foot { font-size: 12px; } .foot a { color: var(--muted); }
+  #otpBox { margin-top: 12px; }
+  #otpBox .code { max-width: 200px; }
+  #otpBox button { margin-right: 8px; }
   .small { font-size: 12px; margin: 4px 0 8px; }
   .co { padding: 10px 0; border-top: 1px solid var(--line); }
   .co:first-child { border-top: 0; }
@@ -86,6 +89,13 @@
     <button id="verifyBtn">Continue</button>
     <div id="verifyErr" class="err"></div>
     <div id="verifyOk" class="muted hidden"></div>
+    <div id="otpBox" class="hidden">
+      <p class="muted" id="otpMsg"></p>
+      <input type="text" id="otp" class="code" placeholder="6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+      <button id="otpBtn">Verify</button>
+      <button id="otpResend" class="secondary">Send a new code</button>
+      <div id="otpErr" class="err"></div>
+    </div>
   </section>
 
   <section class="card off" id="s3">
@@ -117,7 +127,7 @@
       <button id="another" class="secondary">Connect another company</button>
     </div>
   </section>
-  <p class="foot muted">Tally Connector {{VERSION}} · <a href="#" id="checkBtn">Having trouble? Run a connection check</a></p>
+  <p class="foot muted">Tally Connector {{VERSION}} · <a href="{{SERVER}}/privacy" target="_blank" rel="noopener">Privacy Notice</a> · <a href="{{SERVER}}/terms" target="_blank" rel="noopener">Terms</a> · <a href="#" id="checkBtn">Having trouble? Run a connection check</a></p>
 </main>
 <script>
 const TOKEN = "{{TOKEN}}";
@@ -183,13 +193,56 @@ $("verifyBtn").onclick = async () => {
     $("verifyOk").textContent = `${info.bank_name} has requested ${months} months of accounting data for ${info.applicant_name}` +
       (info.reference ? ` (reference ${info.reference})` : "") + ".";
     $("verifyOk").classList.remove("hidden");
-    mark("s2", true);
-    enable("s3", true);
-    updateConsent();
+    if (info.contact_missing) {
+      $("verifyErr").textContent = "No email address is registered for this request. Please ask the organisation that " +
+        "sent you the code to add your email address, then try again.";
+      return;
+    }
+    if (info.otp_required) {
+      $("otpBox").classList.remove("hidden");
+      sendOtp();
+      return;
+    }
+    unlockConsent();
   } catch (e) {
     $("verifyErr").textContent = e.message;
   } finally {
     $("verifyBtn").disabled = false;
+  }
+};
+
+function unlockConsent() {
+  $("otpBox").classList.add("hidden");
+  mark("s2", true);
+  enable("s3", true);
+  updateConsent();
+}
+
+async function sendOtp() {
+  $("otpErr").textContent = "";
+  try {
+    const r = await api("/api/otp/send", { code: $("code").value });
+    $("otpMsg").textContent = `To confirm it is you, we have sent a 6-digit code to ${r.sent_to}. ` +
+      `Enter it below. The code is valid for 10 minutes.`;
+  } catch (e) {
+    $("otpErr").textContent = e.message;
+  }
+}
+
+$("otpResend").onclick = sendOtp;
+$("otp").addEventListener("keydown", (e) => { if (e.key === "Enter") $("otpBtn").click(); });
+$("otpBtn").onclick = async () => {
+  $("otpErr").textContent = "";
+  $("otpBtn").disabled = true;
+  try {
+    await api("/api/otp/verify", { code: $("code").value, otp: $("otp").value.trim() });
+    $("otpMsg").textContent = "";
+    $("verifyOk").textContent += " Email verified.";
+    unlockConsent();
+  } catch (e) {
+    $("otpErr").textContent = e.message;
+  } finally {
+    $("otpBtn").disabled = false;
   }
 };
 
@@ -202,7 +255,12 @@ function updateConsent() {
       `bills and stock values) will be sent encrypted to Tally Connector and shared with ${info.bank_name} and the ` +
       `banks and financial institutions it works with, solely to assess and process your credit application. ` +
       `Technical diagnostics, such as the Tally version and connection logs, are also sent to help resolve problems. ` +
-      `You can stop future updates at any time from this page.`));
+      `You can stop future updates at any time from this page. `));
+  const link = el("a", "Read the Privacy Notice");
+  link.href = "{{SERVER}}/privacy";
+  link.target = "_blank";
+  link.rel = "noopener";
+  notice.append(link);
   $("consentText").textContent = `I confirm that I am authorised to share the accounting data of ${$("company").value}, ` +
     `and I consent to it being shared as described above.`;
   $("startBtn").disabled = !($("agree").checked && $("name").value.trim() && tallyOk);

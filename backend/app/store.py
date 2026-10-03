@@ -222,6 +222,17 @@ MIGRATIONS = {
         "force_refresh": "INTEGER NOT NULL DEFAULT 0",
         "latest_report_id": "TEXT",
         "last_report_at": "TEXT",
+        # Consent verification (email OTP) and privacy requests.
+        "contact_email": "TEXT",
+        "otp_hash": "TEXT",
+        "otp_expires_at": "TEXT",
+        "otp_sent_at": "TEXT",
+        "otp_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "otp_verified_at": "TEXT",
+        "otp_verified_email": "TEXT",
+        "deletion_requested_at": "TEXT",
+        "deletion_reason": "TEXT",
+        "raw_purged_at": "TEXT",
     },
     "tenants": {
         # Added for the platform admin panel. 'bank' is every pre-existing tenant;
@@ -234,6 +245,7 @@ MIGRATIONS = {
     "users": {
         "disabled": "INTEGER NOT NULL DEFAULT 0",
     },
+
 }
 
 
@@ -597,24 +609,139 @@ def create_or_reset_msme_login(app_id: str, tenant_id: str) -> tuple[str, str]:
 
 
 def create_application(tenant_id: str, applicant_name: str, reference: str, months: int,
-                        monitoring_offered: bool = False) -> dict:
+                        monitoring_offered: bool = False, contact_email: str = "") -> dict:
     app_id = uuid.uuid4().hex
     with db() as conn:
         conn.execute(
             "INSERT INTO applications (id, tenant_id, applicant_name, reference, months, code, code_expires_at, status,"
-            " created_at, monitoring_offered) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_data', ?, ?)",
+            " created_at, monitoring_offered, contact_email) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_data', ?, ?, ?)",
             (app_id, tenant_id, applicant_name, reference, months, new_code(),
-             (now() + timedelta(hours=config.CODE_TTL_HOURS)).isoformat(), now().isoformat(), int(monitoring_offered)),
+             (now() + timedelta(hours=config.CODE_TTL_HOURS)).isoformat(), now().isoformat(), int(monitoring_offered),
+             contact_email.strip().lower() or None),
         )
     return get_application(app_id)
 
 
 def regenerate_code(app_id: str) -> None:
+    """A new code also needs a fresh email verification."""
     with db() as conn:
         conn.execute(
-            "UPDATE applications SET code = ?, code_expires_at = ? WHERE id = ?",
+            "UPDATE applications SET code = ?, code_expires_at = ?, otp_hash = NULL, otp_expires_at = NULL,"
+            " otp_attempts = 0, otp_verified_at = NULL WHERE id = ?",
             (new_code(), (now() + timedelta(hours=config.CODE_TTL_HOURS)).isoformat(), app_id),
         )
+
+
+def set_contact_email(app_id: str, email: str) -> None:
+    with db() as conn:
+        conn.execute(
+            "UPDATE applications SET contact_email = ?, otp_hash = NULL, otp_verified_at = NULL WHERE id = ?",
+            (email.strip().lower() or None, app_id),
+        )
+
+
+# ------------------------------------------------------------ consent OTP
+
+OTP_MAX_ATTEMPTS = 5
+OTP_RESEND_SECONDS = 30
+
+
+def issue_otp(app_id: str) -> str:
+    """A new 6-digit one-time password for the application's contact email
+    (returned to be emailed, stored hashed). Raises ValueError when asked again
+    too soon."""
+    a = get_application(app_id)
+    if a["otp_sent_at"] and (now() - datetime.fromisoformat(a["otp_sent_at"])).total_seconds() < OTP_RESEND_SECONDS:
+        raise ValueError(f"Please wait {OTP_RESEND_SECONDS} seconds before requesting another code.")
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+    with db() as conn:
+        conn.execute(
+            "UPDATE applications SET otp_hash = ?, otp_expires_at = ?, otp_sent_at = ?, otp_attempts = 0 WHERE id = ?",
+            (_hash(f"{app_id}:{otp}"), (now() + timedelta(minutes=config.OTP_TTL_MINUTES)).isoformat(),
+             now().isoformat(), app_id),
+        )
+    return otp
+
+
+def check_otp(app_id: str, otp: str) -> str:
+    """'ok', 'expired', 'locked' (too many wrong attempts) or 'wrong'."""
+    a = get_application(app_id)
+    if not a["otp_hash"] or not a["otp_expires_at"] or datetime.fromisoformat(a["otp_expires_at"]) < now():
+        return "expired"
+    if a["otp_attempts"] >= OTP_MAX_ATTEMPTS:
+        return "locked"
+    if not secrets.compare_digest(a["otp_hash"], _hash(f"{app_id}:{otp.strip()}")):
+        with db() as conn:
+            conn.execute("UPDATE applications SET otp_attempts = otp_attempts + 1 WHERE id = ?", (app_id,))
+        return "wrong"
+    with db() as conn:
+        conn.execute(
+            "UPDATE applications SET otp_hash = NULL, otp_verified_at = ?, otp_verified_email = ? WHERE id = ?",
+            (now().isoformat(), a["contact_email"], app_id),
+        )
+    return "ok"
+
+
+def otp_satisfied(a: dict) -> bool:
+    """Whether consent may be given now: email verified within the last day,
+    or verification switched off (TC_REQUIRE_OTP=0, e.g. until email is set up)."""
+    if not config.REQUIRE_OTP:
+        return True
+    if not a.get("contact_email"):
+        return False
+    if not a.get("otp_verified_at") or a.get("otp_verified_email") != a["contact_email"]:
+        return False
+    return now() - datetime.fromisoformat(a["otp_verified_at"]) < timedelta(hours=24)
+
+
+def mask_email(email: str | None) -> str:
+    if not email or "@" not in email:
+        return ""
+    name, domain = email.split("@", 1)
+    return (name[:2] + "*" * max(1, len(name) - 2)) + "@" + domain
+
+
+# ------------------------------------------------------------ privacy requests
+
+
+def request_deletion(app_id: str, reason: str) -> None:
+    with db() as conn:
+        conn.execute(
+            "UPDATE applications SET deletion_requested_at = ?, deletion_reason = ? WHERE id = ?",
+            (now().isoformat(), reason.strip()[:1000], app_id),
+        )
+
+
+def deletion_requests() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM applications WHERE deletion_requested_at IS NOT NULL ORDER BY deletion_requested_at"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def purge_raw(app_id: str) -> None:
+    """Retention: delete the raw books (synced vouchers and every uploaded
+    bundle) and connector logs, keeping each report's figures and pages."""
+    with db() as conn:
+        for table in ("books", "book_vouchers", "sync_sessions", "connector_logs"):
+            conn.execute(f"DELETE FROM {table} WHERE application_id = ?", (app_id,))
+        reports = conn.execute("SELECT id FROM reports WHERE application_id = ?", (app_id,)).fetchall()
+        conn.execute("UPDATE applications SET raw_purged_at = ? WHERE id = ?", (now().isoformat(), app_id))
+    for r in reports:
+        delete_report_file(app_id, r["id"], "bundle.json.gz")
+
+
+def retention_due(days: int) -> list[dict]:
+    """Applications no longer sharing whose last data is older than `days`."""
+    cutoff = (now() - timedelta(days=days)).isoformat()
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM applications WHERE monitoring_status <> 'active' AND raw_purged_at IS NULL"
+            " AND COALESCE(last_report_at, uploaded_at, created_at) < ?",
+            (cutoff,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_application(app_id: str, tenant_id: str | None = None) -> dict | None:

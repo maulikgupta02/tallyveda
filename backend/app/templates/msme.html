@@ -317,6 +317,14 @@
   .hero-card { display: flex; flex-direction: column; }
   .greet { font-size: 26px; margin: 16px 0 4px; }
 
+  #privacy { margin: 16px 0 72px; }
+  #privacy .muted { line-height: 1.55; }
+  .privacy-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+  .privacy-actions details summary { list-style: none; cursor: pointer; }
+  .privacy-actions details[open] form { margin-top: 10px; display: grid; gap: 8px; max-width: 420px; }
+  .privacy-actions textarea { width: 100%; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+  .privacy-status { background: #fff7e0; color: #7a5200; padding: 10px 12px; border-radius: 8px; }
+  .btn.danger { background: #d92d20; color: #fff; border-color: #d92d20; }
 </style>
 </head>
 <body class="msme">
@@ -417,6 +425,33 @@
     {% for g in msme.groups %}<a class="{{ 'on' if g.key == active_tab }}" href="/msme?tab={{ g.key }}">{{ g.label }}</a>{% endfor %}
   </nav>
   {% endif %}
+
+  <section class="card s12" id="privacy">
+    <div class="card-head"><h2>Your data and privacy</h2><a href="/privacy">Privacy Notice</a></div>
+    <p class="muted">
+      {% if a.otp_verified_email %}Consent was given by {{ a.consent_name or "you" }} and confirmed with a code sent to {{ a.otp_verified_email }}{% if a.otp_verified_at %} on {{ a.otp_verified_at|when }}{% endif %}.{% elif a.consent_name %}Consent was given by {{ a.consent_name }}.{% endif %}
+      {% if a.monitoring_status == "active" %}Daily updates are on: the latest figures are shared each day while Tally is open.{% else %}Daily updates are off; nothing further is being shared.{% endif %}
+    </p>
+    {% if a.deletion_requested_at %}
+      <p class="privacy-status">You asked us to delete this company's data on {{ a.deletion_requested_at|when }}. We will
+        act on it and confirm within 90 days at most.</p>
+    {% else %}
+    <div class="privacy-actions">
+      {% if a.monitoring_status == "active" %}
+      <form method="post" action="/msme/monitoring/stop" onsubmit="return confirm('Stop sharing daily updates? Data already shared is not affected.')">
+        <button class="btn" type="submit">Stop daily updates</button>
+      </form>
+      {% endif %}
+      <details>
+        <summary class="btn">Request deletion of our data</summary>
+        <form method="post" action="/msme/deletion" onsubmit="return confirm('Request deletion of this company\'s data? Daily updates stop now, and the dashboards will no longer be available once the deletion is carried out.')">
+          <label>Reason (optional)<textarea name="reason" rows="2"></textarea></label>
+          <button class="btn danger" type="submit">Send deletion request</button>
+        </form>
+      </details>
+    </div>
+    {% endif %}
+  </section>
 </main>
 </body>
 </html>

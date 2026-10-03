@@ -145,6 +145,12 @@
     <div class="card kpi s3"><span class="k-label">Connectors overdue</span><span class="k-val">{{ counts.connectors_overdue }}</span>
       <span class="k-foot">{{ counts.failed_reports }} failed report(s) total</span></div>
 
+    {% if deletion_requests %}
+    <div class="card s12"><div class="card-head"><h2>Deletion requests ({{ deletion_requests|length }})</h2></div>
+      <p class="muted">Respond within 90 days. Open the MSME, check nothing must be kept by law, then delete it.</p>
+      <ul>{% for d in deletion_requests %}<li><a href="/admin/msmes/{{ d.id }}">{{ d.applicant_name }}</a> · requested {{ d.deletion_requested_at|when }}{% if d.deletion_reason %} · "{{ d.deletion_reason }}"{% endif %}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
     <div class="card s6"><div class="card-head"><h2>Users by role</h2></div>
       <div class="chips">
         {% for role, n in counts.users_by_role.items() %}<span><b>{{ n }}</b> {{ role }}</span>{% endfor %}
