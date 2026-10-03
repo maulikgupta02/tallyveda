@@ -43,6 +43,20 @@
   names on TallyPrime 4+, and Day Book performance on companies with >100k vouchers. Any
   change to `connector/internal/tally/` should be treated as unverified until tested against
   real Tally, regardless of how clean the mock-based tests look.
+- **Root cause found (2026-10-04, connector 0.2.4 logs from the MSME, TallyPrime on Windows 10,
+  8 GB RAM, about 1 GB free, 5 ledgers, 1 stock item):** every master field answers in about
+  10 ms. A balance request whose MasterId range contained **Profit & Loss A/c** froze Tally for
+  81 s (CPU 7 to 27 s, Windows "not responding"), while Cash-in-Hand balances took 10 ms. Both
+  filter probes then failed on a strict count check, so the sync fell back to one whole-collection
+  balance request (P&L included), and the whole PC stalled (memory). 0.2.5:
+  - never asks for P&L A/c's balance (`batch.neverCompute`). ID ranges are split so they never
+    span its MasterId; groups can't contain it (its parent is Primary). Only the last-resort whole
+    request uses a `NOT $Name = …` filter (unverified syntax), and it skips balances if Tally
+    rejects that filter.
+  - probes verify the narrowing by MasterId and accept sub-group ledgers.
+  - balance and stock-value batches get 30 s; a single slow object is skipped and remembered in
+    `tally-skip.json` as `Ledger:<name>` / `StockItem:<name>`.
+  Net worth doesn't use the P&L ledger (assets minus liabilities), so nothing is lost.
 - **Second attempt (2026-10-04, connector 0.2.1, TallyPrime, company with books only from
   2026-04-01) still froze Tally before the ledger list was sent.** The data is tiny, so this is
   not volume: some request shape upsets that Tally. 0.2.2 closes the HTTP connection after every

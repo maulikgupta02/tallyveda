@@ -328,7 +328,7 @@ func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, 
 	step := (f1 - f0) / float64(len(dates))
 	for i, asOf := range dates {
 		label := "stock value at " + asOf.Format("02 Jan 2006")
-		values, missing, err := fetchComputed(ctx, p, name, "StockItem", label, items, stockValueFetch, o.From, asOf,
+		values, missing, err := fetchComputed(ctx, p, name, "StockItem", "stock value", items, stockValueFetch, o.From, asOf,
 			f0+step*float64(i), f0+step*float64(i+1), voucherLimit)
 		if err != nil || missing > 0 {
 			if err == nil {

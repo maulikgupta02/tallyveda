@@ -26,6 +26,7 @@ type fakeTally struct {
 	ledgers     []fakeLedger
 	requests    []string
 	maxComputed int
+	plComputed  bool // a balance was computed for Profit & Loss A/c
 }
 
 type fakeLedger struct {
@@ -42,7 +43,7 @@ var (
 
 func newFake(debtors int) *fakeTally {
 	f := &fakeTally{perItem: 2 * time.Millisecond, honourIDs: true, honourChild: true}
-	f.ledgers = []fakeLedger{{"Cash", "Cash-in-Hand", 1}, {"Rent", "Indirect Expenses", 2}}
+	f.ledgers = []fakeLedger{{"Cash", "Cash-in-Hand", 1}, {"Rent", "Indirect Expenses", 2}, {"Profit & Loss A/c", "&#4; Primary", 3}}
 	for i := 0; i < debtors; i++ {
 		f.ledgers = append(f.ledgers, fakeLedger{fmt.Sprintf("Debtor %d", i), "Sundry Debtors", 10 + i})
 	}
@@ -78,6 +79,7 @@ func (f *fakeTally) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else if computed {
 			kind = "all"
 		}
+		notPL := strings.Contains(body, `NOT $Name = "Profit &amp; Loss A/c"`)
 		if computed {
 			kind = "balances:" + kind
 		} else if strings.Contains(body, "FILTERS") || strings.Contains(body, "CHILDOF") {
@@ -86,8 +88,11 @@ func (f *fakeTally) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.requests = append(f.requests, kind)
 		n := 0
 		for _, l := range f.ledgers {
-			if !match(l) {
+			if !match(l) || (notPL && l.name == "Profit & Loss A/c") {
 				continue
+			}
+			if computed && l.name == "Profit & Loss A/c" {
+				f.plComputed = true
 			}
 			n++
 			fmt.Fprintf(&out, `<LEDGER NAME="%s"><PARENT>%s</PARENT><MASTERID>%d</MASTERID>`, l.name, l.parent, l.id)
@@ -151,7 +156,13 @@ func runFake(t *testing.T, f *fakeTally) *Bundle {
 	if len(b.Ledgers) != len(f.ledgers) {
 		t.Fatalf("got %d ledgers, want %d", len(b.Ledgers), len(f.ledgers))
 	}
+	if f.plComputed {
+		t.Fatalf("Profit & Loss A/c balance was requested: %v", f.requests)
+	}
 	for _, l := range b.Ledgers {
+		if l.Name == "Profit & Loss A/c" {
+			continue
+		}
 		if l.OpeningBalance != 100 || l.ClosingBalance != 250 {
 			t.Fatalf("%s balances %v/%v", l.Name, l.OpeningBalance, l.ClosingBalance)
 		}

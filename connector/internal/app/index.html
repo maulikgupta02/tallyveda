@@ -223,13 +223,14 @@ $("startBtn").onclick = async () => {
 function showActivity(j) {
   const w = $("waitMsg");
   if (j.waiting && j.running) {
-    let text = `Waiting for Tally: ${j.waiting} (${j.waiting_secs} s)`;
+    const secs = j.waiting_secs || 0;
+    let text = `Waiting for Tally: ${j.waiting} (${secs} s)`;
     let cls = "note";
-    if (j.waiting_secs >= 60) {
+    if (secs >= 60) {
       text += ". Tally is taking very long. If Tally shows a message box, close it. If it stays frozen for several " +
         "minutes, end Tally in Task Manager (Ctrl+Shift+Esc), open it again and press Continue sharing.";
       cls = "note warn";
-    } else if (j.waiting_secs >= 15) {
+    } else if (secs >= 15) {
       text += ". Tally is taking a while. Keep it open; if it shows a message box, close it.";
       cls = "note warn";
     }

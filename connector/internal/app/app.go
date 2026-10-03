@@ -58,7 +58,7 @@ type Job struct {
 	Summary  string  `json:"summary,omitempty"`
 	// Waiting is the Tally request in flight, for "Waiting for Tally: …".
 	Waiting     string    `json:"waiting,omitempty"`
-	WaitingSecs int       `json:"waiting_secs,omitempty"`
+	WaitingSecs int       `json:"waiting_secs"`
 	Notes       []string  `json:"notes,omitempty"`
 	Log         []string  `json:"log,omitempty"`
 	waitingFrom time.Time `json:"-"`

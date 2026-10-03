@@ -16,6 +16,7 @@ type Query struct {
 	ChildOf    string   // direct children of this group or stock group
 	IDs        [2]int64 // inclusive MasterId range; {0, 0} means no range
 	AlterAbove int64    // only objects changed after this AlterId; 0 means all
+	NotNames   []string // leave out objects with these names
 }
 
 // collectionRequest builds an inline-TDL collection export. Collections return
@@ -43,6 +44,9 @@ func collectionRequest(company, objType string, q Query, fetch []string, from, t
 	}
 	if q.AlterAbove > 0 {
 		conds = append(conds, fmt.Sprintf("$AlterId &gt; %d", q.AlterAbove))
+	}
+	for _, n := range q.NotNames {
+		conds = append(conds, fmt.Sprintf("NOT $Name = %q", html.EscapeString(n)))
 	}
 	if len(conds) > 0 {
 		narrow += "<FILTERS>TCRange</FILTERS>"

@@ -84,7 +84,29 @@ func Run(ctx context.Context, c *tally.Client, company, version string, progress
 	steps = append(steps,
 		step{"voucher types", coll("VoucherType", tally.Query{}, []string{"Name", "Parent", "ReservedName"}, none, none)},
 		step{"ledger filter by MasterId (1-50)", coll("Ledger", tally.Query{IDs: [2]int64{1, 50}}, []string{"Name"}, none, none)},
-		step{"ledger balances, MasterId 1-50", coll("Ledger", tally.Query{IDs: [2]int64{1, 50}}, []string{"Name", "OpeningBalance", "ClosingBalance"}, week, to)},
+		step{"ledger balances one by one (up to 8, not Profit & Loss A/c)", func(ctx context.Context) (string, error) {
+			ls, err := c.CollectionWhere(ctx, name, "Ledger", tally.Query{}, []string{"Name", "MasterId", "ReservedName"}, none, none)
+			if err != nil {
+				return "", err
+			}
+			var parts []string
+			for _, l := range ls {
+				if len(parts) == 8 {
+					break
+				}
+				id := tally.Int(l.Field("MASTERID"))
+				if id == 0 || l.ObjectName() == "Profit & Loss A/c" || l.Field("RESERVEDNAME") == "Profit & Loss A/c" {
+					continue
+				}
+				start := time.Now()
+				_, err := c.CollectionWhere(ctx, name, "Ledger", tally.Query{IDs: [2]int64{id, id}}, []string{"Name", "OpeningBalance", "ClosingBalance"}, week, to)
+				if err != nil {
+					return strings.Join(parts, ", "), fmt.Errorf("%s: %w", l.ObjectName(), err)
+				}
+				parts = append(parts, fmt.Sprintf("%s %s", l.ObjectName(), time.Since(start).Round(10*time.Millisecond)))
+			}
+			return strings.Join(parts, ", "), nil
+		}},
 		step{"ledger balances, Cash-in-Hand group", coll("Ledger", tally.Query{ChildOf: "Cash-in-Hand"}, []string{"Name", "OpeningBalance", "ClosingBalance"}, week, to)},
 		step{"voucher list, last 7 days", func(ctx context.Context) (string, error) {
 			s, err := c.VoucherStubs(ctx, name, week, to, 0)
