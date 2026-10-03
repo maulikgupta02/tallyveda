@@ -26,10 +26,14 @@ type Options struct {
 // Progress is called with a human-readable stage and a fraction 0..1.
 type Progress func(stage string, fraction float64)
 
-var ledgerFetch = []string{
-	"Name", "Parent", "ReservedName", "OpeningBalance", "ClosingBalance", "IsBillWiseOn", "BillCreditPeriod",
-	"PartyGSTIN", "LedStateName", "StateName", "CountryName",
-}
+// Master fields are stored on the ledger, so Tally returns them instantly.
+// Balances are computed from every voucher in the period, which is the slow
+// part, so they are fetched separately, one account group at a time.
+var (
+	ledgerMasterFetch  = []string{"Name", "Parent", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
+	ledgerBalanceFetch = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
+	stockValueFetch    = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
+)
 
 func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*Bundle, error) {
 	host, _ := os.Hostname()
@@ -50,9 +54,14 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		Warnings:         []string{},
 	}
 	name := o.Company.Name
+	p := &pacer{c: c, progress: progress}
 
-	progress("Reading account groups", 0.02)
-	groups, err := c.Collection(ctx, name, "Group", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
+	p.report("Reading account groups", 0.02)
+	var groups []*tally.Node
+	err := p.do(ctx, quickLimit, "groups", func(ctx context.Context) (err error) {
+		groups, err = c.Collection(ctx, name, "Group", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reading groups: %w", err)
 	}
@@ -60,32 +69,22 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		b.Groups = append(b.Groups, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
 	}
 
-	progress("Reading ledgers", 0.06)
-	ledgers, err := c.Collection(ctx, name, "Ledger", ledgerFetch, o.From, o.To)
+	p.report("Reading ledgers", 0.04)
+	var masters []*tally.Node
+	err = p.do(ctx, slowLimit, "ledger masters", func(ctx context.Context) (err error) {
+		masters, err = c.Collection(ctx, name, "Ledger", ledgerMasterFetch, time.Time{}, time.Time{})
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
 	}
-	for _, n := range ledgers {
-		state := n.Field("LEDSTATENAME")
-		if state == "" {
-			state = n.Field("STATENAME")
-		}
-		b.Ledgers = append(b.Ledgers, Ledger{
-			Name:             n.ObjectName(),
-			Parent:           cleanParent(n.Field("PARENT")),
-			ReservedName:     n.Field("RESERVEDNAME"),
-			OpeningBalance:   tally.DebitPositive(n.Field("OPENINGBALANCE")),
-			ClosingBalance:   tally.DebitPositive(n.Field("CLOSINGBALANCE")),
-			IsBillWise:       tally.Bool(n.Field("ISBILLWISEON")),
-			CreditPeriodDays: tally.CreditDays(n.Field("BILLCREDITPERIOD")),
-			GSTIN:            n.Field("PARTYGSTIN"),
-			State:            state,
-			Country:          n.Field("COUNTRYNAME"),
-		})
-	}
 
-	progress("Reading voucher types", 0.10)
-	vtypes, err := c.Collection(ctx, name, "VoucherType", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
+	p.report("Reading voucher types", 0.05)
+	var vtypes []*tally.Node
+	err = p.do(ctx, quickLimit, "voucher types", func(ctx context.Context) (err error) {
+		vtypes, err = c.Collection(ctx, name, "VoucherType", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
+		return err
+	})
 	if err != nil {
 		b.warn("voucher types could not be read: %v", err)
 	}
@@ -93,55 +92,41 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		b.VoucherTypes = append(b.VoucherTypes, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
 	}
 
-	// Closing stock at the period end and one and two years earlier, so the
-	// backend can adjust cost of goods sold for stock movement.
-	progress("Reading stock valuation", 0.13)
-	booksFrom, _ := tally.ParseDate(o.Company.BooksFrom)
-	for _, asOf := range []time.Time{o.To, o.To.AddDate(0, 0, -365), o.To.AddDate(0, 0, -730)} {
-		if asOf.Before(booksFrom.AddDate(0, 0, -1)) {
-			continue
-		}
-		items, err := c.Collection(ctx, name, "StockItem", []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}, o.From, asOf)
-		if err != nil {
-			b.warn("stock valuation at %s could not be read: %v", asOf.Format("2006-01-02"), err)
-			continue
-		}
-		snap := StockSnapshot{AsOf: asOf.Format("2006-01-02"), Items: []StockItem{}}
-		for _, n := range items {
-			snap.Items = append(snap.Items, StockItem{
-				Name:         n.ObjectName(),
-				Parent:       cleanParent(n.Field("PARENT")),
-				Unit:         n.Field("BASEUNITS"),
-				ClosingQty:   math.Abs(tally.Amount(n.Field("CLOSINGBALANCE"))),
-				ClosingValue: tally.DebitPositive(n.Field("CLOSINGVALUE")),
-			})
-		}
-		b.StockSnapshots = append(b.StockSnapshots, snap)
-	}
-
-	progress("Reading outstanding bills", 0.16)
-	bills, err := c.Collection(ctx, name, "Bills", []string{"Name", "Parent", "BillDate", "BillDueDate", "ClosingBalance"}, o.From, o.To)
+	balances, missing, err := fetchByParent(ctx, p, name, "Ledger", "ledger balances", masters, ledgerBalanceFetch, o.From, o.To, 0.06, 0.20, slowLimit)
 	if err != nil {
-		b.warn("bill-wise outstanding could not be read (ageing will use FIFO): %v", err)
+		return nil, fmt.Errorf("reading ledger balances: %w", err)
 	}
-	for _, n := range bills {
-		amt := tally.DebitPositive(n.Field("CLOSINGBALANCE"))
-		if amt == 0 {
-			continue
+	if missing > 0 {
+		b.warn("balances of %d ledgers could not be read from Tally", missing)
+	}
+	for _, n := range masters {
+		state := n.Field("LEDSTATENAME")
+		if state == "" {
+			state = n.Field("STATENAME")
 		}
-		b.Bills = append(b.Bills, Bill{
-			Ledger: n.Field("PARENT"), Name: n.ObjectName(), Date: tally.ISODate(n.Field("BILLDATE")),
-			DueDate: tally.ISODate(n.Field("BILLDUEDATE")), ClosingBalance: amt,
-		})
+		l := Ledger{
+			Name:             n.ObjectName(),
+			Parent:           cleanParent(n.Field("PARENT")),
+			ReservedName:     n.Field("RESERVEDNAME"),
+			IsBillWise:       tally.Bool(n.Field("ISBILLWISEON")),
+			CreditPeriodDays: tally.CreditDays(n.Field("BILLCREDITPERIOD")),
+			GSTIN:            n.Field("PARTYGSTIN"),
+			State:            state,
+			Country:          n.Field("COUNTRYNAME"),
+		}
+		if bal := balances[l.Name]; bal != nil {
+			l.OpeningBalance = tally.DebitPositive(bal.Field("OPENINGBALANCE"))
+			l.ClosingBalance = tally.DebitPositive(bal.Field("CLOSINGBALANCE"))
+		}
+		b.Ledgers = append(b.Ledgers, l)
 	}
 
-	// Vouchers month by month: Tally's HTTP server is single-threaded and
-	// large responses are slow or fail, so small chunks keep it responsive.
+	// Vouchers month by month, split further whenever a range is too slow.
 	months := monthChunks(o.From, o.To)
 	unbalanced := 0
 	for i, ch := range months {
-		progress(fmt.Sprintf("Reading vouchers for %s", ch[0].Format("Jan 2006")), 0.18+0.80*float64(i)/float64(len(months)))
-		nodes, err := fetchVouchers(ctx, c, name, ch[0], ch[1])
+		p.report(fmt.Sprintf("Reading vouchers for %s", ch[0].Format("Jan 2006")), 0.20+0.65*float64(i)/float64(len(months)))
+		nodes, err := fetchVouchers(ctx, p, name, ch[0], ch[1])
 		if err != nil {
 			return nil, fmt.Errorf("reading vouchers %s to %s: %w", ch[0].Format("2006-01-02"), ch[1].Format("2006-01-02"), err)
 		}
@@ -156,20 +141,187 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 	if unbalanced > 0 {
 		b.warn("%d vouchers did not balance when read from Tally", unbalanced)
 	}
-	progress("Extraction complete", 0.98)
+
+	// Stock valuation and bills only refine the analysis, so a slow Tally
+	// drops them with a warning instead of failing the whole sync.
+	readStock(ctx, p, b, o, 0.85, 0.94)
+
+	p.report("Reading outstanding bills", 0.94)
+	var bills []*tally.Node
+	err = p.do(ctx, voucherLimit, "outstanding bills", func(ctx context.Context) (err error) {
+		bills, err = c.Collection(ctx, name, "Bills", []string{"Name", "Parent", "BillDate", "BillDueDate", "ClosingBalance"}, o.From, o.To)
+		return err
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		b.warn("bill-wise outstanding could not be read (ageing will use FIFO): %v", err)
+	}
+	for _, n := range bills {
+		amt := tally.DebitPositive(n.Field("CLOSINGBALANCE"))
+		if amt == 0 {
+			continue
+		}
+		b.Bills = append(b.Bills, Bill{
+			Ledger: n.Field("PARENT"), Name: n.ObjectName(), Date: tally.ISODate(n.Field("BILLDATE")),
+			DueDate: tally.ISODate(n.Field("BILLDUEDATE")), ClosingBalance: amt,
+		})
+	}
+	p.report("Extraction complete", 0.98)
 	return b, nil
+}
+
+// readStock adds closing stock at the period end and one and two years
+// earlier, so the backend can adjust cost of goods sold for stock movement.
+func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float64) {
+	name := o.Company.Name
+	p.report("Reading stock items", f0)
+	var items []*tally.Node
+	err := p.do(ctx, slowLimit, "stock items", func(ctx context.Context) (err error) {
+		items, err = p.c.Collection(ctx, name, "StockItem", []string{"Name", "Parent"}, time.Time{}, time.Time{})
+		return err
+	})
+	if err != nil {
+		b.warn("stock items could not be read: %v", err)
+		return
+	}
+	if len(items) == 0 {
+		return
+	}
+	booksFrom, _ := tally.ParseDate(o.Company.BooksFrom)
+	dates := []time.Time{o.To, o.To.AddDate(0, 0, -365), o.To.AddDate(0, 0, -730)}
+	step := (f1 - f0) / float64(len(dates))
+	for i, asOf := range dates {
+		if asOf.Before(booksFrom.AddDate(0, 0, -1)) {
+			continue
+		}
+		label := "stock value at " + asOf.Format("02 Jan 2006")
+		values, missing, err := fetchByParent(ctx, p, name, "StockItem", label, items, stockValueFetch, o.From, asOf,
+			f0+step*float64(i), f0+step*float64(i+1), voucherLimit)
+		if err != nil || missing > 0 {
+			if err == nil {
+				err = fmt.Errorf("%d items missing", missing)
+			}
+			b.warn("%s could not be read: %v", label, err)
+			if ctx.Err() != nil {
+				return
+			}
+			continue // a partial snapshot would understate stock
+		}
+		snap := StockSnapshot{AsOf: asOf.Format("2006-01-02"), Items: []StockItem{}}
+		for _, it := range items {
+			n := values[it.ObjectName()]
+			snap.Items = append(snap.Items, StockItem{
+				Name:         it.ObjectName(),
+				Parent:       cleanParent(it.Field("PARENT")),
+				Unit:         n.Field("BASEUNITS"),
+				ClosingQty:   math.Abs(tally.Amount(n.Field("CLOSINGBALANCE"))),
+				ClosingValue: tally.DebitPositive(n.Field("CLOSINGVALUE")),
+			})
+		}
+		b.StockSnapshots = append(b.StockSnapshots, snap)
+	}
+}
+
+// fetchByParent reads computed fields for masters one parent at a time, so
+// each request covers only a slice of the books. Anything still missing
+// afterwards (a parent that timed out, or a Tally that ignores CHILDOF) is
+// fetched in one whole-collection request under fallbackLimit. It returns the
+// nodes by name and how many masters are still missing.
+func fetchByParent(ctx context.Context, p *pacer, company, objType, label string, masters []*tally.Node,
+	fetch []string, from, to time.Time, f0, f1 float64, fallbackLimit time.Duration) (map[string]*tally.Node, int, error) {
+	want := map[string][]string{} // raw parent -> member names
+	var parents []string
+	for _, n := range masters {
+		parent := strings.TrimSpace(n.Field("PARENT"))
+		if _, ok := want[parent]; !ok {
+			parents = append(parents, parent)
+		}
+		want[parent] = append(want[parent], n.ObjectName())
+	}
+	got := map[string]*tally.Node{}
+	covered := func(parent string) bool {
+		for _, m := range want[parent] {
+			if got[m] == nil {
+				return false
+			}
+		}
+		return true
+	}
+	slow := 0
+	for i, parent := range parents {
+		// Items directly under Primary have no group to ask for. After a few
+		// timeouts, stop: a Tally that ignores CHILDOF makes every slice slow.
+		if cleanParent(parent) == "" || covered(parent) || slow >= 3 {
+			continue
+		}
+		p.report(fmt.Sprintf("Reading %s (%d of %d)", label, i+1, len(parents)), f0+(f1-f0)*float64(i)/float64(len(parents)))
+		var nodes []*tally.Node
+		err := p.do(ctx, quickLimit, label+" under "+parent, func(ctx context.Context) (err error) {
+			nodes, err = p.c.CollectionOf(ctx, company, objType, parent, fetch, from, to)
+			return err
+		})
+		if ctx.Err() != nil {
+			return nil, 0, ctx.Err()
+		}
+		if errors.Is(err, errSlow) {
+			slow++
+		}
+		if err != nil {
+			continue // left for the fallback below
+		}
+		for _, n := range nodes {
+			got[n.ObjectName()] = n
+		}
+	}
+	missing := 0
+	for _, n := range masters {
+		if got[n.ObjectName()] == nil {
+			missing++
+		}
+	}
+	if missing == 0 {
+		return got, 0, nil
+	}
+	p.report(fmt.Sprintf("Reading %s (remaining %d)", label, missing), f1)
+	var nodes []*tally.Node
+	err := p.do(ctx, fallbackLimit, label+" (all)", func(ctx context.Context) (err error) {
+		nodes, err = p.c.Collection(ctx, company, objType, fetch, from, to)
+		return err
+	})
+	if err != nil {
+		return nil, missing, err
+	}
+	for _, n := range nodes {
+		if got[n.ObjectName()] == nil {
+			got[n.ObjectName()] = n
+		}
+	}
+	missing = 0
+	for _, n := range masters {
+		if got[n.ObjectName()] == nil {
+			missing++
+		}
+	}
+	return got, missing, nil
 }
 
 func (b *Bundle) warn(format string, args ...any) {
 	b.Warnings = append(b.Warnings, fmt.Sprintf(format, args...))
 }
 
-// fetchVouchers retries a range and, if Tally keeps failing, splits it in
-// half down to single days.
-func fetchVouchers(ctx context.Context, c *tally.Client, company string, from, to time.Time) ([]*tally.Node, error) {
+// fetchVouchers reads a date range. A range that is too slow is split in half
+// at once; other failures are retried, then split, down to single days.
+func fetchVouchers(ctx context.Context, p *pacer, company string, from, to time.Time) ([]*tally.Node, error) {
 	var lastErr error
+	what := "vouchers " + from.Format("2006-01-02") + " to " + to.Format("2006-01-02")
 	for attempt := 0; attempt < 2; attempt++ {
-		nodes, err := c.Vouchers(ctx, company, from, to)
+		var nodes []*tally.Node
+		err := p.do(ctx, voucherLimit, what, func(ctx context.Context) (err error) {
+			nodes, err = p.c.Vouchers(ctx, company, from, to)
+			return err
+		})
 		if err == nil {
 			return nodes, nil
 		}
@@ -178,6 +330,9 @@ func fetchVouchers(ctx context.Context, c *tally.Client, company string, from, t
 			return nil, err
 		}
 		lastErr = err
+		if errors.Is(err, errSlow) {
+			break
+		}
 		time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
 	}
 	days := int(to.Sub(from).Hours() / 24)
@@ -185,11 +340,11 @@ func fetchVouchers(ctx context.Context, c *tally.Client, company string, from, t
 		return nil, lastErr
 	}
 	mid := from.AddDate(0, 0, days/2)
-	a, err := fetchVouchers(ctx, c, company, from, mid)
+	a, err := fetchVouchers(ctx, p, company, from, mid)
 	if err != nil {
 		return nil, err
 	}
-	bn, err := fetchVouchers(ctx, c, company, mid.AddDate(0, 0, 1), to)
+	bn, err := fetchVouchers(ctx, p, company, mid.AddDate(0, 0, 1), to)
 	if err != nil {
 		return nil, err
 	}

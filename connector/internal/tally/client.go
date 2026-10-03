@@ -54,6 +54,26 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 	return text, nil
 }
 
+// WaitIdle blocks until Tally answers a ping again. Tally serves requests one
+// at a time on the same thread as its own screen, so an answer means it has
+// finished whatever it was working on, including a request we gave up on.
+func (c *Client) WaitIdle(ctx context.Context, max time.Duration) error {
+	deadline := time.Now().Add(max)
+	for {
+		if _, err := c.Ping(ctx); err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("Tally was still busy after %s", max.Round(time.Minute))
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+}
+
 // Post sends an XML request envelope and returns the parsed response tree.
 func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 	var body []byte

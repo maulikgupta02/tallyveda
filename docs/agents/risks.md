@@ -43,6 +43,12 @@
   names on TallyPrime 4+, and Day Book performance on companies with >100k vouchers. Any
   change to `connector/internal/tally/` should be treated as unverified until tested against
   real Tally, regardless of how clean the mock-based tests look.
+- **First real install (2026-10-03) froze Tally at "Reading ledgers"**: the old single ledger
+  request asked Tally to compute every ledger's balances at once. Fixed with paced, per-group
+  requests (see architecture.md, `internal/extract/`). Still unverified on real Tally: that
+  `CHILDOF` with a plain group name is honoured (if not, the fallback reads everything in
+  one request, as before), and whether one huge group (thousands of debtors) is still slow
+  enough to freeze Tally for a while. `connector.log` now records how long every request took.
 - **`dev/e2e.sh` could not be run to completion in this sandbox** (see `project.md`) — the
   individual pieces (backend tests, go vet/test, mock Tally, backend startup) were each
   verified in isolation, but the orchestrated script itself hit what looks like local network

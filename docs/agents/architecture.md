@@ -127,7 +127,16 @@ itself). They never share code or a process.
   response shapes Tally can return. Has its own tests (`tally_test.go`).
 - **`internal/extract/`** — owns building the `Bundle` (see Data model below) from Tally
   responses: groups, ledgers, voucher types, stock snapshots, bills, and Day Book vouchers
-  pulled month by month. Has its own tests (`extract_test.go`).
+  pulled month by month. Tally answers XML on the same thread that draws its screen, so a
+  big request freezes Tally for the user. `pace.go` therefore gives every request a time
+  limit and a pause afterwards (half the last request's duration, 0.3-5 s). After a timeout
+  it waits for Tally to answer a ping before sending anything else, so requests never queue
+  inside Tally. Ledger masters are read without balances; opening/closing balances (the
+  expensive, computed part) are read one account group at a time via `CHILDOF`, with one
+  whole-collection fallback for whatever is still missing. Stock values work the same way per
+  stock group. Stock and bills are best effort (warning, not failure). A slow voucher month is
+  split in half at once. Tests: `extract_test.go`, and `run_test.go`, which uses a fake
+  single-threaded Tally with a slow group.
 - **`internal/app/`** — the local UI: serves `index.html` on 127.0.0.1 with a per-run token,
   owns the guided 4-step flow (detect Tally → enter code → choose company/consent →
   extract/upload) and idle-timeout (exits ~45s after the tab closes).

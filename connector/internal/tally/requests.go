@@ -12,7 +12,9 @@ import (
 
 // collectionRequest builds an inline-TDL collection export. Collections return
 // computed fields (ClosingBalance as at SVTODATE) that master exports don't.
-func collectionRequest(company, objType string, fetch []string, from, to time.Time) string {
+// A non-empty childOf limits it to the direct children of that group or stock
+// group, which keeps each request small enough for Tally to answer quickly.
+func collectionRequest(company, objType, childOf string, fetch []string, from, to time.Time) string {
 	var sv strings.Builder
 	sv.WriteString("<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>")
 	if company != "" {
@@ -24,11 +26,15 @@ func collectionRequest(company, objType string, fetch []string, from, to time.Ti
 	if !to.IsZero() {
 		fmt.Fprintf(&sv, "<SVTODATE>%s</SVTODATE>", tallyDate(to))
 	}
+	var child string
+	if childOf != "" {
+		child = "<CHILDOF>" + html.EscapeString(childOf) + "</CHILDOF>"
+	}
 	return fmt.Sprintf(`<ENVELOPE>
 <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>TCColl</ID></HEADER>
 <BODY><DESC><STATICVARIABLES>%s</STATICVARIABLES>
-<TDL><TDLMESSAGE><COLLECTION NAME="TCColl" ISMODIFY="No"><TYPE>%s</TYPE><FETCH>%s</FETCH></COLLECTION></TDLMESSAGE></TDL>
-</DESC></BODY></ENVELOPE>`, sv.String(), objType, strings.Join(fetch, ", "))
+<TDL><TDLMESSAGE><COLLECTION NAME="TCColl" ISMODIFY="No"><TYPE>%s</TYPE>%s<FETCH>%s</FETCH></COLLECTION></TDLMESSAGE></TDL>
+</DESC></BODY></ENVELOPE>`, sv.String(), objType, child, strings.Join(fetch, ", "))
 }
 
 // dayBookRequest exports full vouchers for a date range. The Day Book report
@@ -56,7 +62,7 @@ type Company struct {
 }
 
 func (c *Client) Companies(ctx context.Context) ([]Company, error) {
-	root, err := c.Post(ctx, collectionRequest("", "Company",
+	root, err := c.Post(ctx, collectionRequest("", "Company", "",
 		[]string{"Name", "GUID", "StartingFrom", "BooksFrom", "StateName", "IncomeTaxNumber"}, time.Time{}, time.Time{}))
 	if err != nil {
 		return nil, err
@@ -81,7 +87,12 @@ func (c *Client) Companies(ctx context.Context) ([]Company, error) {
 
 // Collection fetches objects of one type and returns their nodes.
 func (c *Client) Collection(ctx context.Context, company, objType string, fetch []string, from, to time.Time) ([]*Node, error) {
-	root, err := c.Post(ctx, collectionRequest(company, objType, fetch, from, to))
+	return c.CollectionOf(ctx, company, objType, "", fetch, from, to)
+}
+
+// CollectionOf is Collection limited to the direct children of parent ("" for all).
+func (c *Client) CollectionOf(ctx context.Context, company, objType, parent string, fetch []string, from, to time.Time) ([]*Node, error) {
+	root, err := c.Post(ctx, collectionRequest(company, objType, parent, fetch, from, to))
 	if err != nil {
 		return nil, err
 	}
