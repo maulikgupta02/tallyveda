@@ -21,6 +21,7 @@ import (
 	"tallyconnector/internal/diagnose"
 	"tallyconnector/internal/extract"
 	"tallyconnector/internal/monitor"
+	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
 	"tallyconnector/internal/upload"
 )
@@ -52,14 +53,90 @@ type Job struct {
 	Stage    string  `json:"stage"`
 	Fraction float64 `json:"fraction"`
 	Error    string  `json:"error,omitempty"`
+	Hint     string  `json:"hint,omitempty"` // what the user should do about Error
 	Done     bool    `json:"done"`
 	Summary  string  `json:"summary,omitempty"`
+	// Waiting is the Tally request in flight, for "Waiting for Tally: …".
+	Waiting     string    `json:"waiting,omitempty"`
+	WaitingSecs int       `json:"waiting_secs,omitempty"`
+	Notes       []string  `json:"notes,omitempty"`
+	Log         []string  `json:"log,omitempty"`
+	waitingFrom time.Time `json:"-"`
 }
 
 func New(t *tally.Client, b *upload.Backend, version string) *App {
 	buf := make([]byte, 16)
 	rand.Read(buf)
-	return &App{Tally: t, Backend: b, Version: version, token: hex.EncodeToString(buf), started: time.Now()}
+	a := &App{Tally: t, Backend: b, Version: version, token: hex.EncodeToString(buf), started: time.Now()}
+	extract.Notify = a.notify
+	return a
+}
+
+func (a *App) notify(event, detail string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch event {
+	case "sending":
+		a.job.Waiting, a.job.waitingFrom = detail, time.Now()
+	case "done":
+		a.job.Waiting = ""
+	case "note":
+		a.job.Notes = append(a.job.Notes, detail)
+	}
+}
+
+// Recent keeps the last lines of the log for the page's "Show details".
+var Recent = &ring{max: 200}
+
+type ring struct {
+	mu    sync.Mutex
+	max   int
+	lines []string
+}
+
+func (r *ring) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, l := range strings.Split(strings.TrimRight(string(p), "\n"), "\n") {
+		r.lines = append(r.lines, l)
+	}
+	if over := len(r.lines) - r.max; over > 0 {
+		r.lines = r.lines[over:]
+	}
+	return len(p), nil
+}
+
+func (r *ring) last(n int) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.lines) < n {
+		n = len(r.lines)
+	}
+	return append([]string(nil), r.lines[len(r.lines)-n:]...)
+}
+
+// hint turns an error into what the user should do next.
+func hint(err string) string {
+	e := strings.ToLower(err)
+	switch {
+	case strings.Contains(e, "already being synced"):
+		return "Another connector window is already sending this company. Close it, or wait for it to finish."
+	case strings.Contains(e, "code is not valid"), strings.Contains(e, "has expired"):
+		return "This code has been used or has expired. Ask the bank for a new code."
+	case strings.Contains(e, "took too long"), strings.Contains(e, "still busy"), strings.Contains(e, "restart tally"):
+		return "Tally stopped answering. If Tally shows a message box, close it. If Tally is frozen, end it in Task Manager " +
+			"(Ctrl+Shift+Esc), open it again with the company, and press Continue sharing: the part that froze is skipped."
+	case strings.Contains(e, "not open in tally"), strings.Contains(e, "loaded"):
+		return "Open (load) this company in Tally, then press Continue sharing."
+	case strings.Contains(e, "tally is not reachable"), strings.Contains(e, "tally is not open"):
+		return "Tally isn't answering on port 9000. Check that Tally is open with the company loaded, and that " +
+			"F1 > Settings > Connectivity says \"Both\" with port 9000."
+	case strings.Contains(e, "bank's server"), strings.Contains(e, "upload failed"), strings.Contains(e, "dial tcp"):
+		return "The connector could not reach the bank's server. Check the internet connection, then press Continue sharing."
+	case strings.Contains(e, "no vouchers were found"):
+		return "Tally has no entries for this company in the period. Check that the right company is selected."
+	}
+	return "Press Continue sharing to try again. If it keeps failing, send the details below to the bank."
 }
 
 // Listen starts the UI on a free local port and returns its URL.
@@ -239,7 +316,19 @@ func CheckTally(ctx context.Context, t *tally.Client, b *upload.Backend, version
 		defer cancel()
 		sendErr = b.SendLog(sctx, auth, "diagnose", text, session)
 	}
-	report := diagnose.Run(ctx, t, company, version, progress, send)
+	system := support.Report()
+	support.Reset()
+	support.Send = func(kind, text string) {
+		if auth != nil {
+			sctx, cancel := context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+			b.SendLog(sctx, auth, kind, text, session+"-"+kind)
+		}
+	}
+	defer func() { support.Send = nil }()
+	send(system + "\n")
+	report := diagnose.Run(ctx, t, company, version, progress, func(s string) { send(system + "\n" + s) })
+	report = system + "\n" + report
 	log.Printf("tally check:\n%s", report)
 	if d, err := monitor.Dir(); err == nil {
 		os.WriteFile(filepath.Join(d, "tally-check.txt"), []byte(report), 0o600)
@@ -295,7 +384,7 @@ func (a *App) run(w http.ResponseWriter, job func(context.Context, extract.Progr
 		writeJSON(w, 409, map[string]string{"error": "already running"})
 		return
 	}
-	a.job = Job{Running: true, Stage: "Starting", Fraction: 0}
+	a.job = Job{Running: true, Stage: "Starting", Fraction: 0, Notes: []string{}}
 	a.mu.Unlock()
 
 	go func() {
@@ -304,7 +393,7 @@ func (a *App) run(w http.ResponseWriter, job func(context.Context, extract.Progr
 		defer a.mu.Unlock()
 		a.job.Running = false
 		if err != nil {
-			a.job.Error = err.Error()
+			a.job.Error, a.job.Hint, a.job.Waiting = err.Error(), hint(err.Error()), ""
 			log.Printf("failed: %v", err)
 			return
 		}
@@ -323,8 +412,13 @@ func (a *App) setProgress(stage string, f float64) {
 
 func (a *App) progress(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	writeJSON(w, 200, a.job)
+	j := a.job
+	a.mu.Unlock()
+	if j.Waiting != "" {
+		j.WaitingSecs = int(time.Since(j.waitingFrom).Seconds())
+	}
+	j.Log = Recent.last(40)
+	writeJSON(w, 200, j)
 }
 
 // RunJob verifies the code, opens the first sync and sends the company's

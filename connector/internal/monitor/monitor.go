@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"tallyconnector/internal/extract"
+	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
 	"tallyconnector/internal/upload"
 )
@@ -458,6 +459,15 @@ func ShipLogs(server, token string) func() {
 			log.Printf("could not send the log to the server: %v", err)
 		}
 	}
+	support.Reset()
+	support.Send = func(kind, text string) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if err := b.SendLog(ctx, upload.TokenAuth(token), kind, text, session+"-"+kind); err != nil {
+			log.Printf("could not send %s to the server: %v", kind, err)
+		}
+	}
+	go support.Send("system", support.Report())
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
@@ -475,7 +485,7 @@ func ShipLogs(server, token string) func() {
 			}
 		}
 	}()
-	return func() { close(stop); <-done }
+	return func() { close(stop); <-done; support.Send = nil }
 }
 
 // Logger returns a printf-style logger writing to w with timestamps.

@@ -384,7 +384,7 @@ def prune_report_files(app_id: str, keep_days: int) -> int:
     return pruned
 
 
-CONNECTOR_LOGS_KEPT = 20
+CONNECTOR_LOGS_KEPT = 30
 
 
 def save_connector_log(app_id: str, kind: str, body: str, session: str = "") -> None:

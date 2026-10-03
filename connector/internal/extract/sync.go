@@ -76,6 +76,7 @@ func syncFull(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (s
 		warns := m.warnings
 		if missing > 0 {
 			warns = append(warns, fmt.Sprintf("balances of %d ledgers could not be read from Tally", missing))
+			notify("note", fmt.Sprintf("Balances of %d ledgers could not be read from Tally.", missing))
 		}
 		p.report("Sending ledgers", 0.15)
 		if _, err := sink.Masters(ctx, map[string]any{
@@ -226,21 +227,25 @@ func syncDelta(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (
 		recentFrom = o.From
 	}
 	p.report("Checking for deleted vouchers", 0.50)
-	var present []tally.VoucherStub
-	err = p.do(ctx, slowLimit, "recent voucher list", func(ctx context.Context) (err error) {
-		present, err = p.c.VoucherStubs(ctx, name, recentFrom, o.To, 0)
-		return err
-	})
-	if err != nil {
-		return "", fmt.Errorf("listing recent vouchers: %w", err)
-	}
-	guids := make([]string, 0, len(present))
-	for _, s := range present {
-		guids = append(guids, s.GUID)
-	}
-	gone, err := sink.Present(ctx, recentFrom, o.To, guids)
-	if err != nil {
-		return "", err
+	var gone []string
+	for _, ch := range monthChunks(recentFrom, o.To) {
+		var present []tally.VoucherStub
+		err = p.do(ctx, quickLimit, "voucher list "+ch[0].Format("Jan 2006"), func(ctx context.Context) (err error) {
+			present, err = p.c.VoucherStubs(ctx, name, ch[0], ch[1], 0)
+			return err
+		})
+		if err != nil {
+			return "", fmt.Errorf("listing vouchers for %s: %w", ch[0].Format("Jan 2006"), err)
+		}
+		guids := make([]string, 0, len(present))
+		for _, s := range present {
+			guids = append(guids, s.GUID)
+		}
+		got, err := sink.Present(ctx, ch[0], ch[1], guids)
+		if err != nil {
+			return "", err
+		}
+		gone = append(gone, got...)
 	}
 	add(gone)
 

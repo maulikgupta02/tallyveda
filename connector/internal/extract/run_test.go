@@ -35,6 +35,8 @@ type fakeLedger struct {
 
 var (
 	childOfRe = regexp.MustCompile(`<CHILDOF>(.*?)</CHILDOF>`)
+	dateRe    = regexp.MustCompile(`<SVFROMDATE>(\d+)</SVFROMDATE>`)
+	toRe      = regexp.MustCompile(`<SVTODATE>(\d+)</SVTODATE>`)
 	rangeRe   = regexp.MustCompile(`\$MasterId &gt;= (\d+) AND \$MasterId &lt;= (\d+)`)
 )
 
@@ -100,6 +102,10 @@ func (f *fakeTally) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case strings.Contains(body, "Day Book"):
 		f.requests = append(f.requests, "vouchers")
+		from, to := dateRe.FindStringSubmatch(body), toRe.FindStringSubmatch(body)
+		if from == nil || to == nil || from[1] > "20250405" || to[1] < "20250405" {
+			break
+		}
 		out.WriteString(`<VOUCHER><DATE>20250405</DATE><VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>
 		  <ALLLEDGERENTRIES.LIST><LEDGERNAME>Rent</LEDGERNAME><AMOUNT>-500.00</AMOUNT></ALLLEDGERENTRIES.LIST>
 		  <ALLLEDGERENTRIES.LIST><LEDGERNAME>Cash</LEDGERNAME><AMOUNT>500.00</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER>`)
@@ -195,5 +201,17 @@ func TestSlowBatchIsHalved(t *testing.T) {
 	runFake(t, f)
 	if f.count("balances:all") != 0 {
 		t.Fatalf("escalated to a whole request: %v", f.requests)
+	}
+}
+
+// The first ledger request must ask only for stored essentials; optional
+// fields, any of which may freeze a Tally, are each asked for separately.
+func TestLedgerMastersAskOnlyForEssentials(t *testing.T) {
+	for _, f := range optionalLedgerFields {
+		for _, m := range ledgerMasterFetch {
+			if m == f {
+				t.Fatalf("ledgerMasterFetch includes optional field %s", f)
+			}
+		}
 	}
 }

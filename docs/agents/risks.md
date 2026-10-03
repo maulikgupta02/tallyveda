@@ -54,6 +54,15 @@
   only, then each optional field (IsBillWiseOn, BillCreditPeriod, PartyGSTIN, LedStateName,
   StateName, CountryName) alone with a 30 s limit. A field that times out is recorded in
   `%APPDATA%\TallyConnector\tally-skip.json` and never requested again on that PC.
+  **0.2.3 shipped without the essentials-only change** (an edit silently failed to apply, so
+  `ledgerMasterFetch` still listed every field); 0.2.4 fixes it and
+  `TestLedgerMastersAskOnlyForEssentials` guards it. 0.2.4 also sends a system report (Tally
+  release, file version, add-ons from tally.ini, whether Windows sees Tally as responding, port
+  9000 owner), samples Tally's CPU and memory every 15 s while a request is stuck, uploads one
+  JPEG of the Tally window after 30 s (`internal/support`, PowerShell, **never run on real Windows
+  yet**), and shows live Tally waits, skipped items, hints and recent log lines on the connector
+  page. Day Book requests are capped at 7 days, balance batches at 300 ledgers (starting at 25),
+  and the deletion check runs one month per request.
 - **First real install (2026-10-03) froze Tally at "Reading ledgers"**: the old single ledger
   request asked Tally to compute every ledger's balances at once. Fixed with paced, per-group
   requests in `MasterId` batches (see architecture.md, `internal/extract/`). Still unverified

@@ -40,6 +40,13 @@
   .done { font-size: 16px; font-weight: 600; color: var(--good); }
   .hidden { display: none; }
   button.secondary { background: #fff; color: var(--text); border: 1px solid var(--line); }
+  .note { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface); color: var(--text-2); }
+  .note.warn { background: #fff7e0; color: #7a5200; }
+  .note.bad { background: #fdecea; color: #8a1c13; }
+  .notes { margin: 10px 0 0; padding-left: 18px; color: var(--text-2); }
+  #details { margin-top: 12px; }
+  #details pre { max-height: 260px; overflow: auto; background: var(--surface); padding: 10px; border-radius: 8px;
+                 font-size: 11px; white-space: pre-wrap; word-break: break-word; }
   .co { padding: 10px 0; border-top: 1px solid var(--line); }
   .co:first-child { border-top: 0; }
   .co b { display: block; }
@@ -97,13 +104,21 @@
     <div class="bar"><i id="barFill"></i></div>
     <div id="stage" class="muted">Waiting…</div>
     <p class="muted" id="bgNote">Tally stays usable while this runs: the connector reads a small piece at a time and pauses in between. You can keep working in Tally, or close this tab and the sync carries on in the background.</p>
+    <div id="waitMsg" class="note hidden"></div>
     <div id="jobErr" class="err"></div>
+    <div id="hint" class="note bad hidden"></div>
+    <ul id="notes" class="notes hidden"></ul>
     <div id="doneMsg" class="hidden">
-      <p class="done">Done. Your bank has received the data.</p>
+      <p class="done" id="doneTitle">Done. Your bank has received the data.</p>
       <p class="muted" id="summary" style="white-space: pre-wrap"></p>
       <p class="muted">You can close this tab.</p>
       <button id="another" class="secondary">Share another company</button>
     </div>
+    <details id="details" class="hidden">
+      <summary>Show details</summary>
+      <p class="muted small">The connector's recent activity. If something goes wrong, send a screenshot of this to the bank.</p>
+      <pre id="logTail"></pre>
+    </details>
   </section>
   <p class="muted">Tally Connector {{VERSION}}</p>
 </main>
@@ -205,10 +220,47 @@ $("startBtn").onclick = async () => {
   }
 };
 
+function showActivity(j) {
+  const w = $("waitMsg");
+  if (j.waiting && j.running) {
+    let text = `Waiting for Tally: ${j.waiting} (${j.waiting_secs} s)`;
+    let cls = "note";
+    if (j.waiting_secs >= 60) {
+      text += ". Tally is taking very long. If Tally shows a message box, close it. If it stays frozen for several " +
+        "minutes, end Tally in Task Manager (Ctrl+Shift+Esc), open it again and press Continue sharing.";
+      cls = "note warn";
+    } else if (j.waiting_secs >= 15) {
+      text += ". Tally is taking a while. Keep it open; if it shows a message box, close it.";
+      cls = "note warn";
+    }
+    w.textContent = text;
+    w.className = cls;
+  } else {
+    w.className = "note hidden";
+  }
+  const hint = $("hint");
+  hint.textContent = j.hint || "";
+  hint.classList.toggle("hidden", !j.hint);
+  const notes = $("notes");
+  notes.replaceChildren(...(j.notes || []).map(n => el("li", n)));
+  notes.classList.toggle("hidden", !(j.notes || []).length);
+  if ((j.log || []).length) {
+    $("details").classList.remove("hidden");
+    $("logTail").textContent = j.log.join("\n");
+  }
+}
+
 async function poll() {
-  const j = await api("/api/progress");
+  let j;
+  try {
+    j = await api("/api/progress");
+  } catch (e) {
+    setTimeout(poll, 2000);
+    return;
+  }
   $("barFill").style.width = Math.round(j.fraction * 100) + "%";
   $("stage").textContent = j.stage;
+  showActivity(j);
   if (j.error) {
     $("jobErr").textContent = j.error;
     loadMonitor();
@@ -218,6 +270,8 @@ async function poll() {
   }
   if (j.done) {
     mark("s4", true);
+    const check = (j.summary || "").startsWith("Tally check");
+    $("doneTitle").textContent = check ? "Tally check finished." : "Done. Your bank has received the data.";
     $("summary").textContent = j.summary;
     $("doneMsg").classList.remove("hidden");
     loadMonitor();

@@ -29,6 +29,7 @@ import (
 	"tallyconnector/internal/app"
 	"tallyconnector/internal/extract"
 	"tallyconnector/internal/monitor"
+	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
 	"tallyconnector/internal/upload"
 )
@@ -60,11 +61,14 @@ func main() {
 		attachConsole() // GUI build: show output when run from a command prompt
 	}
 	extract.FieldMemory = monitor.FieldMemory{}
+	extract.OnSlow = support.OnSlow
 	logFile, _ := monitor.OpenLog()
-	var logOut io.Writer = os.Stderr
+	// stderr last: it may be invalid in the GUI build, and MultiWriter stops at
+	// the first writer that fails.
+	logOut := io.MultiWriter(app.Recent, os.Stderr)
 	if logFile != nil {
 		defer logFile.Close()
-		logOut = io.MultiWriter(logFile, os.Stderr) // file first: stderr may be invalid in the GUI build
+		logOut = io.MultiWriter(logFile, app.Recent, os.Stderr)
 	}
 	log.SetOutput(logOut)
 	log.SetFlags(log.LstdFlags)

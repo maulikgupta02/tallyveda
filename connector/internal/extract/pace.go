@@ -29,6 +29,16 @@ var (
 	userBusy   = func() bool { return activity.Busy(time.Minute) }
 )
 
+// Notify, if set, is told about every Tally request ("sending"/"done") and
+// every note worth showing the user ("note"), for the connector page.
+var Notify func(event, detail string)
+
+func notify(event, detail string) {
+	if Notify != nil {
+		Notify(event, detail)
+	}
+}
+
 // errSlow means a request hit its time limit; Tally has since become free.
 var errSlow = errors.New("tally took too long to answer")
 
@@ -70,9 +80,13 @@ func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn fun
 		}
 	}
 	log.Printf("tally: sending %s", what)
+	notify("sending", what)
+	defer notify("done", what)
 	rctx, cancel := context.WithTimeout(ctx, limit)
 	start := time.Now()
+	stopWatch := watch(what, start)
 	err := fn(rctx)
+	stopWatch()
 	timedOut := rctx.Err() == context.DeadlineExceeded
 	cancel()
 	p.last = time.Since(start)
@@ -80,7 +94,7 @@ func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn fun
 	if err == nil || !timedOut || ctx.Err() != nil {
 		return err
 	}
-	log.Printf("tally: %s passed its %s limit; waiting for Tally to finish", what, limit)
+	log.Printf("tally: %s passed its %s limit; waiting for Tally to finish. The request was:\n%s", what, limit, p.c.LastRequest())
 	p.progress(p.stage+" (Tally is busy, waiting for it to finish)", p.frac)
 	if werr := p.c.WaitIdle(ctx, idleWait); werr != nil {
 		return werr
@@ -88,6 +102,31 @@ func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn fun
 	p.last = maxPause * 2 // give Tally a longer breather after a slow request
 	p.progress(p.stage, p.frac)
 	return errSlow
+}
+
+// OnSlow, if set, is called every 15 s once a request has run for 30 s (see
+// support.OnSlow: Tally's CPU and memory, and a picture of its window).
+var OnSlow func(what string, waited time.Duration)
+
+func watch(what string, start time.Time) func() {
+	if OnSlow == nil {
+		return func() {}
+	}
+	stop := make(chan struct{})
+	go func() {
+		t := time.NewTimer(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				OnSlow(what, time.Since(start))
+				t.Reset(15 * time.Second)
+			}
+		}
+	}()
+	return func() { close(stop) }
 }
 
 // target is how long one batch should take.

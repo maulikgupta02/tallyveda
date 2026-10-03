@@ -31,7 +31,7 @@ type Progress func(stage string, fraction float64)
 // Balances are computed from every voucher in the period, which is the slow
 // part, so they are fetched separately in small batches (see batch.go).
 var (
-	ledgerMasterFetch  = []string{"Name", "Parent", "MasterId", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
+	ledgerMasterFetch  = []string{"Name", "Parent", "MasterId", "ReservedName"}
 	ledgerBalanceFetch = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
 	stockValueFetch    = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
 )
@@ -202,6 +202,7 @@ func readLedgerFields(ctx context.Context, p *pacer, company string, m *masters)
 	for _, f := range optionalLedgerFields {
 		if FieldMemory != nil && FieldMemory.Skipped(f) {
 			m.warnings = append(m.warnings, fmt.Sprintf("ledger field %s skipped: it froze this Tally before", f))
+			notify("note", fmt.Sprintf("Skipped ledger detail %s: it froze Tally on an earlier run.", f))
 			continue
 		}
 		var nodes []*tally.Node
@@ -216,6 +217,7 @@ func readLedgerFields(ctx context.Context, p *pacer, company string, m *masters)
 			}
 			log.Printf("tally: ledger field %s failed (%v); continuing without it", f, err)
 			m.warnings = append(m.warnings, fmt.Sprintf("ledger field %s could not be read: %v", f, err))
+			notify("note", fmt.Sprintf("Skipped ledger detail %s: Tally could not provide it (%v).", f, err))
 			continue
 		}
 		if err != nil {
@@ -263,11 +265,23 @@ func ledgersWithBalances(nodes []*tally.Node, balances map[string]*tally.Node) [
 	return out
 }
 
+// voucherDays is the most days of Day Book asked for in one request; a range
+// that is still slow is split further, down to single days.
+var voucherDays = 7
+
 // readVouchers reads and parses [from, to]; bad counts vouchers that didn't balance.
 func readVouchers(ctx context.Context, p *pacer, company string, from, to time.Time) (vs []Voucher, bad int, err error) {
-	nodes, err := fetchVouchers(ctx, p, company, from, to)
-	if err != nil {
-		return nil, 0, fmt.Errorf("reading vouchers %s to %s: %w", from.Format("2006-01-02"), to.Format("2006-01-02"), err)
+	var nodes []*tally.Node
+	for start := from; !start.After(to); start = start.AddDate(0, 0, voucherDays) {
+		end := start.AddDate(0, 0, voucherDays-1)
+		if end.After(to) {
+			end = to
+		}
+		part, err := fetchVouchers(ctx, p, company, start, end)
+		if err != nil {
+			return nil, 0, fmt.Errorf("reading vouchers %s to %s: %w", start.Format("2006-01-02"), end.Format("2006-01-02"), err)
+		}
+		nodes = append(nodes, part...)
 	}
 	vs = make([]Voucher, 0, len(nodes))
 	for _, n := range nodes {
@@ -321,6 +335,7 @@ func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, 
 				err = fmt.Errorf("%d items missing", missing)
 			}
 			warns = append(warns, fmt.Sprintf("%s could not be read: %v", label, err))
+			notify("note", fmt.Sprintf("Skipped %s: %v.", label, err))
 			if ctx.Err() != nil {
 				return out, warns
 			}
@@ -355,6 +370,7 @@ func readBills(ctx context.Context, p *pacer, o Options, f float64) ([]Bill, str
 		if ctx.Err() != nil {
 			return nil, "", ctx.Err()
 		}
+		notify("note", fmt.Sprintf("Skipped outstanding bills: %v.", err))
 		return nil, fmt.Sprintf("bill-wise outstanding could not be read (ageing will use FIFO): %v", err), nil
 	}
 	bills := []Bill{}

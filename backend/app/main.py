@@ -500,7 +500,8 @@ class ConnectorLogIn(BaseModel):
 
 @app.post("/api/connector/log")
 async def connector_log(request: Request):
-    """The connector's log or a Tally diagnostic, for support. Accepts a
+    """The connector's log, a Tally check, a system report (Tally release,
+    add-ons, Windows) or a picture of the Tally window (base64 JPEG), for support. Accepts a
     connector token, or a live one-time code (which it does not use up), so a
     check can be sent before the first share."""
     code = request.headers.get("x-link-code", "")
@@ -510,9 +511,15 @@ async def connector_log(request: Request):
         body = ConnectorLogIn.model_validate(data)
     except ValueError as e:
         raise HTTPException(400, f"Invalid log: {e}")
-    if body.kind not in ("log", "diagnose"):
-        raise HTTPException(400, "kind must be log or diagnose")
-    store.save_connector_log(a["id"], body.kind, body.text[-200_000:], body.session[:64])
+    if body.kind not in ("log", "diagnose", "system", "screenshot"):
+        raise HTTPException(400, "kind must be log, diagnose, system or screenshot")
+    if body.kind == "screenshot":
+        if len(body.text) > 3_000_000:
+            raise HTTPException(413, "Picture too large")
+        text = body.text
+    else:
+        text = body.text[-200_000:]
+    store.save_connector_log(a["id"], body.kind, text, body.session[:64])
     return {"status": "saved"}
 
 

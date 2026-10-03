@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
 )
 
@@ -113,6 +114,12 @@ func Run(ctx context.Context, c *tally.Client, company, version string, progress
 		switch {
 		case timedOut:
 			fmt.Fprintf(&out, "HANG  %s: no answer in %s\n", s.name, stepLimit)
+			if st := support.Status(); st != "" {
+				fmt.Fprintf(&out, "      %s\n", st)
+			}
+			fmt.Fprintf(&out, "      request sent:\n%s\n", c.LastRequest())
+			report(out.String())
+			support.OnSlow(s.name, 30*time.Second) // CPU sample and a picture of the Tally window
 			if werr := c.WaitIdle(ctx, idleLimit); werr != nil {
 				fmt.Fprintf(&out, "\nTally stopped responding after %q and was still busy %s later.\n"+
 					"Restart Tally before using it again. This request is the likely cause.\n", s.name, idleLimit)

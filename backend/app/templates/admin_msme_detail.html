@@ -23,6 +23,7 @@
   a { color: var(--accent); text-decoration: none; cursor: pointer; }
   small { display: block; color: var(--muted); font-size: 12px; }
   .num { font-variant-numeric: tabular-nums; }
+  img.shot { max-width: 100%; border: 1px solid var(--line, #e5e7eb); border-radius: 8px; margin-top: 8px; }
   pre.log { max-height: 420px; overflow: auto; background: var(--bg, #f6f7f9); border: 1px solid var(--line, #e5e7eb); border-radius: 8px; padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   .muted { color: var(--muted); } .small { font-size: 12px; margin: 10px 0 0; }
 
@@ -187,11 +188,12 @@
   <details class="manage"{% if connector_logs %} open{% endif %}>
     <summary>Connector logs ({{ connector_logs|length }})</summary>
     <div class="manage-body">
-      <p class="muted">Sent by the connector on the MSME's computer: its log during each sync, and the result of "Check Tally". Newest first.</p>
+      <p class="muted">Sent by the connector on the MSME's computer: its log during each sync, the result of "Check Tally", a system report (Tally release, add-ons, Windows) and, if Tally got stuck, a picture of the Tally window. Newest first.</p>
       {% for l in connector_logs %}
-      <details>
-        <summary>{{ "Tally check" if l.kind == "diagnose" else "Sync log" }} · {{ l.created_at|when }}</summary>
-        <pre class="log">{{ l.body }}</pre>
+      <details{% if loop.index <= 4 %} open{% endif %}>
+        <summary>{{ {"diagnose": "Tally check", "system": "System report", "screenshot": "Tally window", "log": "Sync log"}[l.kind] }} · {{ l.created_at|when }}</summary>
+        {% if l.kind == "screenshot" %}<img class="shot" alt="Tally window when it stopped answering" src="data:image/jpeg;base64,{{ l.body }}">
+        {% else %}<pre class="log">{{ l.body }}</pre>{% endif %}
       </details>
       {% else %}
       <p class="muted">Nothing received yet. Connector 0.2.2 and later send these.</p>

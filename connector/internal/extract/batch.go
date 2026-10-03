@@ -28,7 +28,9 @@ func (s strategy) String() string {
 	return [...]string{"", "MasterId ranges", "groups", "one request"}[s]
 }
 
-const maxBatch = 2000
+// Balance batches start small and never exceed maxBatch objects, so no
+// single request asks Tally to compute much.
+const maxBatch = 300
 
 type member struct {
 	name, parent string
@@ -166,7 +168,7 @@ func batchByID(ctx context.Context, p *pacer, company, objType, label string, ms
 		}
 	}
 	sort.Slice(withID, func(i, j int) bool { return withID[i].id < withID[j].id })
-	size := 50
+	size := 25
 	for i := 0; i < len(withID); {
 		j := min(i+size, len(withID))
 		p.report(fmt.Sprintf("Reading %s (%d of %d)", label, i, len(withID)), f0+(f1-f0)*float64(i)/float64(len(withID)))

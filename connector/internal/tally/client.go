@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -23,6 +24,16 @@ type Client struct {
 	// UTF16 sends requests as UTF-16LE, which Tally needs to return
 	// non-ASCII names (Hindi, ₹) intact. Responses are auto-detected.
 	UTF16 bool
+
+	lastMu      sync.Mutex
+	lastRequest string
+}
+
+// LastRequest is the most recent request envelope, for debugging a hang.
+func (c *Client) LastRequest() string {
+	c.lastMu.Lock()
+	defer c.lastMu.Unlock()
+	return c.lastRequest
 }
 
 func NewClient(url string) *Client {
@@ -79,6 +90,9 @@ func (c *Client) WaitIdle(ctx context.Context, max time.Duration) error {
 
 // Post sends an XML request envelope and returns the parsed response tree.
 func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
+	c.lastMu.Lock()
+	c.lastRequest = envelope
+	c.lastMu.Unlock()
 	var body []byte
 	contentType := "text/xml;charset=utf-8"
 	if c.UTF16 {
