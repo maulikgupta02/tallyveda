@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ bank_name }} · Requests · TallyVeda</title>
+<link rel="icon" href="/favicon.ico?v=2" sizes="any">
+<link rel="stylesheet" href="/static/app.css?v=4">
+<style>
+  .new-request { display: none; }
+  .new-request.open { display: flex; flex-direction: column; gap: 12px; }
+  .new-request .form-row input[name="months"] { width: 96px; }
+  #requests td { white-space: nowrap; }
+  #requests td:first-child { white-space: normal; min-width: 180px; }
+  .code { font: 600 14px var(--mono); letter-spacing: .08em; }
+</style>
+</head>
+<body>
+{% from "_shell.html" import bank_side %}
+{% set waiting = apps|selectattr("status", "equalto", "awaiting_data")|list %}
+<div class="shell">
+  {{ bank_side(bank_name, 'requests', nav) }}
+
+  <main class="work">
+    <header class="head">
+      <div>
+        <h1>Requests</h1>
+        <p class="sub">{{ apps|length }} request{{ "s" if apps|length != 1 }} · {{ waiting|length }} waiting for the first share</p>
+      </div>
+      <div class="actions">
+        <a class="btn ghost" href="/download">Download connector</a>
+        <button class="btn" type="button" onclick="document.getElementById('newRequest').classList.toggle('open')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New request</button>
+      </div>
+    </header>
+
+    <section class="card pad new-request{{ ' open' if not apps }}" id="newRequest" aria-label="New request">
+      <h2>New request</h2>
+      <form class="form-row" method="post" action="/bank/applications">
+        <label>Applicant<input name="applicant_name" required placeholder="Company name"></label>
+        <label>Applicant's email<input name="contact_email" type="email" required placeholder="owner@company.in"></label>
+        <label>Loan reference<input name="reference" placeholder="e.g. LN-2026-0142"></label>
+        <label>Months of data<input name="months" type="number" min="6" max="60" value="{{ default_months }}"></label>
+        <label class="check"><input type="checkbox" name="monitoring" checked> Offer daily monitoring</label>
+        <button class="btn" type="submit">Create request</button>
+      </form>
+      <p class="muted">Send the applicant the connector link and their one-time code. They run it on the computer where Tally is open, enter the code and approve sharing.</p>
+    </section>
+
+    <section class="card flush" aria-label="All requests">
+      <div class="scrollx">
+        <table class="tbl" id="requests">
+          <thead><tr><th>Applicant</th><th>Status</th><th>One-time code</th><th>Applicant email</th><th class="num">Months</th><th>Daily updates</th><th>Requested</th><th><span class="sr">Actions</span></th></tr></thead>
+          <tbody>
+          {% for a in apps %}
+          <tr>
+            <td><a class="name" href="/bank/applications/{{ a.id }}"><b>{{ a.applicant_name }}</b><small>{{ a.reference or "No reference" }}</small></a></td>
+            <td><span class="pill {{ a.status }}"><i></i>{{ a.status.replace("_", " ")|capitalize }}</span></td>
+            <td>
+              {% if a.code_live %}<span class="code">{{ a.code|code }}</span><br><small class="muted">valid until {{ a.code_expires_at|when }}</small>
+              {% elif a.code %}<span class="muted">Expired</span>
+              {% else %}<span class="muted">Used</span>{% endif %}
+            </td>
+            <td>{{ a.contact_email or "—" }}</td>
+            <td class="num">{{ a.months }}</td>
+            <td>{{ monitoring_labels.get(a.monitoring_status, a.monitoring_status) if a.monitoring_offered or a.monitoring_status != "off" else "Not offered" }}</td>
+            <td>{{ a.created_at|day }}</td>
+            <td class="act">
+              <div class="btns" style="justify-content:flex-end">
+                {% if a.code_live %}<button class="btn ghost sm" type="button" data-copy="{{ a.code|code }}">Copy code</button>{% endif %}
+                {% if a.status == "awaiting_data" and not a.code_live %}
+                <form method="post" action="/bank/applications/{{ a.id }}/code"><input type="hidden" name="next" value="/bank/requests"><button class="btn ghost sm" type="submit">New code</button></form>
+                {% endif %}
+                <a class="btn ghost sm" href="/bank/applications/{{ a.id }}">Open</a>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="empty">No requests yet. Create one to send an applicant their code.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  document.querySelectorAll("[data-copy]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      navigator.clipboard.writeText(b.dataset.copy).then(function () {
+        b.textContent = "Copied";
+        setTimeout(function () { b.textContent = "Copy code"; }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>

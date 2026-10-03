@@ -60,6 +60,9 @@ mark "TV".
   links with `a.on` and `.cnt`/`.cnt.hot` counts, `.foot`) + `.work` area. Below 900px the
   sidebar turns into a top bar with a scrolling nav row. The MSME dashboard uses `.topbar` +
   `.pills-nav` + `.page` (1280 max) instead, since it has no sidebar.
+- **Sidebars:** one source, `templates/_shell.html` (`bank_side`, `admin_side`, icons). Admin
+  counts come from `store.nav_counts()` (a Jinja global); bank counts from `main._bank_nav()`.
+  Both end with "Sign out" (`/signout`), and the bank one with "Download connector".
 - **Page anatomy:** `.head` (h1, `.sub`/`.meta`, `.actions`), then a `.strip` of headline
   numbers in one card, then `.split` (`.main-col` + `.rail` of 320px+) or `.cols`.
 - **Palette:** ground `#f6f7fb`, cards white with `--line #e3e6ee`, text `#0f172a`/`#475569`/

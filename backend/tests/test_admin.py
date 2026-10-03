@@ -238,3 +238,35 @@ def test_admin_leads_lists_home_page_requests(client):
     page = client.get("/admin/leads", auth=PLATFORM)
     assert page.status_code == 200 and "Lead Bank" in page.text and "lead@bank.test" in page.text
     assert client.get("/admin/leads", auth=("admin", "admin")).status_code in (401, 403)
+
+
+def test_bank_requests_page_lists_live_codes_and_new_code_returns_there(client):
+    from app import store
+
+    client.post("/bank/applications", data={"applicant_name": "Req Co", "contact_email": "a@b.in"}, auth=BANK)
+    a = next(x for x in store.list_all_applications() if x["applicant_name"] == "Req Co")
+    page = client.get("/bank/requests", auth=BANK)
+    assert page.status_code == 200 and "Req Co" in page.text and store.display_code(a["code"]) in page.text
+    r = client.post(f"/bank/applications/{a['id']}/code", data={"next": "/bank/requests"}, auth=BANK,
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/bank/requests"
+    r = client.post(f"/bank/applications/{a['id']}/code", data={"next": "https://evil.example"}, auth=BANK,
+                    follow_redirects=False)
+    assert r.headers["location"] == "/bank"
+
+
+def test_admin_msmes_shows_selected_company_panel(client):
+    from app import store
+
+    client.post("/admin/msmes", data={"applicant_name": "Panel Co", "contact_email": "p@q.in"}, auth=PLATFORM)
+    a = next(x for x in store.list_all_applications() if x["applicant_name"] == "Panel Co")
+    store.set_connector_version(a["id"], "0.4.0")
+    page = client.get(f"/admin/msmes?sel={a['id']}", auth=PLATFORM).text
+    assert 'aria-label="Selected company"' in page and "0.4.0" in page and "Panel Co" in page
+
+
+def test_signout_clear_accepts_only_the_throwaway_login(client):
+    assert client.get("/signout").status_code == 200
+    assert client.get("/signout/clear").status_code == 401
+    assert client.get("/signout/clear", auth=BANK).status_code == 401
+    assert client.get("/signout/clear", auth=("signed-out", "signed-out")).status_code == 200

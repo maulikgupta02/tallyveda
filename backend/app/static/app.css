@@ -217,6 +217,21 @@ pre.log { margin: 0; max-height: 420px; overflow: auto; background: #0f172a; col
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .legend i.line { width: 16px; height: 2px; border-radius: 0; }
 
+/* ---- Sidebar extras, list toolbars, inline checkboxes ---------------------------- */
+.side .foot a.lnk { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.me { display: flex; align-items: center; gap: 10px; color: #c9cde6; min-width: 0; }
+.me i { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--side-line); color: #e2e5f3; display: grid; place-items: center; font-size: 12px; font-weight: 600; font-style: normal; }
+.toolbar { display: flex; gap: 10px; padding: 12px 14px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--line); }
+.toolbar .search { flex: 1 1 240px; }
+.toolbar select { min-width: 0; max-width: 100%; }
+.check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
+.form-row > label.check { flex-direction: row; align-items: center; min-height: 40px; }
+.tbl a.name { color: var(--text); }
+.tbl a.name:hover b { color: var(--accent); }
+.tbl .act form { display: inline-flex; margin: 0; }
+.tbl .act form + form { margin-left: 6px; }
+.tbl td.muted, .tbl td.when { white-space: nowrap; }
+
 /* ---- Small screens: the sidebar becomes a top bar -------------------------------- */
 @media (max-width: 900px) {
   .shell { align-content: flex-start; }

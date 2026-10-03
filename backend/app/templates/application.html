@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ a.applicant_name }} · {{ bank_name }} · TallyVeda</title>
-<link rel="stylesheet" href="/static/app.css?v=3">
+<link rel="stylesheet" href="/static/app.css?v=4">
 <style>
   .head { align-items: flex-start; }
   .head > div:first-child { flex: 1 1 420px; }
@@ -110,6 +110,7 @@
 </style>
 </head>
 <body>
+{% from "_shell.html" import bank_side %}
 {% set ro = readonly|default(false) %}
 {% macro pill(status) -%}
 <span class="pill {{ status }}"><i></i>{{ {"attention": "Attention", "watch": "Watch", "healthy": "Healthy", "nodata": "No data", "awaiting_data": "Awaiting data"}.get(status, status|replace("_", " ")|capitalize) }}</span>
@@ -126,6 +127,7 @@
   <div class="kv"><span>Updates</span><span class="{{ 'on-good' if a.monitoring_status == 'active' }}">{{ (monitoring_label ~ " · on") if a.monitoring_status == "active" else (monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered")) }}</span></div>
   <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when if a.last_report_at else "Never" }}</span></div>
   {% if a.monitor_last_seen_at %}<div class="kv"><span>Connector last seen</span><span>{{ a.monitor_last_seen_at|when }}</span></div>{% endif %}
+          {% if a.connector_version %}<div class="kv"><span>Connector version</span><span>{{ a.connector_version }}</span></div>{% endif %}
   {% if ready and ready[0].period_to %}<div class="kv"><span>Books up to</span><span>{{ ready[0].period_to }}</span></div>{% endif %}
   <div class="kv"><span>Reports received</span><span>{{ reports|length }}</span></div>
   <div class="kv"><span>Applicant email</span><span>{{ a.contact_email or "Not set" }}</span></div>
@@ -136,18 +138,7 @@
 {% set overview = company.groups[0] if company else none %}
 {% set data_group = company.groups|selectattr("key", "equalto", "data")|first if company else none %}
 <div class="shell">
-  <aside class="side">
-    <div class="who"><span class="mark">{{ (bank_name.split()|map("first")|join)[:2]|upper }}</span><div><b>{{ bank_name }}</b><small>SME desk</small></div></div>
-    <nav aria-label="Main">
-      {% if ro %}
-      <a href="/admin/msmes/{{ a.id }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>Back to admin</a>
-      {% else %}
-      <a href="/bank" class="on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Portfolio</a>
-      <a href="/bank?filter=alerts"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/></svg>Alerts</a>
-      {% endif %}
-    </nav>
-    <div class="foot"><span class="product">TallyVeda</span></div>
-  </aside>
+  {{ bank_side(bank_name, 'portfolio', nav if nav is defined else {}, ('/admin/msmes/' ~ a.id) if ro else '') }}
 
   <main class="work">
     <header style="display:flex;flex-direction:column;gap:14px">

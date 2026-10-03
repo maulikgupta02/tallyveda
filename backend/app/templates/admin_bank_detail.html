@@ -4,22 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ tenant.name }} · Admin</title>
-<link rel="stylesheet" href="/static/app.css?v=3">
+<link rel="stylesheet" href="/static/app.css?v=4">
 <style>
-  .me { display: flex; align-items: center; gap: 10px; color: #c9cde6; min-width: 0; }
-  .me i { width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--side-line); color: #e2e5f3; display: grid; place-items: center; font-size: 12px; font-weight: 600; font-style: normal; }
-  .toolbar { display: flex; gap: 10px; padding: 12px 14px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--line); }
-  .toolbar .search { flex: 1 1 240px; }
-  .toolbar select { min-width: 0; max-width: 100%; }
-  .check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
-  .tbl a.name { color: var(--text); }
-  .tbl a.name:hover b { color: var(--accent); }
-  .tbl .act form { display: inline-flex; margin: 0; }
-  @media (max-width: 900px) { .shell { align-content: flex-start; } .side, .side nav { min-width: 0; } }
-  .tbl .act form + form { margin-left: 6px; }
-  .form-row > label.check { flex-direction: row; align-items: center; min-height: 40px; }
-  .tbl td.muted { white-space: nowrap; }
-  .tbl td.when { white-space: nowrap; }
   .title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .box { padding: 0 20px 18px; display: flex; flex-direction: column; gap: 12px; }
   .box .form-row > label { flex: 1 1 200px; }
@@ -32,20 +18,9 @@
 </head>
 <body>
 {% set nav = "banks" %}
+{% from "_shell.html" import admin_side with context %}
 <div class="shell">
-  <aside class="side">
-    <div class="who"><span class="mark">TV</span><div><b>TallyVeda</b><small>Platform admin</small></div></div>
-    <nav aria-label="Admin">
-      <a href="/admin" class="{{ 'on' if nav == 'overview' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Overview</a>
-      <a href="/admin/banks" class="{{ 'on' if nav == 'banks' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9.5 10v9M14.5 10v9M3 21h18"/></svg>Banks</a>
-      <a href="/admin/msmes" class="{{ 'on' if nav == 'msmes' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/></svg>MSMEs</a>
-      <a href="/admin/users" class="{{ 'on' if nav == 'users' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>Users</a>
-      <a href="/admin/leads" class="{{ 'on' if nav == 'leads' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13l2.5-8h11L20 13v6H4z"/><path d="M4 13h5l1 2h4l1-2h5"/></svg>Leads</a>
-      <a href="/admin/audit" class="{{ 'on' if nav == 'audit' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg>Audit log</a>
-      <a href="/admin#deletions"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Deletion requests{% if deletion_requests is defined %}<span class="cnt{{ ' hot' if deletion_requests }}">{{ deletion_requests|length }}</span>{% endif %}</a>
-    </nav>
-    {% if user %}<div class="foot"><span class="me"><i>{{ user.username[:1]|upper }}</i>{{ user.username }}</span></div>{% endif %}
-  </aside>
+  {{ admin_side(nav, user if user is defined else none) }}
 
   <main class="work">
     {% set active = tenant.status == "active" %}

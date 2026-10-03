@@ -10,6 +10,7 @@ Connector endpoints (called by TallyConnector.exe):
 Bank endpoints (HTTP Basic auth, per-tenant bank user — see store.py's `users` table):
     GET  /bank[?filter=attention|watch|alerts|overdue]   portfolio dashboard (this tenant only)
     GET  /bank/applications/{id}[?tab=<group key>]       company page: tabs, Manage panel
+    GET  /bank/requests                         every request with its one-time code, new code, copy
     GET  /bank/applications/{id}/report[.json]  latest report
     GET  /bank/reports/{report_id}[.json]       a specific report
     POST /bank/applications/{id}/msme-login     issue/reset this applicant's MSME login
@@ -24,6 +25,7 @@ Platform admin endpoints (HTTP Basic auth, role `platform` — see store.py's `u
     GET  /admin                                  overview: counts, recent activity, quick actions
     GET  /admin/banks[/{id}]                     list/create banks; per-bank detail, suspend/reactivate,
                                                   its bank users, its MSMEs
+    GET  /admin/msmes?sel={id}                   list with the selected company's panel beside it
     GET  /admin/msmes[/{id}]                     every MSME (bank-linked or direct), filters/search;
                                                   per-MSME detail: code, monitoring, MSME login, report
                                                   history, read-only dashboard view, delete
@@ -36,6 +38,7 @@ docstring for the exact rule. Connector and JSON `/api/...` routes are exempt (n
 Public marketing site (no auth, server-rendered, see design.md's "Marketing home page"):
     GET  /                    the home page
     GET  /robots.txt, /sitemap.xml, /llms.txt
+    GET  /signout[?to=/bank|/admin|/msme]  replaces the browser's cached Basic-auth login (via /signout/clear)
     GET  /favicon.ico, /static/...   icons, self-hosted fonts, the OG image
     POST /api/leads           demo/pilot request form (JSON or form-encoded)
 Every route under /bank, /msme, /admin and /api carries `X-Robots-Tag: noindex, nofollow`
@@ -153,6 +156,7 @@ templates.globals.update(
     ageing_stack=dc.ageing_stack,
     emi_grid=dc.emi_grid,
     month_label=dc.month_label,
+    nav_counts=store.nav_counts,
     STATUS_WORD=dc.STATUS_WORD,
     inr=fmt.inr,
 )
@@ -501,6 +505,7 @@ async def sync_start(request: Request):
                            body.company.get("name", ""))
     except books.SyncBusy as e:
         raise HTTPException(503, str(e))
+    store.set_connector_version(a["id"], body.connector_version)
     session = books.get_session(plan["sync_id"])
     books.stage(session, {"company": body.company, "machine": body.machine, "consent": body.consent,
                           "connector_version": body.connector_version})
@@ -820,6 +825,12 @@ def favicon_ico():
 # ------------------------------------------------------------------ bank UI
 
 
+def _bank_nav(tenant_id: str, alerts: int | None = None) -> dict:
+    apps = store.list_applications(tenant_id)
+    return {"borrowers": len(apps), "alerts": alerts,
+            "waiting": sum(1 for a in apps if a["status"] == "awaiting_data")}
+
+
 @app.get("/bank", response_class=HTMLResponse)
 def dashboard(request: Request, filter: str = "", user: dict = Depends(bank_user)):
     pairs = store.applications_with_latest_report(user["tenant_id"])
@@ -840,6 +851,7 @@ def dashboard(request: Request, filter: str = "", user: dict = Depends(bank_user
         rows = [r for r in rows if r["id"] in overdue_ids]
     return templates.get_template("dashboard.html").render(
         portfolio=portfolio, rows=rows, active_filter=filter,
+        nav=_bank_nav(user["tenant_id"], len(portfolio["alerts_since_yesterday"])),
         apps_by_id=apps_by_id,
         bank_name=config.BANK_NAME,
         default_months=config.DEFAULT_MONTHS,
@@ -883,15 +895,27 @@ def application_detail(app_id: str, tab: str = "overview", user: dict = Depends(
         if report:
             company = dashboard_views.company_view(report)
     return _render_application(a, "application.html", bank_name=config.BANK_NAME,
-                                msme_login=store.msme_login_for(app_id),
+                                msme_login=store.msme_login_for(app_id), nav=_bank_nav(user["tenant_id"]),
                                 company=company, active_tab=tab if tab in COMPANY_TABS else "overview")
 
 
 @app.post("/bank/applications/{app_id}/code")
-def regenerate(app_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
+def regenerate(app_id: str, next: str = Form(""), user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     _get_or_404(app_id, user["tenant_id"])
     store.regenerate_code(app_id)
-    return RedirectResponse("/bank", status_code=303)
+    return RedirectResponse(next if next.startswith("/bank") else "/bank", status_code=303)
+
+
+@app.get("/bank/requests", response_class=HTMLResponse)
+def bank_requests(user: dict = Depends(bank_user)):
+    apps = store.list_applications(user["tenant_id"])
+    stamp = store.now().isoformat()
+    for a in apps:
+        a["code_live"] = bool(a["code"]) and (a["code_expires_at"] or "") > stamp
+    return templates.get_template("bank_requests.html").render(
+        apps=apps, bank_name=config.BANK_NAME, nav=_bank_nav(user["tenant_id"]),
+        default_months=config.DEFAULT_MONTHS, monitoring_labels=MONITORING_LABELS,
+    )
 
 
 @app.post("/bank/applications/{app_id}/contact")
@@ -1226,7 +1250,7 @@ def admin_bank_create_user(tenant_id: str, username: str = Form(...), user: dict
 
 
 @app.get("/admin/msmes", response_class=HTMLResponse)
-def admin_msmes(bank: str = "", kind: str = "", status: str = "", overdue: str = "", q: str = "",
+def admin_msmes(bank: str = "", kind: str = "", status: str = "", overdue: str = "", q: str = "", sel: str = "",
                  user: dict = Depends(platform_user)):
     apps = store.list_all_applications(tenant_id=bank or None, search=q)
     if kind:
@@ -1235,7 +1259,16 @@ def admin_msmes(bank: str = "", kind: str = "", status: str = "", overdue: str =
         apps = [a for a in apps if a["status"] == status]
     if overdue:
         apps = [a for a in apps if store.monitoring_overdue(a)]
+    selected = next((a for a in apps if a["id"] == sel), None) or (apps[0] if apps else None)
+    detail = None
+    if selected:
+        detail = {"a": store.get_application(selected["id"]), "tenant": store.get_tenant(selected["tenant_id"]),
+                  "msme_login": store.msme_login_for(selected["id"]), "due": store.monitoring_due(selected),
+                  "overdue": store.monitoring_overdue(selected),
+                  "monitoring_label": MONITORING_LABELS[selected["monitoring_status"]],
+                  "logs": len(store.list_connector_logs(selected["id"])), "reports": len(store.list_reports(selected["id"]))}
     return templates.get_template("admin_msmes.html").render(
+        selected_id=selected["id"] if selected else "", detail=detail,
         user=user, apps=apps, banks=store.list_tenants(kind="bank"), direct_id=store.direct_tenant_id(),
         filters={"bank": bank, "kind": kind, "status": status, "overdue": overdue, "q": q},
         default_months=config.DEFAULT_MONTHS,
@@ -1405,6 +1438,23 @@ def admin_leads(user: dict = Depends(platform_user)):
 
 
 # ------------------------------------------------------------------ misc
+
+
+SIGNED_OUT_USER = "signed-out"
+
+
+@app.get("/signout/clear", include_in_schema=False)
+def signout_clear(creds: HTTPBasicCredentials | None = Depends(HTTPBasic(auto_error=False))):
+    # Accepting a throwaway login makes the browser cache it in place of the real one,
+    # since Basic auth has no session to end on the server.
+    if not creds or creds.username != SIGNED_OUT_USER:
+        raise HTTPException(401, "Unauthorised", headers={"WWW-Authenticate": "Basic"})
+    return {"signed_out": True}
+
+
+@app.get("/signout", response_class=HTMLResponse, include_in_schema=False)
+def signout(to: str = "/bank"):
+    return templates.get_template("signout.html").render(back=to if to in ("/bank", "/admin", "/msme") else "/bank")
 
 
 @app.get("/download", include_in_schema=False)

@@ -7,9 +7,11 @@
 <link rel="icon" href="/favicon.ico?v=2" sizes="32x32">
 <link rel="icon" href="/static/icon-tv-192.png" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon-tv.png">
-<link rel="stylesheet" href="/static/app.css?v=3">
+<link rel="stylesheet" href="/static/app.css?v=4">
 <style>
   .topbar .fresh { margin-left: auto; font-size: 13px; color: var(--muted); }
+  .topbar .out { font-size: 13px; font-weight: 600; color: var(--text-2); padding: 0 12px; min-height: 36px; display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+  .topbar .out:hover { background: var(--surface-2); color: var(--text); }
   .intro { display: flex; flex-direction: column; gap: 4px; }
   .intro h1 { font-size: 30px; }
   .intro p { font-size: 15px; color: var(--text-2); }
@@ -113,21 +115,13 @@
 {% set MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] %}
 {% macro nice_day(s) %}{{ s[8:10]|int }} {{ MONTHS[s[5:7]|int - 1] }} {{ s[:4] }}{% endmacro %}
 
-{# The view-model's to-do items carry the amount inside `detail` ("₹1.23 Cr, unpaid 90+ days" /
-   "₹1.61 Cr due (date not in Tally)"); split it out so the amount can sit right-aligned. #}
+{% set TODO_ICON = {"gst": ("GST", "tax"), "tds": ("TDS", "tax"), "call": ("₹", ""), "emi": ("EMI", "loan")} %}
 {% macro todo_rows(items) %}
   {% for item in items %}
-  {% set d = item.detail %}
-  {% if d.startswith("₹") and ", " in d %}{% set amt, why = d.split(", ", 1) %}{% set why = why[:1]|upper ~ why[1:] %}
-  {% elif d.startswith("₹") and " due " in d %}{% set amt, why = d.split(" due ", 1) %}{% set why = "Due " ~ why.strip("()") %}
-  {% else %}{% set amt, why = "", d %}{% endif %}
-  {% if item.title.startswith("Pay GST") %}{% set ico, kind = "GST", "tax" %}
-  {% elif item.title.startswith("Pay TDS") %}{% set ico, kind = "TDS", "tax" %}
-  {% elif item.title.startswith("Call") %}{% set ico, kind = "₹", "" %}
-  {% else %}{% set ico, kind = "EMI", "loan" %}{% endif %}
+  {% set ico, kind = TODO_ICON.get(item.kind, ("EMI", "loan")) %}
   <li><span class="ico {{ kind }}" aria-hidden="true">{{ ico }}</span>
-    <div><b>{{ item.title }}</b><span class="s">{{ why }}</span></div>
-    {% if amt %}<span class="amt">{{ amt }}</span>{% endif %}</li>
+    <div><b>{{ item.title }}</b><span class="s">{{ item.reason or item.detail }}</span></div>
+    {% if item.amount %}<span class="amt">{{ item.amount }}</span>{% endif %}</li>
   {% else %}
   <li class="none">Nothing due right now.</li>
   {% endfor %}
@@ -165,6 +159,7 @@
       {%- if latest and latest.period_to %}Books up to {{ nice_day(latest.period_to) }} · {% endif -%}
       {{ "updated " ~ nice_day(a.last_report_at) ~ ", " ~ a.last_report_at[11:16] if a.last_report_at else "No data yet" }}
     </span>
+    <a class="out" href="/signout?to=/msme">Sign out</a>
   </div>
 </header>
 
@@ -225,8 +220,9 @@
       {{ chart(g.charts.monthly_sales, g.charts.monthly_sales_months, last_year=g.charts.monthly_sales_ly, width=760, height=250) }}
       <div class="facts">
         {% if sales_tile %}<span><span>Last 12 months</span><b class="num">{{ sales_tile.value }}</b></span>{% endif %}
-        {% if sales_tile and sales_tile.context %}{% set yoy = sales_tile.context.split(" ")[0] %}
-        <span><span>vs year before</span><b class="num {{ 'down' if yoy.startswith('-') else 'up' }}">{{ yoy if yoy.startswith('-') else '+' ~ yoy }}</b></span>{% endif %}
+        {% set growth = sales_g.charts.revenue_growth if sales_g else none %}
+        {% if growth is not none %}
+        <span><span>vs year before</span><b class="num {{ 'down' if growth < 0 else 'up' }}">{{ ('+' if growth >= 0 else '') ~ (growth|pct) }}</b></span>{% endif %}
         {% if ns.best is not none %}<span><span>Best month</span><b class="num">{{ g.charts.monthly_sales_months[ns.best_i] }} · {{ inr(ns.best) }}</b></span>{% endif %}
       </div>
     </section>
@@ -255,7 +251,7 @@
       <section class="card tile">
         {% if gst %}
         <span class="stat-l">GST payable</span>
-        <span class="stat-v">{{ gst.detail.split(" due ")[0] }}</span>
+        <span class="stat-v">{{ gst.amount }}</span>
         <span class="stat-s">Due date not recorded in Tally</span>
         {% else %}
         <span class="stat-l">On your to-do list</span>

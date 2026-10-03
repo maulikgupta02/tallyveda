@@ -233,6 +233,7 @@ MIGRATIONS = {
         "deletion_requested_at": "TEXT",
         "deletion_reason": "TEXT",
         "raw_purged_at": "TEXT",
+        "connector_version": "TEXT",  # version of the connector that last started a sync
     },
     "tenants": {
         # Added for the platform admin panel. 'bank' is every pre-existing tenant;
@@ -638,6 +639,12 @@ def set_contact_email(app_id: str, email: str) -> None:
             "UPDATE applications SET contact_email = ?, otp_hash = NULL, otp_verified_at = NULL WHERE id = ?",
             (email.strip().lower() or None, app_id),
         )
+
+
+def set_connector_version(app_id: str, version: str) -> None:
+    if version:
+        with db() as conn:
+            conn.execute("UPDATE applications SET connector_version = ? WHERE id = ?", (version[:32], app_id))
 
 
 # ------------------------------------------------------------ consent OTP
@@ -1062,6 +1069,19 @@ def counts_overview() -> dict:
         "connectors_overdue": connectors_overdue,
         "failed_reports": failed_reports,
     }
+
+
+def nav_counts() -> dict:
+    """Sidebar badges on every admin page."""
+    with db() as conn:
+        n = lambda sql: conn.execute(sql).fetchone()["n"]
+        return {
+            "banks": n("SELECT COUNT(*) AS n FROM tenants WHERE kind = 'bank'"),
+            "msmes": n("SELECT COUNT(*) AS n FROM applications"),
+            "users": n("SELECT COUNT(*) AS n FROM users"),
+            "leads": n("SELECT COUNT(*) AS n FROM leads"),
+            "deletions": n("SELECT COUNT(*) AS n FROM applications WHERE deletion_requested_at IS NOT NULL"),
+        }
 
 # -------------------------------------------------------- marketing leads
 

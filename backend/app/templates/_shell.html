@@ -1,0 +1,63 @@
+{# Sidebars shared by the bank and admin pages. Import with
+   {% from "_shell.html" import bank_side, admin_side %}. #}
+
+{% macro icon(name) -%}
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == "grid" %}<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+{%- elif name == "bell" %}<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/>
+{%- elif name == "inbox" %}<path d="M4 13l2.5-8h11L20 13v6H4z"/><path d="M4 13h5l1 2h4l1-2h5"/>
+{%- elif name == "bank" %}<path d="M3 10l9-6 9 6"/><path d="M5 10v9M19 10v9M9.5 10v9M14.5 10v9M3 21h18"/>
+{%- elif name == "case" %}<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>
+{%- elif name == "users" %}<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>
+{%- elif name == "mail" %}<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>
+{%- elif name == "list" %}<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>
+{%- elif name == "trash" %}<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+{%- elif name == "back" %}<path d="M15 18l-6-6 6-6"/>
+{%- elif name == "download" %}<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>
+{%- elif name == "out" %}<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11"/>
+{%- endif %}</svg>
+{%- endmacro %}
+
+{% macro count(n, hot=false) %}{% if n %}<span class="cnt{{ ' hot' if hot }}">{{ n }}</span>{% endif %}{% endmacro %}
+
+{% macro bank_side(bank_name, active, nav, read_only_back="") %}
+  <aside class="side">
+    <div class="who"><span class="mark">{{ (bank_name.split()|map("first")|join)[:2]|upper }}</span><div><b>{{ bank_name }}</b><small>SME desk</small></div></div>
+    <nav aria-label="Main">
+      {% if read_only_back %}
+      <a href="{{ read_only_back }}">{{ icon("back") }}Back to admin</a>
+      {% else %}
+      <a href="/bank" class="{{ 'on' if active == 'portfolio' }}">{{ icon("grid") }}Portfolio{{ count(nav.borrowers) }}</a>
+      <a href="/bank?filter=alerts" class="{{ 'on' if active == 'alerts' }}">{{ icon("bell") }}Alerts{{ count(nav.alerts, true) }}</a>
+      <a href="/bank/requests" class="{{ 'on' if active == 'requests' }}">{{ icon("inbox") }}Requests{{ count(nav.waiting) }}</a>
+      {% endif %}
+    </nav>
+    <div class="foot">
+      {% if not read_only_back %}
+      <a href="/download" class="lnk">{{ icon("download") }}Download connector</a>
+      <a href="/signout?to=/bank" class="lnk">{{ icon("out") }}Sign out</a>
+      {% endif %}
+      <span class="product">TallyVeda</span>
+    </div>
+  </aside>
+{% endmacro %}
+
+{% macro admin_side(active, user=none) %}
+  {% set n = nav_counts() %}
+  <aside class="side">
+    <div class="who"><span class="mark">TV</span><div><b>TallyVeda</b><small>Platform admin</small></div></div>
+    <nav aria-label="Admin">
+      <a href="/admin" class="{{ 'on' if active == 'overview' }}">{{ icon("grid") }}Overview</a>
+      <a href="/admin/banks" class="{{ 'on' if active == 'banks' }}">{{ icon("bank") }}Banks{{ count(n.banks) }}</a>
+      <a href="/admin/msmes" class="{{ 'on' if active == 'msmes' }}">{{ icon("case") }}MSMEs{{ count(n.msmes) }}</a>
+      <a href="/admin/users" class="{{ 'on' if active == 'users' }}">{{ icon("users") }}Users{{ count(n.users) }}</a>
+      <a href="/admin/leads" class="{{ 'on' if active == 'leads' }}">{{ icon("mail") }}Leads{{ count(n.leads) }}</a>
+      <a href="/admin/audit" class="{{ 'on' if active == 'audit' }}">{{ icon("list") }}Audit log</a>
+      <a href="/admin#deletions">{{ icon("trash") }}Deletion requests{{ count(n.deletions, true) }}</a>
+    </nav>
+    <div class="foot">
+      {% if user %}<span class="me"><i>{{ user.username[:1]|upper }}</i>{{ user.username }}</span>{% endif %}
+      <a href="/signout?to=/admin" class="lnk">{{ icon("out") }}Sign out</a>
+    </div>
+  </aside>
+{% endmacro %}

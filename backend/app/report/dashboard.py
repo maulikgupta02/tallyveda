@@ -306,6 +306,7 @@ def msme_view(report: dict) -> dict:
             tile("Customers billed", str(m["customers"]["count"]), f"{m['retention']['new']} new this year" if m["retention"] else ""),
         ],
         monthly_sales=sales_series, monthly_sales_months=sales_months, monthly_sales_ly=sales_ly,
+        revenue_growth=m["revenue_growth"],
     )
 
     customers = _group(
@@ -348,16 +349,20 @@ def _msme_to_do(m: dict) -> list[dict]:
     items = []
     for name in m["receivables"]["no_settlement_90d"][:5]:
         p = m["receivables"]["per_party"][name]
-        items.append({"title": f"Call {name}", "detail": f"{fmt.inr(p['outstanding'])}, unpaid 90+ days"})
+        items.append({"title": f"Call {name}", "detail": f"{fmt.inr(p['outstanding'])}, unpaid 90+ days",
+                      "kind": "call", "amount": fmt.inr(p["outstanding"]), "reason": "Unpaid 90+ days"})
     gst_due = m["statutory_split"]["gst_payable"]
     if gst_due:
-        items.append({"title": "Pay GST", "detail": f"{fmt.inr(gst_due)} due (date not in Tally)"})
+        items.append({"title": "Pay GST", "detail": f"{fmt.inr(gst_due)} due (date not in Tally)",
+                      "kind": "gst", "amount": fmt.inr(gst_due), "reason": "Due date not in Tally"})
     tds_due = m["statutory_split"]["tds_payable"]
     if tds_due:
-        items.append({"title": "Pay TDS", "detail": f"{fmt.inr(tds_due)} due (date not in Tally)"})
+        items.append({"title": "Pay TDS", "detail": f"{fmt.inr(tds_due)} due (date not in Tally)",
+                      "kind": "tds", "amount": fmt.inr(tds_due), "reason": "Due date not in Tally"})
     for loan in m["emi_regularity"]:
         if loan["late"]:
-            items.append({"title": f"Watch {loan['name']} EMI", "detail": f"{loan['late']} late payment(s) in the last 12 months"})
+            items.append({"title": f"Watch {loan['name']} EMI", "detail": f"{loan['late']} late payment(s) in the last 12 months",
+                          "kind": "emi", "amount": "", "reason": f"{loan['late']} late payment(s) in the last 12 months"})
     return items
 
 

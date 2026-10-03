@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ bank_name }} · Portfolio · TallyVeda</title>
-<link rel="stylesheet" href="/static/app.css?v=3">
+<link rel="stylesheet" href="/static/app.css?v=4">
 <style>
   .head .search { width: 280px; max-width: 100%; }
   .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }
@@ -63,6 +63,7 @@
 </style>
 </head>
 <body>
+{% from "_shell.html" import bank_side %}
 {% macro pill(status) -%}
 <span class="pill {{ status }}"><i></i>{{ {"attention": "Attention", "watch": "Watch", "healthy": "Healthy", "nodata": "No data"}.get(status, status|replace("_", " ")|capitalize) }}</span>
 {%- endmacro %}
@@ -72,17 +73,7 @@
 {% set overdue_ids = portfolio.data_overdue|map(attribute="id")|list %}
 {% set total = portfolio.rows|length %}
 <div class="shell">
-  <aside class="side">
-    <div class="who"><span class="mark">{{ (bank_name.split()|map("first")|join)[:2]|upper }}</span><div><b>{{ bank_name }}</b><small>SME desk</small></div></div>
-    <nav aria-label="Main">
-      <a href="/bank" class="{{ 'on' if active_filter != 'alerts' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Portfolio<span class="cnt">{{ total }}</span></a>
-      <a href="/bank?filter=alerts" class="{{ 'on' if active_filter == 'alerts' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/></svg>Alerts{% if alerts %}<span class="cnt hot">{{ alerts|length }}</span>{% endif %}</a>
-    </nav>
-    <div class="foot">
-      {% if download_url %}<a href="{{ download_url }}">Download connector</a>{% endif %}
-      <span class="product">TallyVeda</span>
-    </div>
-  </aside>
+  {{ bank_side(bank_name, 'alerts' if active_filter == 'alerts' else 'portfolio', nav) }}
 
   <main class="work">
     <header class="head">

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Signed out · TallyVeda</title>
+<link rel="icon" href="/favicon.ico?v=2" sizes="any">
+<link rel="stylesheet" href="/static/app.css?v=4">
+<style>
+  .center { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+  .box { width: 100%; max-width: 420px; padding: 32px 28px; display: flex; flex-direction: column; gap: 16px; }
+  .box .mark { background: var(--accent); }
+</style>
+</head>
+<body>
+<div class="center">
+  <section class="card box" aria-live="polite">
+    <span class="mark">TV</span>
+    <h1 id="title">Signing you out…</h1>
+    <p class="sub" id="msg">One moment.</p>
+    <div class="btns"><a class="btn" href="{{ back }}">Sign in again</a><a class="btn ghost" href="/">TallyVeda home</a></div>
+  </section>
+</div>
+<script>
+(function () {
+  function done() {
+    document.getElementById("title").textContent = "You are signed out";
+    document.getElementById("msg").textContent =
+      "If the dashboard still opens without asking for your password, close every window of this browser to finish signing out.";
+  }
+  var x = new XMLHttpRequest();
+  x.open("GET", "/signout/clear", true, "signed-out", "signed-out");
+  x.onloadend = done;
+  x.send();
+  setTimeout(done, 3000);
+})();
+</script>
+</body>
+</html>
