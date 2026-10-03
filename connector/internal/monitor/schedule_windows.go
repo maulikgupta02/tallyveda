@@ -35,16 +35,16 @@ const taskXML = `<?xml version="1.0" encoding="UTF-16"?>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <StartWhenAvailable>true</StartWhenAvailable>
     <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
-    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT6H</ExecutionTimeLimit>
     <Enabled>true</Enabled>
   </Settings>
   <Actions Context="Author"><Exec><Command>%s</Command><Arguments>-monitor-run</Arguments></Exec></Actions>
 </Task>`
 
-func schedule(exe, bank string) error {
+func schedule(exe string) error {
 	start := time.Now().AddDate(0, 0, 1).Format("2006-01-02") + "T09:00:00"
-	desc := fmt.Sprintf("Sends a daily copy of your Tally accounts to %s. To stop, run TallyConnector and click "+
-		"'Stop daily updates', or run: \"%s\" -monitor-stop", bank, exe)
+	desc := fmt.Sprintf("Sends daily updates of your Tally accounts to the banks you chose. To stop, run "+
+		"TallyConnector and click 'Stop daily updates', or run: \"%s\" -monitor-stop", exe)
 	def := fmt.Sprintf(taskXML, html.EscapeString(desc), start, html.EscapeString(exe))
 
 	d, err := Dir()

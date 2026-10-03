@@ -60,6 +60,10 @@ class _PGConnection:
     def execute(self, sql: str, params=()):
         return self._raw.execute(sql.replace("?", "%s"), params)
 
+    def executemany(self, sql: str, seq) -> None:
+        with self._raw.cursor() as cur:
+            cur.executemany(sql.replace("?", "%s"), seq)
+
     def executescript(self, sql: str) -> None:
         for statement in sql.split(";"):
             statement = statement.strip()
@@ -164,6 +168,36 @@ CREATE TABLE IF NOT EXISTS leads (
     ip TEXT
 );
 CREATE INDEX IF NOT EXISTS leads_by_created ON leads(created_at);
+CREATE TABLE IF NOT EXISTS books (
+    application_id TEXT PRIMARY KEY,
+    state TEXT NOT NULL,           -- JSON: company, period, groups, ledgers, voucher_types, stock, bills
+    max_alter_id INTEGER NOT NULL DEFAULT 0,
+    last_full_at TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS book_vouchers (
+    application_id TEXT NOT NULL,
+    guid TEXT NOT NULL,
+    vdate TEXT NOT NULL,
+    alter_id INTEGER NOT NULL DEFAULT 0,
+    ledgers TEXT NOT NULL,         -- JSON list of ledger names in the entries
+    body TEXT NOT NULL,            -- the voucher as uploaded
+    PRIMARY KEY (application_id, guid)
+);
+CREATE INDEX IF NOT EXISTS book_vouchers_by_date ON book_vouchers(application_id, vdate);
+CREATE TABLE IF NOT EXISTS sync_sessions (
+    id TEXT PRIMARY KEY,
+    application_id TEXT NOT NULL,
+    mode TEXT NOT NULL,            -- full | delta
+    status TEXT NOT NULL,          -- open | finishing | done | abandoned | failed
+    period_from TEXT NOT NULL,
+    period_to TEXT NOT NULL,
+    months_done TEXT NOT NULL DEFAULT '[]',
+    staged TEXT NOT NULL DEFAULT '{}',  -- masters, balances, stock, bills: applied at finish
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sync_sessions_by_app ON sync_sessions(application_id, created_at);
 """
 
 # Columns added after the first release; applied to existing databases.
@@ -542,6 +576,8 @@ def delete_application(app_id: str) -> None:
         if IS_POSTGRES:
             conn.execute("DELETE FROM report_files WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM reports WHERE application_id = ?", (app_id,))
+        for table in ("books", "book_vouchers", "sync_sessions"):
+            conn.execute(f"DELETE FROM {table} WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM users WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM applications WHERE id = ?", (app_id,))
     if not IS_POSTGRES:
@@ -590,6 +626,28 @@ def start_monitoring(app_id: str) -> str:
             (_hash(token), now().isoformat(), now().isoformat(), app_id),
         )
     return token
+
+
+def start_share(app_id: str) -> str:
+    """Token for a one-off share that arrives in several requests (no daily
+    updates). It is cleared by end_share once the share has finished."""
+    token = secrets.token_urlsafe(32)
+    with db() as conn:
+        conn.execute(
+            "UPDATE applications SET monitoring_status = 'sharing', monitor_token_hash = ?, monitor_last_seen_at = ?"
+            " WHERE id = ?",
+            (_hash(token), now().isoformat(), app_id),
+        )
+    return token
+
+
+def end_share(app_id: str) -> None:
+    with db() as conn:
+        conn.execute(
+            "UPDATE applications SET monitoring_status = 'off', monitor_token_hash = NULL"
+            " WHERE id = ? AND monitoring_status = 'sharing'",
+            (app_id,),
+        )
 
 
 def find_by_monitor_token(token: str) -> dict | None:

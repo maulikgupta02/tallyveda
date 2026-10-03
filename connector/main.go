@@ -78,7 +78,7 @@ func main() {
 		}
 		return
 	case *monitorStop:
-		if err := monitor.Stop(ctx); err != nil {
+		if err := monitor.StopAll(ctx); err != nil {
 			log.Print(err)
 			os.Exit(1)
 		}

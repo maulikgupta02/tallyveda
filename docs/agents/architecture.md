@@ -16,9 +16,11 @@ itself). They never share code or a process.
 
 ## Backend (`backend/app/`) — who owns what
 - **`main.py`** — single FastAPI app, owns all HTTP routing. Five route groups:
-  - Connector API (`/api/connector/...`): `verify` (check a one-time code), `upload` (first
-    upload, authenticated by the one-time code in `X-Link-Code`), `monitor/status`,
-    `monitor/upload`, `monitor/stop` (all authenticated by a bearer monitoring token). The
+  - Connector API (`/api/connector/...`): `verify` (check a one-time code), `sync/start`
+    (code in `X-Link-Code` for a first share, which issues a token, or a bearer token), then
+    `sync/{id}/masters|vouchers|present|finish` (incremental sync, see `books.py` below),
+    `monitor/status` (includes `resume` when a sync is unfinished), `monitor/stop`. The older
+    one-shot `upload` and `monitor/upload` stay for 0.1.x connectors. The
     `bank_name` returned by `verify`/`monitor/status`/`upload` is the applicant's own tenant's
     name (`store.get_tenant(a["tenant_id"])`), not a single global setting — a direct (no-bank)
     client correctly sees the platform's own name (`TC_PLATFORM_NAME`) in the connector's
@@ -173,15 +175,29 @@ itself). They never share code or a process.
    on success, `store.fail_report` on exception — the upload itself is always kept even if
    report generation fails, so the bank can recompute later via `POST
    /bank/reports/{id}/recompute`).
+   **Since connector 0.2 the upload is incremental** (`books.py`; tables `books`,
+   `book_vouchers`, `sync_sessions`). `sync/start` consumes the code and returns a token:
+   monitoring if opted in, otherwise a one-off `sharing` token cleared by `store.end_share`
+   once the share finishes. It also returns the plan: `full` (first share, every
+   `TC_FULL_SYNC_DAYS`, a longer window, AlterIds going backwards, or a flagged deletion
+   anomaly) or `delta`. A full sync sends masters with balances, then vouchers one month at a
+   time. An open full session is always resumed, skipping `months_done`. A delta sends masters
+   without balances, the Day Book for days with changed AlterIds plus the last few days, and
+   recent voucher-ID lists for deletions (`present` refuses to delete more than a third of a
+   range and flags a full re-read instead). It then sends balances only for affected ledgers;
+   every voucher-changing request returns the ledgers it touched, old and new versions.
+   `finish` (background task `main.finish_sync`) carries untouched balances forward, rolls
+   opening balances over days that left the window, prunes, and writes a complete
+   `bundle.json.gz`, which then goes through `process_report` exactly as in step 4.
 5. If the applicant opted into monitoring, the upload response includes a monitoring token
    (returned once, stored only as a SHA-256 hash). The connector then self-copies to
    `%AppData%\TallyConnector\`, saves settings, and registers a Windows scheduled task that
    periodically asks `/api/connector/monitor/status` whether a refresh is due
    (`store.monitoring_due`, policy: due once a calendar day has passed since the last report),
-   and if so extracts and uploads again via `/api/connector/monitor/upload`. Each refresh still
-   re-extracts the full requested window (not just new vouchers) so the report's trailing-window
-   trends stay correct — "daily" only changed the due-check cadence, not the extraction size (see
-   `docs/agents/risks.md`).
+   and if so runs a delta sync (0.2+; 0.1.x re-uploaded the whole window via
+   `/api/connector/monitor/upload`). The connector keeps one entry per shared company in
+   `companies.json` (`internal/monitor`). One scheduled task serves every daily entry, and a
+   per-company heartbeat lock file stops the UI and the task syncing the same company at once.
 6. Bank views results via the dashboard (`/bank`) or a specific application's history
    (`/bank/applications/{id}`, including an indicator trend table and alerts).
 

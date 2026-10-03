@@ -12,6 +12,6 @@ import "errors"
 // line and systemd unit.
 var errNoScheduler = errors.New("automatic scheduling is only available on Windows; run -monitor-run periodically from cron or a systemd timer instead (see README.md)")
 
-func schedule(exe, bank string) error { return errNoScheduler }
-func unschedule() error               { return nil }
-func Scheduled() bool                 { return false }
+func schedule(exe string) error { return errNoScheduler }
+func unschedule() error         { return nil }
+func Scheduled() bool           { return false }

@@ -112,9 +112,11 @@ Gaps between that and the code today (checked 2026-10-02):
   open.
 - **Daily refreshes (2026-10-02, resolved).** Refreshes are now due once a calendar day has
   passed since the last report (`store.monitoring_due`), not monthly; labels/copy in the
-  connector and bank/MSME UI say "Daily"/"Refresh" accordingly. Each refresh still re-extracts
-  the full requested window rather than only new data — see `docs/agents/risks.md` for why
-  true incremental extraction wasn't attempted in this pass.
+  connector and bank/MSME UI say "Daily"/"Refresh" accordingly.
+- **Incremental, resumable sync (2026-10-03, connector 0.2).** The backend keeps a copy of each
+  company's books (`app/books.py`); the connector sends only changes and resumes an interrupted
+  first share month by month. One connector serves several companies (`companies.json`). See
+  `docs/agents/architecture.md`, upload flow step 3.
 - **Cloud installs (2026-10-02, partially resolved).** Automatic scheduling still only exists
   on Windows (`schedule_windows.go`); there is no portable non-Windows scheduler API. A Linux
   cloud host now has a documented, ready-to-use cron line and systemd timer for running

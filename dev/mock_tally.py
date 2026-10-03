@@ -81,6 +81,7 @@ class Voucher:
     invoice: bool = False
     narration: str = ""
     guid: str = field(default_factory=lambda: str(uuid.uuid4()))
+    alter_id: int = 0
 
 
 class Company:
@@ -362,7 +363,8 @@ def render_companies(co: Company) -> list[str]:
         f'<COMPANY NAME="{escape(COMPANY)}" RESERVEDNAME=""><NAME TYPE="String">{escape(COMPANY)}</NAME>'
         f'<GUID TYPE="String">a1b2c3d4-0000-4000-8000-{1:012d}</GUID><STARTINGFROM TYPE="Date">{tdate(co.start)}</STARTINGFROM>'
         f'<BOOKSFROM TYPE="Date">{tdate(co.start)}</BOOKSFROM><STATENAME TYPE="String">{HOME_STATE}</STATENAME>'
-        f'<INCOMETAXNUMBER TYPE="String">AAKCS1234F</INCOMETAXNUMBER></COMPANY>',
+        f'<INCOMETAXNUMBER TYPE="String">AAKCS1234F</INCOMETAXNUMBER>'
+        f'<ALTVCHID TYPE="Number">{max(v.alter_id or v.master_id + 50 for v in co.vouchers)}</ALTVCHID></COMPANY>',
         '<COMPANY NAME="Demo Company (Old)" RESERVEDNAME=""><NAME TYPE="String">Demo Company (Old)</NAME>'
         '<STARTINGFROM TYPE="Date">20190401</STARTINGFROM><BOOKSFROM TYPE="Date">20190401</BOOKSFROM></COMPANY>',
     ]
@@ -381,9 +383,11 @@ def render_voucher_types() -> list[str]:
             f'<PARENT TYPE="String">{escape(p or n)}</PARENT></VOUCHERTYPE>' for n, p, res in VOUCHER_TYPES]
 
 
-def render_ledgers(co: Company, to: date) -> list[str]:
+def render_ledgers(co: Company, to: date, ids: tuple[int, int] | None = None) -> list[str]:
     out = []
-    for l in co.ledgers.values():
+    for i, l in enumerate(co.ledgers.values(), start=1):
+        if ids and not ids[0] <= i <= ids[1]:
+            continue
         extra = ""
         if l.get("gstin"):
             extra += f'<PARTYGSTIN TYPE="String">{l["gstin"]}</PARTYGSTIN>'
@@ -393,7 +397,7 @@ def render_ledgers(co: Company, to: date) -> list[str]:
             extra += f'<ISBILLWISEON TYPE="Logical">Yes</ISBILLWISEON><BILLCREDITPERIOD TYPE="Due Date">{l["credit_period"]} Days</BILLCREDITPERIOD>'
         out.append(
             f'<LEDGER NAME="{escape(l["name"])}" RESERVEDNAME="{escape(l.get("reserved", ""))}">'
-            f'<PARENT TYPE="String">{parent_xml(l["parent"])}</PARENT>'
+            f'<PARENT TYPE="String">{parent_xml(l["parent"])}</PARENT><MASTERID TYPE="Number">{i}</MASTERID>'
             f'<OPENINGBALANCE TYPE="Amount">{tally_amount(l["opening"])}</OPENINGBALANCE>'
             f'<CLOSINGBALANCE TYPE="Amount">{tally_amount(co.closing(l["name"], to))}</CLOSINGBALANCE>{extra}</LEDGER>'
         )
@@ -421,7 +425,7 @@ def render_voucher(v: Voucher) -> str:
         f"<PARTYLEDGERNAME>{escape(v.party)}</PARTYLEDGERNAME>",
         f"<ISCANCELLED>{'Yes' if v.cancelled else 'No'}</ISCANCELLED><ISOPTIONAL>No</ISOPTIONAL>",
         f"<ISINVOICE>{'Yes' if v.invoice else 'No'}</ISINVOICE>",
-        f"<MASTERID> {v.master_id}</MASTERID><ALTERID> {v.master_id + 50}</ALTERID>",
+        f"<MASTERID> {v.master_id}</MASTERID><ALTERID> {v.alter_id or v.master_id + 50}</ALTERID>",
     ]
 
     def entry(tag, ledger, dr, bills=False):
@@ -500,8 +504,15 @@ def handle_request(co: Company, xml: str) -> str:
             return collection_response(render_companies(co))
         if kind == "group":
             return collection_response(render_groups())
+        formula = " ".join(el.text or "" for el in root.iter() if el.tag.upper() == "SYSTEM")
+        ids = re.search(r"\$MasterId >= (\d+) AND \$MasterId <= (\d+)", formula)
+        above = re.search(r"\$AlterId > (\d+)", formula)
         if kind == "ledger":
-            return collection_response(render_ledgers(co, to))
+            return collection_response(render_ledgers(co, to, (int(ids[1]), int(ids[2])) if ids else None))
+        if kind == "voucher":
+            return collection_response([
+                f'<VOUCHER><GUID>{v.guid}</GUID><DATE>{tdate(v.date)}</DATE><ALTERID>{v.alter_id or v.master_id + 50}</ALTERID></VOUCHER>'
+                for v in co.vouchers if frm <= v.date <= to and (not above or (v.alter_id or v.master_id + 50) > int(above[1]))])
         if kind == "vouchertype":
             return collection_response(render_voucher_types())
         if kind == "stockitem":
@@ -520,6 +531,22 @@ def serve(port: int, seed: int):
 
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
+            # Test hooks for incremental sync: /mock/touch re-saves an old
+            # voucher (new AlterId), /mock/delete removes a recent one.
+            if self.path in ("/mock/touch", "/mock/delete"):
+                top = max(v.alter_id or v.master_id + 50 for v in co.vouchers)
+                if self.path == "/mock/touch":
+                    v = co.vouchers[len(co.vouchers) // 2]
+                    v.alter_id = top + 1
+                else:
+                    v = co.vouchers[-5]
+                    co.vouchers.remove(v)
+                    co.index.remove(v)
+                    if not v.cancelled:
+                        for l, a in v.entries:
+                            co.movements[l].remove((v.date, a))
+                self._send(f"<RESPONSE>{self.path[6:]} {v.guid} {v.date}</RESPONSE>", "utf-8")
+                return
             self._send("<RESPONSE>TallyPrime Server is Running</RESPONSE>", "utf-8")
 
         def do_POST(self):

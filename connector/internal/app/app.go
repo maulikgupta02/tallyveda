@@ -8,7 +8,6 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -75,6 +74,7 @@ func (a *App) Listen(port int) (string, error) {
 	mux.HandleFunc("/api/ping", a.guard(a.ping))
 	mux.HandleFunc("/api/monitor", a.guard(a.monitorStatus))
 	mux.HandleFunc("/api/monitor/stop", a.guard(a.monitorStop))
+	mux.HandleFunc("/api/resume", a.guard(a.resume))
 	go http.Serve(ln, mux)
 	return fmt.Sprintf("http://%s/?t=%s", ln.Addr().String(), a.token), nil
 }
@@ -171,25 +171,53 @@ func (a *App) ping(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// monitorStatus lists every company shared from this computer.
 func (a *App) monitorStatus(w http.ResponseWriter, r *http.Request) {
-	c, err := monitor.Load()
-	if err != nil || c == nil {
-		writeJSON(w, 200, map[string]any{"active": false})
-		return
+	list, _ := monitor.LoadAll()
+	out := []map[string]any{}
+	for _, c := range list {
+		out = append(out, map[string]any{
+			"id": c.ID(), "bank_name": c.BankName, "company": c.Company, "daily": c.Daily, "pending": c.Pending,
+			"last_success": c.LastSuccess, "last_error": c.LastError, "installed_at": c.InstalledAt,
+		})
 	}
-	writeJSON(w, 200, map[string]any{
-		"active": true, "bank_name": c.BankName, "company": c.Company,
-		"last_success": c.LastSuccess, "last_error": c.LastError, "installed_at": c.InstalledAt,
-	})
+	writeJSON(w, 200, map[string]any{"companies": out})
 }
 
 func (a *App) monitorStop(w http.ResponseWriter, r *http.Request) {
-	if err := monitor.Stop(r.Context()); err != nil {
+	var in struct{ ID string }
+	json.NewDecoder(r.Body).Decode(&in)
+	c, err := monitor.Find(in.ID)
+	if err != nil || c == nil {
+		writeJSON(w, 404, map[string]string{"error": "not found"})
+		return
+	}
+	if err := monitor.Stop(r.Context(), c); err != nil {
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	log.Printf("daily updates stopped by the user")
+	log.Printf("daily updates for %s stopped by the user", c.Company)
 	writeJSON(w, 200, map[string]bool{"stopped": true})
+}
+
+// resume continues an interrupted share in the background.
+func (a *App) resume(w http.ResponseWriter, r *http.Request) {
+	var in struct{ ID string }
+	json.NewDecoder(r.Body).Decode(&in)
+	c, err := monitor.Find(in.ID)
+	if err != nil || c == nil {
+		writeJSON(w, 404, map[string]string{"error": "not found"})
+		return
+	}
+	a.run(w, func(ctx context.Context, progress extract.Progress) (string, error) {
+		summary, err := monitor.SyncEntry(ctx, c, a.Version, progress)
+		if err != nil {
+			c.LastError = err.Error()
+			monitor.Put(c)
+			return "", err
+		}
+		return finishEntry(c, summary), nil
+	})
 }
 
 func (a *App) start(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +226,14 @@ func (a *App) start(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]string{"error": "code, company and your name are required"})
 		return
 	}
+	a.run(w, func(ctx context.Context, progress extract.Progress) (string, error) {
+		return RunJob(ctx, a.Tally, a.Backend, a.Version, in, progress)
+	})
+}
+
+// run starts job in the background unless one is already running. It keeps
+// going if the browser tab is closed.
+func (a *App) run(w http.ResponseWriter, job func(context.Context, extract.Progress) (string, error)) {
 	a.mu.Lock()
 	if a.job.Running {
 		a.mu.Unlock()
@@ -208,7 +244,7 @@ func (a *App) start(w http.ResponseWriter, r *http.Request) {
 	a.mu.Unlock()
 
 	go func() {
-		summary, err := RunJob(context.Background(), a.Tally, a.Backend, a.Version, in, a.setProgress)
+		summary, err := job(context.Background(), a.setProgress)
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		a.job.Running = false
@@ -236,8 +272,10 @@ func (a *App) progress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, a.job)
 }
 
-// RunJob verifies the code, extracts the company and uploads it. It is shared
-// by the UI and the headless command line.
+// RunJob verifies the code, opens the first sync and sends the company's
+// books. The settings are saved before any data is read, so an interrupted
+// share resumes where it stopped (automatically, with daily updates on; from
+// the connector page otherwise). Shared by the UI and the command line.
 func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version string, in StartRequest,
 	progress extract.Progress) (string, error) {
 	info, err := b.Verify(ctx, in.Code)
@@ -271,54 +309,59 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 	if monitoring {
 		consent += fmt.Sprintf(MonitoringConsentText, info.BankName)
 	}
-	bundle, err := extract.Run(ctx, t, extract.Options{
-		Company:    *company,
-		From:       from,
-		To:         to,
-		ConsentBy:  strings.TrimSpace(in.ConsentName),
-		ConsentMsg: consent,
-		Version:    version,
-		TallyURL:   t.URL,
-		Banner:     banner,
-	}, progress)
-	if err != nil {
-		return "", err
-	}
-	bundle.Consent.MonitoringOptIn = monitoring
-	if len(bundle.Vouchers) == 0 {
-		return "", errors.New("no vouchers were found for this company in the selected period")
-	}
-	progress(fmt.Sprintf("Uploading %d vouchers securely to %s", len(bundle.Vouchers), info.BankName), 0.98)
-	res, err := b.Upload(ctx, in.Code, bundle)
-	if err != nil {
-		return "", err
-	}
-	summary := fmt.Sprintf("Shared %d vouchers and %d ledgers of %s with %s.", len(bundle.Vouchers), len(bundle.Ledgers),
-		company.Name, info.BankName)
-	if res.MonitorToken == "" {
-		return summary, nil
-	}
-	err = monitor.Install(&monitor.Config{
-		Server: b.URL, Token: res.MonitorToken, Company: company.Name, TallyURL: t.URL,
-		BankName: info.BankName, ApplicantName: info.ApplicantName, Reference: info.Reference,
-		ConsentBy: bundle.Consent.AcceptedBy, ConsentAt: bundle.Consent.AcceptedAt,
+	now := time.Now().Format(time.RFC3339)
+	o := extract.Options{Company: *company, From: from, To: to, Version: version, TallyURL: t.URL, Banner: banner,
+		ConsentBy: strings.TrimSpace(in.ConsentName), ConsentMsg: consent}
+	progress("Connecting to "+info.BankName, 0.01)
+	st, err := b.StartWithCode(ctx, in.Code, upload.StartRequest{
+		Company: company, Period: extract.Period{From: from.Format("2006-01-02"), To: to.Format("2006-01-02")},
+		TallyAlterID: company.AltVchID, MonitoringOptIn: monitoring, ConnectorVersion: version, Machine: extract.MachineOf(o),
+		Consent: extract.Consent{AcceptedAt: now, AcceptedBy: o.ConsentBy, Text: consent, MonitoringOptIn: monitoring},
 	})
 	if err != nil {
-		log.Printf("daily updates: %v", err)
-		return summary + " Daily updates could not be set up automatically (" + err.Error() + ").", nil
+		return "", err
 	}
-	return summary + fmt.Sprintf(" Daily updates are on: this computer will send %s a fresh copy each day, "+
-		"whenever Tally is open. You can stop this at any time by opening the connector again.",
-		info.BankName), nil
+	c := &monitor.Config{
+		Server: b.URL, Token: st.Token, Company: company.Name, TallyURL: t.URL, BankName: info.BankName,
+		ApplicantName: info.ApplicantName, Reference: info.Reference, ConsentBy: o.ConsentBy, ConsentAt: now,
+		Months: months, Daily: st.Monitoring, Pending: true,
+	}
+	var setupErr error
+	if err := monitor.Install(c); err != nil {
+		log.Printf("daily updates: %v", err)
+		setupErr = err
+	}
+	unlock, err := monitor.Lock(c)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	summary, err := extract.Sync(ctx, t, o, st.Plan, &upload.Session{B: b, Token: st.Token, SyncID: st.SyncID}, progress)
+	if err != nil {
+		return "", fmt.Errorf("%w. Press \"Continue sharing\" above to carry on from where it stopped", err)
+	}
+	summary = fmt.Sprintf("Shared %s with %s. %s", company.Name, info.BankName, summary)
+	if setupErr != nil {
+		return summary + " Daily updates could not be set up automatically (" + setupErr.Error() + ").", nil
+	}
+	return finishEntry(c, summary), nil
+}
+
+// finishEntry records a finished share: a one-off share's entry is removed,
+// a daily one is kept for the scheduled task.
+func finishEntry(c *monitor.Config, summary string) string {
+	if !c.Daily {
+		monitor.Remove(c.Token)
+		return summary
+	}
+	c.Pending, c.LastSuccess, c.LastError = false, time.Now().Format(time.RFC3339), ""
+	monitor.Put(c)
+	return summary + fmt.Sprintf(" Daily updates are on: this computer will send %s what changed each day, "+
+		"whenever Tally is open. You can stop this at any time by opening the connector again.", c.BankName)
 }
 
 // Period is the extraction window: the last `months` months up to today,
 // never before the company's books begin.
 func Period(c tally.Company, months int, now time.Time) (time.Time, time.Time) {
-	to := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	from := to.AddDate(0, -months, 1)
-	if bf, ok := tally.ParseDate(c.BooksFrom); ok && from.Before(bf) {
-		from = bf
-	}
-	return from, to
+	return extract.Window(c, months, now)
 }

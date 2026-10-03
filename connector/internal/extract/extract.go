@@ -35,14 +35,63 @@ var (
 	stockValueFetch    = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
 )
 
+// Run extracts the whole period in one go and returns it as a single bundle
+// (used by -dump; uploads go through Sync).
 func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*Bundle, error) {
-	host, _ := os.Hostname()
-	b := &Bundle{
+	b := newBundle(o)
+	p := newPacer(c, progress)
+	m, err := readMasters(ctx, p, o.Company.Name, 0.02)
+	if err != nil {
+		return nil, err
+	}
+	b.Groups, b.VoucherTypes, b.Warnings = m.groups, m.voucherTypes, append(b.Warnings, m.warnings...)
+	balances, missing, err := fetchComputed(ctx, p, o.Company.Name, "Ledger", "ledger balances", m.ledgers, ledgerBalanceFetch, o.From, o.To, 0.06, 0.20, slowLimit)
+	if err != nil {
+		return nil, fmt.Errorf("reading ledger balances: %w", err)
+	}
+	if missing > 0 {
+		b.warn("balances of %d ledgers could not be read from Tally", missing)
+	}
+	b.Ledgers = ledgersWithBalances(m.ledgers, balances)
+
+	months := monthChunks(o.From, o.To)
+	unbalanced := 0
+	for i, ch := range months {
+		p.report(fmt.Sprintf("Reading vouchers for %s", ch[0].Format("Jan 2006")), 0.20+0.65*float64(i)/float64(len(months)))
+		vs, bad, err := readVouchers(ctx, p, o.Company.Name, ch[0], ch[1])
+		if err != nil {
+			return nil, err
+		}
+		b.Vouchers = append(b.Vouchers, vs...)
+		unbalanced += bad
+	}
+	if unbalanced > 0 {
+		b.warn("%d vouchers did not balance when read from Tally", unbalanced)
+	}
+
+	// Stock valuation and bills only refine the analysis, so a slow Tally
+	// drops them with a warning instead of failing the whole sync.
+	snaps, warns := readStock(ctx, p, o, stockDates(o), 0.85, 0.94)
+	b.StockSnapshots, b.Warnings = append(b.StockSnapshots, snaps...), append(b.Warnings, warns...)
+	bills, warn, err := readBills(ctx, p, o, 0.94)
+	if err != nil {
+		return nil, err
+	}
+	b.Bills = append(b.Bills, bills...)
+	if warn != "" {
+		b.Warnings = append(b.Warnings, warn)
+	}
+	p.report("Extraction complete", 0.98)
+	return b, nil
+}
+
+func newBundle(o Options) *Bundle {
+	return &Bundle{
 		SchemaVersion:    SchemaVersion,
 		ConnectorVersion: o.Version,
 		ExtractedAt:      time.Now().Format(time.RFC3339),
 		Consent:          Consent{AcceptedAt: time.Now().Format(time.RFC3339), AcceptedBy: o.ConsentBy, Text: o.ConsentMsg},
-		Machine:          Machine{Hostname: host, OS: runtime.GOOS, TallyURL: o.TallyURL, Tally: o.Banner},
+		Machine:          machine(o),
 		Company:          o.Company,
 		Period:           Period{From: o.From.Format("2006-01-02"), To: o.To.Format("2006-01-02")},
 		Groups:           []Group{},
@@ -53,53 +102,81 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		Vouchers:         []Voucher{},
 		Warnings:         []string{},
 	}
-	name := o.Company.Name
-	p := &pacer{c: c, progress: progress, strategies: map[string]strategy{}}
+}
 
-	p.report("Reading account groups", 0.02)
+// Window is the extraction period: the last `months` months up to today,
+// never before the company's books begin.
+func Window(c tally.Company, months int, now time.Time) (time.Time, time.Time) {
+	to := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	from := to.AddDate(0, -months, 1)
+	if bf, ok := tally.ParseDate(c.BooksFrom); ok && from.Before(bf) {
+		from = bf
+	}
+	return from, to
+}
+
+// MachineOf describes this computer and its Tally for the bundle.
+func MachineOf(o Options) Machine { return machine(o) }
+
+func machine(o Options) Machine {
+	host, _ := os.Hostname()
+	return Machine{Hostname: host, OS: runtime.GOOS, TallyURL: o.TallyURL, Tally: o.Banner}
+}
+
+type masters struct {
+	groups, voucherTypes []Group
+	ledgers              []*tally.Node
+	warnings             []string
+}
+
+// readMasters reads groups, ledger masters (stored fields, no balances) and
+// voucher types: all quick for Tally.
+func readMasters(ctx context.Context, p *pacer, company string, f float64) (*masters, error) {
+	m := &masters{groups: []Group{}, voucherTypes: []Group{}}
+	p.report("Reading account groups", f)
 	var groups []*tally.Node
 	err := p.do(ctx, quickLimit, "groups", func(ctx context.Context) (err error) {
-		groups, err = c.Collection(ctx, name, "Group", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
+		groups, err = p.c.Collection(ctx, company, "Group", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
 		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading groups: %w", err)
 	}
 	for _, n := range groups {
-		b.Groups = append(b.Groups, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
+		m.groups = append(m.groups, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
 	}
 
-	p.report("Reading ledgers", 0.04)
-	var masters []*tally.Node
+	p.report("Reading ledgers", f+0.02)
 	err = p.do(ctx, slowLimit, "ledger masters", func(ctx context.Context) (err error) {
-		masters, err = c.Collection(ctx, name, "Ledger", ledgerMasterFetch, time.Time{}, time.Time{})
+		m.ledgers, err = p.c.Collection(ctx, company, "Ledger", ledgerMasterFetch, time.Time{}, time.Time{})
 		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
 	}
 
-	p.report("Reading voucher types", 0.05)
+	p.report("Reading voucher types", f+0.03)
 	var vtypes []*tally.Node
 	err = p.do(ctx, quickLimit, "voucher types", func(ctx context.Context) (err error) {
-		vtypes, err = c.Collection(ctx, name, "VoucherType", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
+		vtypes, err = p.c.Collection(ctx, company, "VoucherType", []string{"Name", "Parent", "ReservedName"}, time.Time{}, time.Time{})
 		return err
 	})
 	if err != nil {
-		b.warn("voucher types could not be read: %v", err)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		m.warnings = append(m.warnings, fmt.Sprintf("voucher types could not be read: %v", err))
 	}
 	for _, n := range vtypes {
-		b.VoucherTypes = append(b.VoucherTypes, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
+		m.voucherTypes = append(m.voucherTypes, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
 	}
+	return m, nil
+}
 
-	balances, missing, err := fetchComputed(ctx, p, name, "Ledger", "ledger balances", masters, ledgerBalanceFetch, o.From, o.To, 0.06, 0.20, slowLimit)
-	if err != nil {
-		return nil, fmt.Errorf("reading ledger balances: %w", err)
-	}
-	if missing > 0 {
-		b.warn("balances of %d ledgers could not be read from Tally", missing)
-	}
-	for _, n := range masters {
+// ledgersWithBalances builds the bundle's ledgers; balances may be nil.
+func ledgersWithBalances(nodes []*tally.Node, balances map[string]*tally.Node) []Ledger {
+	out := make([]Ledger, 0, len(nodes))
+	for _, n := range nodes {
 		state := n.Field("LEDSTATENAME")
 		if state == "" {
 			state = n.Field("STATENAME")
@@ -118,63 +195,45 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 			l.OpeningBalance = tally.DebitPositive(bal.Field("OPENINGBALANCE"))
 			l.ClosingBalance = tally.DebitPositive(bal.Field("CLOSINGBALANCE"))
 		}
-		b.Ledgers = append(b.Ledgers, l)
+		out = append(out, l)
 	}
-
-	// Vouchers month by month, split further whenever a range is too slow.
-	months := monthChunks(o.From, o.To)
-	unbalanced := 0
-	for i, ch := range months {
-		p.report(fmt.Sprintf("Reading vouchers for %s", ch[0].Format("Jan 2006")), 0.20+0.65*float64(i)/float64(len(months)))
-		nodes, err := fetchVouchers(ctx, p, name, ch[0], ch[1])
-		if err != nil {
-			return nil, fmt.Errorf("reading vouchers %s to %s: %w", ch[0].Format("2006-01-02"), ch[1].Format("2006-01-02"), err)
-		}
-		for _, n := range nodes {
-			v, ok := parseVoucher(n)
-			if !ok {
-				unbalanced++
-			}
-			b.Vouchers = append(b.Vouchers, v)
-		}
-	}
-	if unbalanced > 0 {
-		b.warn("%d vouchers did not balance when read from Tally", unbalanced)
-	}
-
-	// Stock valuation and bills only refine the analysis, so a slow Tally
-	// drops them with a warning instead of failing the whole sync.
-	readStock(ctx, p, b, o, 0.85, 0.94)
-
-	p.report("Reading outstanding bills", 0.94)
-	var bills []*tally.Node
-	err = p.do(ctx, voucherLimit, "outstanding bills", func(ctx context.Context) (err error) {
-		bills, err = c.Collection(ctx, name, "Bills", []string{"Name", "Parent", "BillDate", "BillDueDate", "ClosingBalance"}, o.From, o.To)
-		return err
-	})
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		b.warn("bill-wise outstanding could not be read (ageing will use FIFO): %v", err)
-	}
-	for _, n := range bills {
-		amt := tally.DebitPositive(n.Field("CLOSINGBALANCE"))
-		if amt == 0 {
-			continue
-		}
-		b.Bills = append(b.Bills, Bill{
-			Ledger: n.Field("PARENT"), Name: n.ObjectName(), Date: tally.ISODate(n.Field("BILLDATE")),
-			DueDate: tally.ISODate(n.Field("BILLDUEDATE")), ClosingBalance: amt,
-		})
-	}
-	p.report("Extraction complete", 0.98)
-	return b, nil
+	return out
 }
 
-// readStock adds closing stock at the period end and one and two years
-// earlier, so the backend can adjust cost of goods sold for stock movement.
-func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float64) {
+// readVouchers reads and parses [from, to]; bad counts vouchers that didn't balance.
+func readVouchers(ctx context.Context, p *pacer, company string, from, to time.Time) (vs []Voucher, bad int, err error) {
+	nodes, err := fetchVouchers(ctx, p, company, from, to)
+	if err != nil {
+		return nil, 0, fmt.Errorf("reading vouchers %s to %s: %w", from.Format("2006-01-02"), to.Format("2006-01-02"), err)
+	}
+	vs = make([]Voucher, 0, len(nodes))
+	for _, n := range nodes {
+		v, ok := parseVoucher(n)
+		if !ok {
+			bad++
+		}
+		vs = append(vs, v)
+	}
+	return vs, bad, nil
+}
+
+// stockDates are the period end and one and two years earlier, so the backend
+// can adjust cost of goods sold for stock movement.
+func stockDates(o Options) []time.Time {
+	booksFrom, _ := tally.ParseDate(o.Company.BooksFrom)
+	var out []time.Time
+	for _, d := range []time.Time{o.To, o.To.AddDate(0, 0, -365), o.To.AddDate(0, 0, -730)} {
+		if !d.Before(booksFrom.AddDate(0, 0, -1)) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// readStock values every stock item on each date. A date that can't be read
+// in full is dropped with a warning: a partial snapshot would understate stock.
+func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, f1 float64) ([]StockSnapshot, []string) {
+	var warns []string
 	name := o.Company.Name
 	p.report("Reading stock items", f0)
 	var items []*tally.Node
@@ -183,19 +242,14 @@ func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float
 		return err
 	})
 	if err != nil {
-		b.warn("stock items could not be read: %v", err)
-		return
+		return nil, []string{fmt.Sprintf("stock items could not be read: %v", err)}
 	}
-	if len(items) == 0 {
-		return
+	if len(items) == 0 || len(dates) == 0 {
+		return nil, nil
 	}
-	booksFrom, _ := tally.ParseDate(o.Company.BooksFrom)
-	dates := []time.Time{o.To, o.To.AddDate(0, 0, -365), o.To.AddDate(0, 0, -730)}
+	var out []StockSnapshot
 	step := (f1 - f0) / float64(len(dates))
 	for i, asOf := range dates {
-		if asOf.Before(booksFrom.AddDate(0, 0, -1)) {
-			continue
-		}
 		label := "stock value at " + asOf.Format("02 Jan 2006")
 		values, missing, err := fetchComputed(ctx, p, name, "StockItem", label, items, stockValueFetch, o.From, asOf,
 			f0+step*float64(i), f0+step*float64(i+1), voucherLimit)
@@ -203,11 +257,11 @@ func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float
 			if err == nil {
 				err = fmt.Errorf("%d items missing", missing)
 			}
-			b.warn("%s could not be read: %v", label, err)
+			warns = append(warns, fmt.Sprintf("%s could not be read: %v", label, err))
 			if ctx.Err() != nil {
-				return
+				return out, warns
 			}
-			continue // a partial snapshot would understate stock
+			continue
 		}
 		snap := StockSnapshot{AsOf: asOf.Format("2006-01-02"), Items: []StockItem{}}
 		for _, it := range items {
@@ -220,8 +274,38 @@ func readStock(ctx context.Context, p *pacer, b *Bundle, o Options, f0, f1 float
 				ClosingValue: tally.DebitPositive(n.Field("CLOSINGVALUE")),
 			})
 		}
-		b.StockSnapshots = append(b.StockSnapshots, snap)
+		out = append(out, snap)
 	}
+	return out, warns
+}
+
+// readBills returns bill-wise outstanding. A failure is a warning (the
+// backend falls back to FIFO ageing); err is set only when ctx is done.
+func readBills(ctx context.Context, p *pacer, o Options, f float64) ([]Bill, string, error) {
+	p.report("Reading outstanding bills", f)
+	var nodes []*tally.Node
+	err := p.do(ctx, voucherLimit, "outstanding bills", func(ctx context.Context) (err error) {
+		nodes, err = p.c.Collection(ctx, o.Company.Name, "Bills", []string{"Name", "Parent", "BillDate", "BillDueDate", "ClosingBalance"}, o.From, o.To)
+		return err
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, "", ctx.Err()
+		}
+		return nil, fmt.Sprintf("bill-wise outstanding could not be read (ageing will use FIFO): %v", err), nil
+	}
+	bills := []Bill{}
+	for _, n := range nodes {
+		amt := tally.DebitPositive(n.Field("CLOSINGBALANCE"))
+		if amt == 0 {
+			continue
+		}
+		bills = append(bills, Bill{
+			Ledger: n.Field("PARENT"), Name: n.ObjectName(), Date: tally.ISODate(n.Field("BILLDATE")),
+			DueDate: tally.ISODate(n.Field("BILLDUEDATE")), ClosingBalance: amt,
+		})
+	}
+	return bills, "", nil
 }
 
 func (b *Bundle) warn(format string, args ...any) {

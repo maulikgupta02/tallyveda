@@ -121,12 +121,17 @@ dashboard (see `project.md`, "Product direction"). Tenancy, per-bank accounts an
 MSME login now exist (`store.py`'s `tenants`/`users` tables, `/bank` scoped to `tenant_id`, `/msme`
 scoped to `application_id` — see `architecture.md`). Refreshes are now due daily (`store.monitoring_due`),
 not monthly, and Linux cloud installs have a documented cron/systemd setup (README.md "Linux / cloud
-installs") since `schedule_other.go` still has no built-in scheduler. Each refresh still re-extracts
-the full requested window rather than only new vouchers — true incremental extraction (only
-pulling what changed since the last report) would need the connector/backend contract to change
-(partial bundles, merging with the previous snapshot) and was judged too large/risky to bundle into
-this pass given `internal/tally/`'s unverified-against-real-Tally status (see below); a human should
-decide whether to pursue it, especially for the Day Book performance concern on very large companies.
+installs") since `schedule_other.go` still has no built-in scheduler. Refreshes are incremental since
+connector 0.2 (2026-10-03, `books.py`). It was verified end to end against `dev/mock_tally.py` (with
+its `/mock/touch` and `/mock/delete` hooks): the delta result matched a fresh full read exactly, and
+`tests/test_sync.py` passes on SQLite and Postgres. **Unverified on real Tally:** the company's
+`AltVchId`, the `$AlterId` filter on a `Voucher` collection, and whether a `Voucher` collection
+honours SVFROMDATE/SVTODATE. Each failure mode degrades safely: the last few days are always re-read,
+`VoucherStubs` re-filters locally, mass deletions are refused, and a full re-read runs weekly. Known
+gaps: post-dated vouchers that existed at a full read but were outside its window are not re-read
+when they fall due, and are fixed by the next full read. Deletions older than 92 days wait for the
+next full read. Storage grows by one `bundle.json.gz` per report (about 450 KB for about 7k
+vouchers) plus the book rows; there is no retention policy yet, which matters on Neon's free tier.
 Still open:
 - **Admin web UI resolved** (2026-10-02, ticket 2d48bed7): `/admin` now covers tenant/MSME/user
   management with an audit trail (`audit_log` table) of every action — see

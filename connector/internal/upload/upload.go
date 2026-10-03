@@ -36,6 +36,7 @@ type MonitorStatus struct {
 	ApplicantName string `json:"applicant_name"`
 	Months        int    `json:"months"`
 	LastReportAt  string `json:"last_report_at"`
+	Resume        bool   `json:"resume"` // a sync was interrupted and should continue
 }
 
 // ErrTokenRevoked means the bank no longer recognises the monitoring token.

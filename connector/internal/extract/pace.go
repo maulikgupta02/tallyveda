@@ -43,6 +43,10 @@ type pacer struct {
 	slowSeen   int                 // timeouts in the current fetchComputed
 }
 
+func newPacer(c *tally.Client, progress Progress) *pacer {
+	return &pacer{c: c, progress: progress, strategies: map[string]strategy{}}
+}
+
 func (p *pacer) report(stage string, frac float64) {
 	p.stage, p.frac = stage, frac
 	p.progress(stage, frac)

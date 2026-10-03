@@ -33,6 +33,9 @@ DEFAULT_MONTHS = int(os.environ.get("TC_DEFAULT_MONTHS", "24"))
 # Daily monitoring: a refresh is due once a day has passed since the last
 # report, and flagged overdue after N days with no data at all.
 MONITOR_OVERDUE_DAYS = int(os.environ.get("TC_MONITOR_OVERDUE_DAYS", "3"))
+# Incremental syncs send only changes; every N days the connector re-reads the
+# whole window instead, as a safety net for anything change tracking can miss.
+FULL_SYNC_DAYS = int(os.environ.get("TC_FULL_SYNC_DAYS", "7"))
 # Optional: path to the built TallyConnector.exe, served at /download. Useful for a
 # local/VM deploy with the exe on disk, but a Render free web service's filesystem is
 # ephemeral and has no build step for it — set TC_CONNECTOR_URL instead (e.g. a GitHub

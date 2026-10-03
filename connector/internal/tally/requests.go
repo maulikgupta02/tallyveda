@@ -13,8 +13,9 @@ import (
 // Query narrows a collection export so each request stays small enough for
 // Tally to answer quickly. The zero value exports everything.
 type Query struct {
-	ChildOf string   // direct children of this group or stock group
-	IDs     [2]int64 // inclusive MasterId range; {0, 0} means no range
+	ChildOf    string   // direct children of this group or stock group
+	IDs        [2]int64 // inclusive MasterId range; {0, 0} means no range
+	AlterAbove int64    // only objects changed after this AlterId; 0 means all
 }
 
 // collectionRequest builds an inline-TDL collection export. Collections return
@@ -36,9 +37,16 @@ func collectionRequest(company, objType string, q Query, fetch []string, from, t
 	if q.ChildOf != "" {
 		narrow = "<CHILDOF>" + html.EscapeString(q.ChildOf) + "</CHILDOF>"
 	}
+	var conds []string
 	if q.IDs != [2]int64{} {
+		conds = append(conds, fmt.Sprintf("$MasterId &gt;= %d AND $MasterId &lt;= %d", q.IDs[0], q.IDs[1]))
+	}
+	if q.AlterAbove > 0 {
+		conds = append(conds, fmt.Sprintf("$AlterId &gt; %d", q.AlterAbove))
+	}
+	if len(conds) > 0 {
 		narrow += "<FILTERS>TCRange</FILTERS>"
-		formula = fmt.Sprintf(`<SYSTEM TYPE="Formulae" NAME="TCRange">$MasterId &gt;= %d AND $MasterId &lt;= %d</SYSTEM>`, q.IDs[0], q.IDs[1])
+		formula = `<SYSTEM TYPE="Formulae" NAME="TCRange">` + strings.Join(conds, " AND ") + `</SYSTEM>`
 	}
 	return fmt.Sprintf(`<ENVELOPE>
 <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>TCColl</ID></HEADER>
@@ -69,11 +77,14 @@ type Company struct {
 	StartFrom string `json:"starting_from,omitempty"`
 	State     string `json:"state,omitempty"`
 	PAN       string `json:"pan,omitempty"`
+	// AltVchID is the highest AlterId Tally has given any voucher: when it
+	// hasn't moved since the last sync, no voucher was added or edited.
+	AltVchID int64 `json:"-"`
 }
 
 func (c *Client) Companies(ctx context.Context) ([]Company, error) {
 	root, err := c.Post(ctx, collectionRequest("", "Company", Query{},
-		[]string{"Name", "GUID", "StartingFrom", "BooksFrom", "StateName", "IncomeTaxNumber"}, time.Time{}, time.Time{}))
+		[]string{"Name", "GUID", "StartingFrom", "BooksFrom", "StateName", "IncomeTaxNumber", "AltVchId"}, time.Time{}, time.Time{}))
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +101,7 @@ func (c *Client) Companies(ctx context.Context) ([]Company, error) {
 			StartFrom: isoDate(n.Field("STARTINGFROM")),
 			State:     n.Field("STATENAME"),
 			PAN:       n.Field("INCOMETAXNUMBER"),
+			AltVchID:  Int(n.Field("ALTVCHID")),
 		})
 	}
 	return out, nil
@@ -112,6 +124,35 @@ func (c *Client) CollectionWhere(ctx context.Context, company, objType string, q
 		nodes = root.FindAll(strings.TrimSuffix(tag, "S")) // "Bills" collection yields <BILL> objects
 	}
 	return nodes, nil
+}
+
+// VoucherStub is a voucher's identity without its entries: stored fields
+// only, so Tally lists them quickly.
+type VoucherStub struct {
+	GUID    string
+	Date    time.Time
+	AlterID int64
+}
+
+// VoucherStubs lists vouchers dated in [from, to] (zero times: no limit),
+// changed after alterAbove if it is set. The narrowing is applied again here
+// in case this Tally ignores the filter or the date range.
+func (c *Client) VoucherStubs(ctx context.Context, company string, from, to time.Time, alterAbove int64) ([]VoucherStub, error) {
+	nodes, err := c.CollectionWhere(ctx, company, "Voucher", Query{AlterAbove: alterAbove},
+		[]string{"GUID", "Date", "AlterId"}, from, to)
+	if err != nil {
+		return nil, err
+	}
+	var out []VoucherStub
+	for _, n := range nodes {
+		d, ok := ParseDate(n.Field("DATE"))
+		s := VoucherStub{GUID: n.Field("GUID"), Date: d, AlterID: Int(n.Field("ALTERID"))}
+		if !ok || (alterAbove > 0 && s.AlterID <= alterAbove) || (!from.IsZero() && d.Before(from)) || (!to.IsZero() && d.After(to)) {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 // Vouchers returns the VOUCHER nodes of the Day Book for [from, to].

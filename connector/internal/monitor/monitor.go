@@ -1,13 +1,18 @@
-// Package monitor implements the optional daily refresh. When the borrower
-// opts in, the connector copies itself to the user's AppData folder, saves the
-// bank's monitoring token and registers a per-user scheduled task (no admin
-// rights). The task runs a few times a day; each run asks the bank whether a
-// refresh is due and, if Tally is open, uploads one. The bank decides the
-// cadence, so it can change without updating the exe.
+// Package monitor keeps the connector's per-company settings and runs the
+// optional daily refresh. Every company shared from this computer is one
+// entry, with its own bank token, so several companies (and banks) can be
+// kept up to date from one Tally. When a borrower opts in to daily updates,
+// the connector copies itself to the user's AppData folder and registers one
+// per-user scheduled task (no admin rights) that serves every entry. Each run
+// asks the bank whether an update is due and, if Tally is open with that
+// company loaded, syncs it. The bank decides the cadence, so it can change
+// without updating the exe.
 package monitor
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,10 +38,21 @@ type Config struct {
 	Reference     string `json:"reference"`
 	ConsentBy     string `json:"consent_by"`
 	ConsentAt     string `json:"consent_at"`
-	InstalledAt   string `json:"installed_at"`
-	LastAttempt   string `json:"last_attempt,omitempty"`
-	LastSuccess   string `json:"last_success,omitempty"`
-	LastError     string `json:"last_error,omitempty"`
+	Months        int    `json:"months,omitempty"`
+	// Daily: the borrower opted in to daily updates. Pending: a share was
+	// started and hasn't finished; it resumes where it stopped.
+	Daily       bool   `json:"daily"`
+	Pending     bool   `json:"pending,omitempty"`
+	InstalledAt string `json:"installed_at"`
+	LastAttempt string `json:"last_attempt,omitempty"`
+	LastSuccess string `json:"last_success,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
+}
+
+// ID identifies an entry to the local UI without exposing its token.
+func (c *Config) ID() string {
+	sum := sha256.Sum256([]byte(c.Token))
+	return hex.EncodeToString(sum[:6])
 }
 
 // Dir is where the connector keeps its copy, config and log:
@@ -53,34 +69,53 @@ func Dir() (string, error) {
 	return d, os.MkdirAll(d, 0o700)
 }
 
-func configPath() (string, error) {
+func listPath() (string, error) {
 	d, err := Dir()
-	return filepath.Join(d, "monitor.json"), err
+	return filepath.Join(d, "companies.json"), err
 }
 
-// Load returns the saved config, or nil if monitoring isn't set up.
-func Load() (*Config, error) {
-	p, err := configPath()
+// LoadAll returns every saved company. A single-company monitor.json from
+// connector 0.1.x is converted on first read.
+func LoadAll() ([]*Config, error) {
+	p, err := listPath()
 	if err != nil {
 		return nil, err
 	}
 	raw, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		old := filepath.Join(filepath.Dir(p), "monitor.json")
+		legacy, lerr := os.ReadFile(old)
+		if lerr != nil {
+			return nil, nil
+		}
+		var c Config
+		if err := json.Unmarshal(legacy, &c); err != nil {
+			return nil, err
+		}
+		c.Daily = true
+		list := []*Config{&c}
+		if err := saveAll(list); err != nil {
+			return nil, err
+		}
+		os.Remove(old)
+		return list, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var c Config
-	return &c, json.Unmarshal(raw, &c)
+	var list []*Config
+	return list, json.Unmarshal(raw, &list)
 }
 
-func (c *Config) Save() error {
-	p, err := configPath()
+func saveAll(list []*Config) error {
+	p, err := listPath()
 	if err != nil {
 		return err
 	}
-	raw, _ := json.MarshalIndent(c, "", "  ")
+	if list == nil {
+		list = []*Config{}
+	}
+	raw, _ := json.MarshalIndent(list, "", "  ")
 	tmp := p + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
 		return err
@@ -88,52 +123,103 @@ func (c *Config) Save() error {
 	return os.Rename(tmp, p)
 }
 
-// Install saves the config, copies the running exe to Dir() (so the
-// downloaded file can be deleted) and schedules the daily check. A non-nil
-// error means the upload succeeded but automatic refreshes are not set up.
+// Find returns the entry with this ID, or nil.
+func Find(id string) (*Config, error) {
+	list, err := LoadAll()
+	for _, c := range list {
+		if c.ID() == id {
+			return c, err
+		}
+	}
+	return nil, err
+}
+
+// Put adds or replaces the entry with c's token.
+func Put(c *Config) error {
+	list, err := LoadAll()
+	if err != nil {
+		return err
+	}
+	for i, x := range list {
+		if x.Token == c.Token {
+			list[i] = c
+			return saveAll(list)
+		}
+	}
+	return saveAll(append(list, c))
+}
+
+// Remove deletes the entry with this token, and the scheduled task once no
+// entry wants daily updates.
+func Remove(token string) error {
+	list, err := LoadAll()
+	if err != nil {
+		return err
+	}
+	var keep []*Config
+	daily := false
+	for _, c := range list {
+		if c.Token != token {
+			keep = append(keep, c)
+			daily = daily || c.Daily
+		}
+	}
+	if err := saveAll(keep); err != nil {
+		return err
+	}
+	if !daily {
+		return unschedule()
+	}
+	return nil
+}
+
+// Install saves the entry and, for daily updates, copies the running exe to
+// Dir() (so the downloaded file can be deleted) and schedules the check. A
+// non-nil error means the share works but automatic updates are not set up.
 func Install(c *Config) error {
 	c.InstalledAt = time.Now().Format(time.RFC3339)
-	if err := c.Save(); err != nil {
+	if err := Put(c); err != nil {
 		return fmt.Errorf("saving settings: %w", err)
+	}
+	if !c.Daily {
+		return nil
 	}
 	exe, err := installCopy()
 	if err != nil {
 		return fmt.Errorf("copying the connector: %w", err)
 	}
-	if err := schedule(exe, c.BankName); err != nil {
-		return err
-	}
-	return nil
+	return schedule(exe)
 }
 
-// Uninstall removes the scheduled task and settings. The bank is told
-// separately (see Stop) when the client withdraws consent.
-func Uninstall() error {
-	err := unschedule()
-	if p, e := configPath(); e == nil {
-		os.Remove(p)
-	}
-	return err
-}
-
-// Stop withdraws consent at the bank and removes the local setup.
-func Stop(ctx context.Context) error {
-	c, err := Load()
-	if err != nil || c == nil {
-		unschedule()
-		return err
-	}
+// Stop withdraws consent at the bank and removes the entry.
+func Stop(ctx context.Context, c *Config) error {
 	remoteErr := upload.New(c.Server).MonitorStop(ctx, c.Token)
 	if errors.Is(remoteErr, upload.ErrTokenRevoked) {
 		remoteErr = nil // already stopped on the bank's side
 	}
-	if err := Uninstall(); err != nil {
+	if err := Remove(c.Token); err != nil {
 		return err
 	}
 	if remoteErr != nil {
 		return fmt.Errorf("daily updates were removed from this computer, but the bank could not be told: %w", remoteErr)
 	}
 	return nil
+}
+
+// StopAll stops every company's daily updates (the -monitor-stop flag).
+func StopAll(ctx context.Context) error {
+	list, err := LoadAll()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, c := range list {
+		if c.Daily {
+			errs = append(errs, Stop(ctx, c))
+		}
+	}
+	unschedule()
+	return errors.Join(errs...)
 }
 
 func installCopy() (string, error) {
@@ -192,52 +278,93 @@ func OpenLog() (*os.File, error) {
 	return os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 }
 
-// Run is one scheduled check. It returns nil when there was nothing to do or
-// Tally was closed (the next run retries); errors are for real failures.
+// Run is one scheduled check over every daily entry. It returns nil when
+// there was nothing to do or Tally was closed (the next run retries).
 func Run(ctx context.Context, version string, logf func(string, ...any)) error {
-	c, err := Load()
+	list, err := LoadAll()
 	if err != nil {
 		return err
 	}
-	if c == nil {
+	var errs []error
+	daily := 0
+	for _, c := range list {
+		if !c.Daily {
+			continue
+		}
+		daily++
+		if err := runOne(ctx, c, version, logf); err != nil {
+			logf("%s: %v", c.Company, err)
+			errs = append(errs, err)
+		}
+	}
+	if daily == 0 {
 		logf("daily updates are not set up; removing scheduled task")
 		return unschedule()
 	}
+	return errors.Join(errs...)
+}
+
+func runOne(ctx context.Context, c *Config, version string, logf func(string, ...any)) (err error) {
 	c.LastAttempt = time.Now().Format(time.RFC3339)
-	keep := true // false once uninstalled, so the config isn't written back
+	keep := true // false once removed, so the entry isn't written back
 	defer func() {
 		if keep {
-			c.Save()
+			Put(c)
 		}
 	}()
 
 	backend := upload.New(c.Server)
 	st, err := backend.MonitorStatus(ctx, c.Token)
 	if errors.Is(err, upload.ErrTokenRevoked) || (err == nil && !st.Active) {
-		logf("the bank has stopped daily updates; removing them from this computer")
+		logf("%s: the bank has stopped daily updates; removing them from this computer", c.Company)
 		keep = false
-		return Uninstall()
+		return Remove(c.Token)
 	}
 	if err != nil {
 		c.LastError = err.Error()
 		return err
 	}
-	if !st.Due {
-		logf("no update due (last received %s)", st.LastReportAt)
+	if !st.Due && !st.Resume {
+		logf("%s: no update due (last received %s)", c.Company, st.LastReportAt)
 		return nil
 	}
+	if st.Months > 0 {
+		c.Months = st.Months
+	}
+	summary, err := SyncEntry(ctx, c, version, func(stage string, f float64) { logf("%s: %3.0f%% %s", c.Company, f*100, stage) })
+	if errors.Is(err, ErrTallyClosed) {
+		c.LastError = err.Error()
+		logf("%s: update due but %v; will try again later", c.Company, err)
+		return nil
+	}
+	if err != nil {
+		c.LastError = err.Error()
+		return err
+	}
+	c.LastSuccess, c.LastError, c.Pending = time.Now().Format(time.RFC3339), "", false
+	logf("%s: %s", c.Company, summary)
+	return nil
+}
 
+// ErrTallyClosed means Tally isn't open, or the company isn't loaded in it.
+var ErrTallyClosed = errors.New("Tally is not open")
+
+// SyncEntry syncs one saved company with its token: it resumes an unfinished
+// first share, or sends what changed since the last sync.
+func SyncEntry(ctx context.Context, c *Config, version string, progress extract.Progress) (string, error) {
+	unlock, err := Lock(c)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
 	tc := tally.NewClient(c.TallyURL)
 	banner, err := tc.Ping(ctx)
 	if err != nil {
-		c.LastError = "Tally was not open"
-		logf("update due but Tally is not open; will try again later")
-		return nil
+		return "", ErrTallyClosed
 	}
 	companies, err := tc.Companies(ctx)
 	if err != nil {
-		c.LastError = err.Error()
-		return err
+		return "", err
 	}
 	var co *tally.Company
 	for i := range companies {
@@ -246,34 +373,59 @@ func Run(ctx context.Context, version string, logf func(string, ...any)) error {
 		}
 	}
 	if co == nil {
-		c.LastError = fmt.Sprintf("company %q was not open in Tally", c.Company)
-		logf("update due but %q is not open in Tally; will try again later", c.Company)
-		return nil
+		return "", fmt.Errorf("%w with %q loaded", ErrTallyClosed, c.Company)
 	}
-
-	now := time.Now()
-	to := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	from := to.AddDate(0, -st.Months, 1)
-	if bf, ok := tally.ParseDate(co.BooksFrom); ok && from.Before(bf) {
-		from = bf
+	months := c.Months
+	if months <= 0 {
+		months = 24
 	}
-	bundle, err := extract.Run(ctx, tc, extract.Options{
-		Company: *co, From: from, To: to, Version: version, TallyURL: tc.URL, Banner: banner,
-		ConsentBy:  c.ConsentBy,
-		ConsentMsg: fmt.Sprintf("Daily update under the consent given by %s on %s.", c.ConsentBy, c.ConsentAt),
-	}, func(stage string, f float64) { logf("%3.0f%% %s", f*100, stage) })
+	from, to := extract.Window(*co, months, time.Now())
+	o := extract.Options{Company: *co, From: from, To: to, Version: version, TallyURL: tc.URL, Banner: banner, ConsentBy: c.ConsentBy}
+	backend := upload.New(c.Server)
+	st, err := backend.Start(ctx, c.Token, upload.StartRequest{
+		Company: co, Period: extract.Period{From: from.Format("2006-01-02"), To: to.Format("2006-01-02")},
+		TallyAlterID: co.AltVchID, ConnectorVersion: version, Machine: extract.MachineOf(o),
+		Consent: extract.Consent{AcceptedBy: c.ConsentBy, AcceptedAt: c.ConsentAt, MonitoringOptIn: c.Daily,
+			Text: fmt.Sprintf("Update under the consent given by %s on %s.", c.ConsentBy, c.ConsentAt)},
+	})
 	if err != nil {
-		c.LastError = err.Error()
-		return err
+		return "", err
 	}
-	bundle.Consent.MonitoringOptIn = true
-	if err := backend.MonitorUpload(ctx, c.Token, bundle); err != nil {
-		c.LastError = err.Error()
-		return err
+	return extract.Sync(ctx, tc, o, st.Plan, &upload.Session{B: backend, Token: c.Token, SyncID: st.SyncID}, progress)
+}
+
+// Lock keeps two connector processes (the UI and the scheduled task) from
+// syncing the same company at once. The holder refreshes the lock every
+// minute, so one left behind by a crash or shutdown goes stale in minutes.
+func Lock(c *Config) (func(), error) {
+	d, err := Dir()
+	if err != nil {
+		return nil, err
 	}
-	c.LastSuccess, c.LastError = time.Now().Format(time.RFC3339), ""
-	logf("sent daily update: %d vouchers to %s", len(bundle.Vouchers), c.BankName)
-	return nil
+	p := filepath.Join(d, "sync-"+c.ID()+".lock")
+	if st, err := os.Stat(p); err == nil && time.Since(st.ModTime()) > 5*time.Minute {
+		os.Remove(p)
+	}
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("%s is already being synced by another connector window", c.Company)
+	}
+	fmt.Fprintf(f, "%d", os.Getpid())
+	f.Close()
+	stop := make(chan struct{})
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-t.C:
+				os.Chtimes(p, now, now)
+			}
+		}
+	}()
+	return func() { close(stop); os.Remove(p) }, nil
 }
 
 // Logger returns a printf-style logger writing to w with timestamps.

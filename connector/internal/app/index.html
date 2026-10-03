@@ -40,6 +40,10 @@
   .done { font-size: 16px; font-weight: 600; color: var(--good); }
   .hidden { display: none; }
   button.secondary { background: #fff; color: var(--text); border: 1px solid var(--line); }
+  .co { padding: 10px 0; border-top: 1px solid var(--line); }
+  .co:first-child { border-top: 0; }
+  .co b { display: block; }
+  .co button { margin: 8px 8px 0 0; }
 </style>
 </head>
 <body>
@@ -49,9 +53,8 @@
     It does not change anything in Tally.</p>
 
   <section class="card hidden" id="mon">
-    <div class="step"><span class="num">✓</span>Daily updates are on</div>
-    <div id="monText" class="muted"></div>
-    <button id="monStop" class="secondary">Stop daily updates</button>
+    <div class="step"><span class="num">✓</span>Companies shared from this computer</div>
+    <div id="monList"></div>
     <div id="monErr" class="err"></div>
   </section>
 
@@ -98,6 +101,7 @@
       <p class="done">Done. Your bank has received the data.</p>
       <p class="muted" id="summary"></p>
       <p class="muted">You can close this tab.</p>
+      <button id="another" class="secondary">Share another company</button>
     </div>
   </section>
   <p class="muted">Tally Connector {{VERSION}}</p>
@@ -205,7 +209,8 @@ async function poll() {
   $("barFill").style.width = Math.round(j.fraction * 100) + "%";
   $("stage").textContent = j.stage;
   if (j.error) {
-    $("jobErr").textContent = j.error + "\n\nFix the problem and press Share data again.";
+    $("jobErr").textContent = j.error;
+    loadMonitor();
     ["s2", "s3"].forEach(id => enable(id, true));
     $("startBtn").disabled = false;
     return;
@@ -220,28 +225,65 @@ async function poll() {
   setTimeout(poll, 700);
 }
 
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
 async function loadMonitor() {
   try {
     const m = await api("/api/monitor");
-    $("mon").classList.toggle("hidden", !m.active);
-    if (m.active) {
-      $("monText").textContent = `This computer sends ${m.bank_name} a daily copy of ${m.company}. ` +
-        (m.last_success ? `Last sent ${new Date(m.last_success).toLocaleDateString()}.` : "No daily update sent yet.") +
-        (m.last_error ? ` Last attempt: ${m.last_error}.` : "");
+    const list = $("monList");
+    list.replaceChildren();
+    $("mon").classList.toggle("hidden", m.companies.length === 0);
+    for (const c of m.companies) {
+      const row = el("div", "", "co");
+      row.append(el("b", `${c.company} → ${c.bank_name}`));
+      let text = c.pending ? "The first share did not finish. It continues from where it stopped." :
+        c.daily ? "Daily updates are on. " + (c.last_success ? `Last sent ${new Date(c.last_success).toLocaleString()}.` : "") : "";
+      if (c.last_error) text += ` Last attempt: ${c.last_error}.`;
+      row.append(el("div", text, "muted"));
+      if (c.pending) {
+        const b = el("button", "Continue sharing");
+        b.onclick = () => resume(c.id);
+        row.append(b);
+      }
+      if (c.daily) {
+        const b = el("button", "Stop daily updates", "secondary");
+        b.onclick = () => stopDaily(c);
+        row.append(b);
+      }
+      list.append(row);
     }
   } catch (e) { /* not critical */ }
 }
 
-$("monStop").onclick = async () => {
-  if (!confirm("Stop sending daily updates to the bank?")) return;
+async function resume(id) {
   $("monErr").textContent = "";
   try {
-    await api("/api/monitor/stop", {});
-    $("mon").classList.add("hidden");
+    await api("/api/resume", { id });
+    enable("s4", true);
+    ["s1", "s2", "s3"].forEach(id => enable(id, false));
+    poll();
   } catch (e) {
     $("monErr").textContent = e.message;
   }
-};
+}
+
+async function stopDaily(c) {
+  if (!confirm(`Stop sending daily updates of ${c.company} to ${c.bank_name}?`)) return;
+  $("monErr").textContent = "";
+  try {
+    await api("/api/monitor/stop", { id: c.id });
+    loadMonitor();
+  } catch (e) {
+    $("monErr").textContent = e.message;
+  }
+}
+
+$("another").onclick = () => location.reload();
 
 // Heartbeat: the connector exits a little while after this tab is closed.
 setInterval(() => api("/api/ping").catch(() => {}), 10000);

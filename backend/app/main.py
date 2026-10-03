@@ -52,6 +52,7 @@ import re
 import time
 import zlib
 from collections import defaultdict, deque
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -63,7 +64,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
 from starlette.middleware.gzip import GZipMiddleware
 
-from . import config, marketing, store
+from . import books, config, marketing, store
 from .analysis.alerts import compare, snapshot
 from .report import dashboard as dashboard_views, dashboard_charts as dc
 from .report import format as fmt
@@ -119,6 +120,7 @@ templates.globals.update(
 MONITORING_LABELS = {
     "off": "Off",
     "active": "Daily",
+    "sharing": "Receiving first share",
     "stopped_by_bank": "Stopped by bank",
     "stopped_by_client": "Stopped by client",
 }
@@ -257,7 +259,8 @@ def connector_verify(body: VerifyIn, request: Request):
     }
 
 
-async def _read_bundle(request: Request) -> tuple[bytes, dict]:
+async def _read_json(request: Request) -> tuple[bytes, dict]:
+    """Read a JSON body, gzipped or not. Returns the gzipped bytes and the object."""
     max_bytes = config.MAX_UPLOAD_MB * 1024 * 1024
     raw = bytearray()
     async for chunk in request.stream():
@@ -267,13 +270,20 @@ async def _read_bundle(request: Request) -> tuple[bytes, dict]:
     raw = bytes(raw)
     try:
         if raw[:2] == b"\x1f\x8b":
-            bundle = _gunzip_json(raw)
+            data = _gunzip_json(raw)
         else:
-            bundle = json.loads(raw)
+            data = json.loads(raw)
             raw = gzip.compress(raw)
     except (OSError, zlib.error, ValueError) as e:
         raise HTTPException(400, f"Could not read upload: {e}")
-    if not isinstance(bundle, dict) or "vouchers" not in bundle or "ledgers" not in bundle:
+    if not isinstance(data, dict):
+        raise HTTPException(400, "Expected a JSON object")
+    return raw, data
+
+
+async def _read_bundle(request: Request) -> tuple[bytes, dict]:
+    raw, bundle = await _read_json(request)
+    if "vouchers" not in bundle or "ledgers" not in bundle:
         raise HTTPException(400, "Upload is not a Tally connector bundle")
     return raw, bundle
 
@@ -324,6 +334,7 @@ def _monitor_status(a: dict) -> dict:
         "reference": a["reference"],
         "months": a["months"],
         "last_report_at": a["last_report_at"],
+        "resume": books.open_session(a["id"]) is not None,
     }
 
 
@@ -341,6 +352,135 @@ async def monitor_upload(request: Request, background: BackgroundTasks):
     report_id = _store_upload(a["id"], "refresh", raw, bundle)
     background.add_task(process_report, report_id)
     return {"status": "received", "report_id": report_id}
+
+
+# ------------------------------------------------------------ incremental sync
+# The connector sends a company's books in pieces (see books.py): start, then
+# masters / vouchers / present in any number of requests, then finish.
+
+
+class SyncStartIn(BaseModel):
+    company: dict
+    period: dict
+    want_full: bool = False
+    tally_alter_id: int | None = None
+    monitoring_opt_in: bool = False
+    consent: dict = Field(default_factory=dict)
+    machine: dict = Field(default_factory=dict)
+    connector_version: str = ""
+
+
+@app.post("/api/connector/sync/start")
+async def sync_start(request: Request):
+    _, data = await _read_json(request)
+    try:
+        body = SyncStartIn.model_validate(data)
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid sync request: {e}")
+    try:
+        pfrom = date.fromisoformat(body.period["from"]).isoformat()
+        pto = date.fromisoformat(body.period["to"]).isoformat()
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(400, "period.from and period.to must be YYYY-MM-DD")
+    out = {}
+    code = request.headers.get("x-link-code", "")
+    if code:
+        a = _check_code(code, request.client.host)
+        store.mark_uploaded(a["id"], body.company.get("name", ""), body.consent.get("accepted_by", ""), request.client.host)
+        if a["monitoring_offered"] and body.monitoring_opt_in:
+            out["token"], out["monitoring"] = store.start_monitoring(a["id"]), True
+        else:
+            out["token"], out["monitoring"] = store.start_share(a["id"]), False
+        tenant = store.get_tenant(a["tenant_id"])
+        out.update(bank_name=tenant["name"] if tenant else config.BANK_NAME, reference=a["reference"])
+        a = store.get_application(a["id"])
+    else:
+        a = _check_token(request)
+        if a["monitoring_status"] not in ("active", "sharing"):
+            raise HTTPException(403, "Monitoring has been stopped")
+    plan = books.start(a, pfrom, pto, body.want_full, body.tally_alter_id, body.company.get("guid", ""))
+    session = books.get_session(plan["sync_id"])
+    books.stage(session, {"company": body.company, "machine": body.machine, "consent": body.consent,
+                          "connector_version": body.connector_version})
+    return {**out, **plan}
+
+
+def _sync_session(sync_id: str, request: Request) -> dict:
+    a = _check_token(request)
+    s = books.get_session(sync_id)
+    if not s or s["application_id"] != a["id"]:
+        raise HTTPException(404, "Unknown sync")
+    if s["status"] != "open":
+        raise HTTPException(409, f"This sync is {s['status']}")
+    return s
+
+
+@app.post("/api/connector/sync/{sync_id}/masters")
+async def sync_masters(sync_id: str, request: Request):
+    s = _sync_session(sync_id, request)
+    _, data = await _read_json(request)
+    return {"affected": books.stage(s, data)}
+
+
+@app.post("/api/connector/sync/{sync_id}/vouchers")
+async def sync_vouchers(sync_id: str, request: Request):
+    s = _sync_session(sync_id, request)
+    _, data = await _read_json(request)
+    try:
+        dfrom, dto = date.fromisoformat(data["from"]).isoformat(), date.fromisoformat(data["to"]).isoformat()
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(400, "from and to must be YYYY-MM-DD")
+    return {"affected": books.replace_vouchers(s, dfrom, dto, data.get("vouchers", []), data.get("month"))}
+
+
+@app.post("/api/connector/sync/{sync_id}/present")
+async def sync_present(sync_id: str, request: Request):
+    s = _sync_session(sync_id, request)
+    _, data = await _read_json(request)
+    try:
+        dfrom, dto = date.fromisoformat(data["from"]).isoformat(), date.fromisoformat(data["to"]).isoformat()
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(400, "from and to must be YYYY-MM-DD")
+    return {"affected": books.present(s, dfrom, dto, data.get("guids", []))}
+
+
+def _months(pfrom: str, pto: str) -> list[str]:
+    y, m = int(pfrom[:4]), int(pfrom[5:7])
+    out = []
+    while f"{y:04d}-{m:02d}" <= pto[:7]:
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+@app.post("/api/connector/sync/{sync_id}/finish")
+def sync_finish(sync_id: str, request: Request, background: BackgroundTasks):
+    s = _sync_session(sync_id, request)
+    if s["mode"] == "full":
+        missing = [m for m in _months(s["period_from"], s["period_to"]) if m not in s["months_done"]]
+        if missing:
+            raise HTTPException(409, f"Months not received yet: {', '.join(missing)}")
+    books.mark(sync_id, "finishing")
+    background.add_task(finish_sync, sync_id)
+    a = store.get_application(s["application_id"])
+    return {"status": "received", "monitoring": a["monitoring_status"] == "active"}
+
+
+def finish_sync(sync_id: str) -> None:
+    s = books.get_session(sync_id)
+    app_id = s["application_id"]
+    try:
+        bundle = books.finish(s)
+    except Exception as e:
+        log.exception("sync %s failed", sync_id)
+        books.mark(sync_id, "failed")
+        if not store.latest_ready_report(app_id):
+            store.set_status(app_id, "failed", f"{type(e).__name__}: {e}")
+        return
+    source = "refresh" if store.list_reports(app_id) else "initial"
+    report_id = _store_upload(app_id, source, gzip.compress(json.dumps(bundle).encode()), bundle)
+    store.end_share(app_id)
+    process_report(report_id)
 
 
 @app.post("/api/connector/monitor/stop")
@@ -743,6 +883,7 @@ def _public(a: dict) -> dict:
         "monitoring_overdue": store.monitoring_overdue(a),
         "latest_report_id": a["latest_report_id"],
         "last_report_at": a["last_report_at"],
+        "resume": books.open_session(a["id"]) is not None,
     }
 
 
