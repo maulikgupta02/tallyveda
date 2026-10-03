@@ -203,3 +203,10 @@ def test_login_required_outside_dev():
     assert "TC_ADMIN_PASSWORD" in run({}).stderr
     assert run({"TC_ADMIN_USER": "bank", "TC_ADMIN_PASSWORD": "s3cret"}).returncode == 0
     assert run({"TC_DEV": "1"}).returncode == 0
+
+
+def test_wrong_codes_never_lock_out(client):
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Retry"}).json()
+    for _ in range(40):
+        assert client.post("/api/connector/verify", json={"code": "WRONG-CODE"}).status_code == 404
+    assert client.post("/api/connector/verify", json={"code": a["link_code"]}).status_code == 200

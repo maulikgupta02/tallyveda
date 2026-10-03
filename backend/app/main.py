@@ -219,10 +219,11 @@ def _throttle(ip: str) -> deque:
 
 
 def _check_code(code: str, ip: str) -> dict:
-    attempts = _throttle(ip)
+    # No per-IP limit on codes (owner's call, 2026-10-04): MSMEs retrying on a
+    # shared office connection were locked out for an hour. Codes are 8
+    # characters from a 31-letter alphabet and expire in TC_CODE_TTL_HOURS.
     application = store.find_by_code(code or "")
     if not application:
-        attempts.append(time.time())
         raise HTTPException(404, "This code is not valid or has expired. Ask your bank for a new code.")
     return application
 
