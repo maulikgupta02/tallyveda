@@ -448,3 +448,17 @@ def prune_sessions(app_id: str, keep_days: int) -> None:
         conn.execute(
             "UPDATE sync_sessions SET staged = '{}' WHERE application_id = ? AND status IN ('abandoned', 'failed')", (app_id,)
         )
+
+
+def progress(app_id: str) -> dict | None:
+    """What an unfinished sync has delivered so far, for the dashboards."""
+    s = open_session(app_id)
+    if not s:
+        return None
+    y, m = int(s["period_from"][:4]), int(s["period_from"][5:7])
+    total = 0
+    while f"{y:04d}-{m:02d}" <= s["period_to"][:7]:
+        total += 1
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return {"mode": s["mode"], "months_done": len(s["months_done"]), "months_total": total,
+            "have_masters": "ledgers" in s["staged"], "updated_at": s["updated_at"]}

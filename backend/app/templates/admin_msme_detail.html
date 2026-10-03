@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ a.applicant_name }} · Admin</title>
 <style>
+  .syncnote { margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; background: #fff7e0; color: #7a5200; }
   :root {
     color-scheme: light;
     --surface: #f5f6f8; --surface-2: #eceef3; --card: #ffffff; --line: #e2e5eb;
@@ -143,6 +144,14 @@
       <a class="btn ghost" href="/admin/msmes">← MSMEs</a>
     </div>
   </div>
+
+{% if sync %}
+  <div class="syncnote">
+    {% if sync.mode == "full" %}Receiving the books from Tally: {{ sync.months_done }} of {{ sync.months_total }} months received{% if not sync.have_masters %} (ledgers not yet received){% endif %}.
+    The report is built once every month has arrived.{% else %}Receiving today's update from Tally.{% endif %}
+    Last activity {{ sync.updated_at|when }}.
+  </div>
+  {% endif %}
 
   <details class="manage" open>
     <summary>Manage</summary>

@@ -871,7 +871,7 @@ def _render_application(a: dict, template_name: str, **extra) -> str:
             "cells": [next((i for i in c["indicators"] if i["key"] == ind["key"]), None) for c in columns],
         })
     return templates.get_template(template_name).render(
-        a=a, reports=reports, columns=columns, rows=rows,
+        a=a, reports=reports, columns=columns, rows=rows, sync=books.progress(a["id"]),
         monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
         due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
         overdue_days=config.MONITOR_OVERDUE_DAYS,
@@ -1097,7 +1097,7 @@ def admin_msme_detail(app_id: str, user: dict = Depends(platform_user)):
         user=user, a=a, tenant=store.get_tenant(a["tenant_id"]), reports=store.list_reports(app_id),
         msme_login=store.msme_login_for(app_id), due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
         overdue_days=config.MONITOR_OVERDUE_DAYS, monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
-        connector_logs=store.list_connector_logs(app_id),
+        connector_logs=store.list_connector_logs(app_id), sync=books.progress(app_id),
     )
 
 
