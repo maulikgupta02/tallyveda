@@ -43,10 +43,11 @@
   .note { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface); color: var(--text-2); }
   .note.warn { background: #fff7e0; color: #7a5200; }
   .note.bad { background: #fdecea; color: #8a1c13; }
-  .notes { margin: 10px 0 0; padding-left: 18px; color: var(--text-2); }
-  #details { margin-top: 12px; }
-  #details pre { max-height: 260px; overflow: auto; background: var(--surface); padding: 10px; border-radius: 8px;
-                 font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  .notice { margin: 14px 0 4px; padding: 12px 14px; border-radius: 8px; background: var(--surface); color: var(--text-2);
+            font-size: 13px; line-height: 1.5; }
+  .notice b { color: var(--text); }
+  .foot { font-size: 12px; } .foot a { color: var(--muted); }
+  .small { font-size: 12px; margin: 4px 0 8px; }
   .co { padding: 10px 0; border-top: 1px solid var(--line); }
   .co:first-child { border-top: 0; }
   .co b { display: block; }
@@ -55,12 +56,12 @@
 </head>
 <body>
 <main>
-  <h1>Share Tally data with your bank</h1>
-  <p class="sub">This tool reads your accounts from Tally on this computer and sends them securely to your bank.
-    It does not change anything in Tally.</p>
+  <h1>Share your Tally accounts securely</h1>
+  <p class="sub">Tally Connector reads your company's books of account from Tally on this computer and sends them,
+    encrypted, to the organisation that requested them. It only reads data and never changes anything in Tally.</p>
 
   <section class="card hidden" id="mon">
-    <div class="step"><span class="num">✓</span>Companies shared from this computer</div>
+    <div class="step"><span class="num">✓</span>Companies connected on this computer</div>
     <div id="monList"></div>
     <div id="monErr" class="err"></div>
   </section>
@@ -68,7 +69,6 @@
   <section class="card" id="s1">
     <div class="step"><span class="num">1</span>Connect to Tally</div>
     <div id="tallyMsg" class="muted">Looking for Tally…</div>
-    <button id="checkBtn" class="secondary">Check Tally</button>
     <div id="tallyHelp" class="hidden">
       <ol class="help">
         <li>Open TallyPrime and load your company.</li>
@@ -80,7 +80,8 @@
   </section>
 
   <section class="card off" id="s2">
-    <div class="step"><span class="num">2</span>Enter the code from your bank</div>
+    <div class="step"><span class="num">2</span>Enter your access code</div>
+    <p class="muted small">The 8-character code shared with you by the organisation requesting your data.</p>
     <input type="text" id="code" class="code" placeholder="XXXX-XXXX" maxlength="9" autocomplete="off">
     <button id="verifyBtn">Continue</button>
     <div id="verifyErr" class="err"></div>
@@ -88,44 +89,40 @@
   </section>
 
   <section class="card off" id="s3">
-    <div class="step"><span class="num">3</span>Choose the company and approve</div>
+    <div class="step"><span class="num">3</span>Review and give consent</div>
     <label for="company">Company in Tally</label>
     <select id="company"></select>
     <label for="name">Your full name</label>
     <input type="text" id="name" autocomplete="name">
+    <div class="notice" id="notice"></div>
     <div class="consent"><input type="checkbox" id="agree"><span id="consentText"></span></div>
     <div class="consent hidden" id="monOpt"><input type="checkbox" id="monitoring"><span id="monOptText"></span></div>
-    <button id="startBtn" disabled>Share data</button>
+    <button id="startBtn" disabled>I agree, share my data</button>
     <div id="startErr" class="err"></div>
   </section>
 
   <section class="card off" id="s4">
-    <div class="step"><span class="num">4</span>Sending</div>
+    <div class="step"><span class="num">4</span>Sharing</div>
     <div class="bar"><i id="barFill"></i></div>
     <div id="stage" class="muted">Waiting…</div>
-    <p class="muted" id="bgNote">Tally stays usable while this runs: the connector reads a small piece at a time and pauses in between. You can keep working in Tally, or close this tab and the sync carries on in the background.</p>
+    <p class="muted" id="bgNote">You can keep working in Tally while this runs. You may also close this window; sharing continues in the background.</p>
     <div id="waitMsg" class="note hidden"></div>
     <div id="jobErr" class="err"></div>
     <div id="hint" class="note bad hidden"></div>
-    <ul id="notes" class="notes hidden"></ul>
+    <div id="notes" class="note hidden">Some optional details were not available in Tally and were skipped. This does not affect your submission.</div>
     <div id="doneMsg" class="hidden">
-      <p class="done" id="doneTitle">Done. Your bank has received the data.</p>
+      <p class="done" id="doneTitle">Your data has been shared successfully.</p>
       <p class="muted" id="summary" style="white-space: pre-wrap"></p>
-      <p class="muted">You can close this tab.</p>
-      <button id="another" class="secondary">Share another company</button>
+      <p class="muted">You can now close this window.</p>
+      <button id="another" class="secondary">Connect another company</button>
     </div>
-    <details id="details" class="hidden">
-      <summary>Show details</summary>
-      <p class="muted small">The connector's recent activity. If something goes wrong, send a screenshot of this to the bank.</p>
-      <pre id="logTail"></pre>
-    </details>
   </section>
-  <p class="muted">Tally Connector {{VERSION}}</p>
+  <p class="foot muted">Tally Connector {{VERSION}} · <a href="#" id="checkBtn">Having trouble? Run a connection check</a></p>
 </main>
 <script>
 const TOKEN = "{{TOKEN}}";
 const $ = (id) => document.getElementById(id);
-let info = null, tallyOk = false, months = 24;
+let info = null, tallyOk = false, months = 24, lastJob = "share";
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -146,7 +143,7 @@ async function checkTally() {
     const s = await api("/api/tally");
     if (s.ok && s.companies && s.companies.length) {
       tallyOk = true;
-      $("tallyMsg").textContent = `${s.banner}. Companies open: ${s.companies.map(c => c.name).join(", ")}`;
+      $("tallyMsg").textContent = `Connected to Tally. Companies open: ${s.companies.map(c => c.name).join(", ")}`;
       $("tallyHelp").classList.add("hidden");
       mark("s1", true);
       const sel = $("company"), current = sel.value;
@@ -159,11 +156,11 @@ async function checkTally() {
     }
     tallyOk = false;
     mark("s1", false);
-    $("tallyMsg").textContent = s.ok ? "Tally is running but no company is open. Open your company in Tally."
-                                     : `Tally was not found at ${s.url}.`;
+    $("tallyMsg").textContent = s.ok ? "Tally is running, but no company is open. Please open your company in Tally."
+                                     : "Tally could not be found on this computer. Please open Tally and check its connectivity settings.";
     $("tallyHelp").classList.toggle("hidden", s.ok);
   } catch (e) {
-    $("tallyMsg").textContent = "Connector error: " + e.message;
+    $("tallyMsg").textContent = "Tally Connector could not check Tally: " + e.message;
   }
   setTimeout(checkTally, 4000);
 }
@@ -181,10 +178,10 @@ $("verifyBtn").onclick = async () => {
     info = await api("/api/verify", { code: $("code").value });
     months = info.months || 24;
     $("monOpt").classList.toggle("hidden", !info.monitoring_offered);
-    $("monOptText").textContent = `Also send ${info.bank_name} an updated copy daily, automatically, ` +
-      `whenever Tally is open on this computer. You can stop this at any time by opening this tool again.`;
-    $("verifyOk").textContent = `${info.bank_name} is requesting ${months} months of data for ${info.applicant_name}` +
-      (info.reference ? ` (ref. ${info.reference})` : "") + ".";
+    $("monOptText").textContent = `Keep ${info.bank_name} updated: send changes automatically each day while Tally is ` +
+      `open on this computer. You can stop this at any time from this page.`;
+    $("verifyOk").textContent = `${info.bank_name} has requested ${months} months of accounting data for ${info.applicant_name}` +
+      (info.reference ? ` (reference ${info.reference})` : "") + ".";
     $("verifyOk").classList.remove("hidden");
     mark("s2", true);
     enable("s3", true);
@@ -198,9 +195,16 @@ $("verifyBtn").onclick = async () => {
 
 function updateConsent() {
   if (!info) return;
-  $("consentText").textContent = `I am authorised to share this company's accounting data. I consent to ${info.bank_name} ` +
-    `receiving the books of ${$("company").value} (ledgers, vouchers, outstanding bills and stock values) for the last ` +
-    `${months} months to assess a credit application.`;
+  const notice = $("notice");
+  notice.replaceChildren(
+    el("b", "How your data will be used. "),
+    document.createTextNode(`Your books of account for the last ${months} months (ledgers, vouchers, outstanding ` +
+      `bills and stock values) will be sent encrypted to Tally Connector and shared with ${info.bank_name} and the ` +
+      `banks and financial institutions it works with, solely to assess and process your credit application. ` +
+      `Technical diagnostics, such as the Tally version and connection logs, are also sent to help resolve problems. ` +
+      `You can stop future updates at any time from this page.`));
+  $("consentText").textContent = `I confirm that I am authorised to share the accounting data of ${$("company").value}, ` +
+    `and I consent to it being shared as described above.`;
   $("startBtn").disabled = !($("agree").checked && $("name").value.trim() && tallyOk);
 }
 ["agree", "name", "company"].forEach(id => $(id).addEventListener("input", updateConsent));
@@ -211,6 +215,7 @@ $("startBtn").onclick = async () => {
   try {
     await api("/api/start", { code: $("code").value, company: $("company").value, months, consent_name: $("name").value,
                               monitoring: !!(info.monitoring_offered && $("monitoring").checked) });
+    lastJob = "share";
     enable("s4", true);
     ["s1", "s2", "s3"].forEach(id => enable(id, false));
     poll();
@@ -222,33 +227,21 @@ $("startBtn").onclick = async () => {
 
 function showActivity(j) {
   const w = $("waitMsg");
-  if (j.waiting && j.running) {
-    const secs = j.waiting_secs || 0;
-    let text = `Waiting for Tally: ${j.waiting} (${secs} s)`;
-    let cls = "note";
-    if (secs >= 60) {
-      text += ". Tally is taking very long. If Tally shows a message box, close it. If it stays frozen for several " +
-        "minutes, end Tally in Task Manager (Ctrl+Shift+Esc), open it again and press Continue sharing.";
-      cls = "note warn";
-    } else if (secs >= 15) {
-      text += ". Tally is taking a while. Keep it open; if it shows a message box, close it.";
-      cls = "note warn";
-    }
-    w.textContent = text;
-    w.className = cls;
+  const secs = j.waiting_secs || 0;
+  if (j.waiting && j.running && secs >= 15) {
+    w.textContent = secs >= 60
+      ? "Tally is taking much longer than usual to respond. If Tally shows a message, please close it. If Tally stays " +
+        "unresponsive for several minutes, close Tally from Task Manager (Ctrl+Shift+Esc), open it again and select " +
+        "Continue sharing on this page."
+      : "Tally is taking a little longer than usual to respond. Please keep Tally open.";
+    w.className = secs >= 60 ? "note warn" : "note";
   } else {
     w.className = "note hidden";
   }
   const hint = $("hint");
   hint.textContent = j.hint || "";
   hint.classList.toggle("hidden", !j.hint);
-  const notes = $("notes");
-  notes.replaceChildren(...(j.notes || []).map(n => el("li", n)));
-  notes.classList.toggle("hidden", !(j.notes || []).length);
-  if ((j.log || []).length) {
-    $("details").classList.remove("hidden");
-    $("logTail").textContent = j.log.join("\n");
-  }
+  $("notes").classList.toggle("hidden", !(j.notes || []).length);
 }
 
 async function poll() {
@@ -271,9 +264,10 @@ async function poll() {
   }
   if (j.done) {
     mark("s4", true);
-    const check = (j.summary || "").startsWith("Tally check");
-    $("doneTitle").textContent = check ? "Tally check finished." : "Done. Your bank has received the data.";
-    $("summary").textContent = j.summary;
+    ["bgNote", "stage"].forEach(id => $(id).classList.add("hidden"));
+    const check = lastJob === "check";
+    $("doneTitle").textContent = check ? "Connection check complete." : "Your data has been shared successfully.";
+    $("summary").textContent = check ? "The results have been sent to our support team." : j.summary;
     $("doneMsg").classList.remove("hidden");
     loadMonitor();
     return;
@@ -329,7 +323,7 @@ async function resume(id) {
 }
 
 async function stopDaily(c) {
-  if (!confirm(`Stop sending daily updates of ${c.company} to ${c.bank_name}?`)) return;
+  if (!confirm(`Stop sending daily updates of ${c.company} to ${c.bank_name}? This withdraws your consent for future updates.`)) return;
   $("monErr").textContent = "";
   try {
     await api("/api/monitor/stop", { id: c.id });
@@ -343,8 +337,10 @@ $("another").onclick = () => location.reload();
 
 // Tally check: finds which request, if any, makes this Tally stop answering,
 // and sends the result to support (with the code typed below, if any).
-$("checkBtn").onclick = async () => {
-  if (!confirm("Run a Tally check? It takes a minute or two. Save your work in Tally first.")) return;
+$("checkBtn").onclick = async (e) => {
+  e.preventDefault();
+  if (!confirm("Run a connection check? It takes a minute or two and sends the results to our support team. Please save your work in Tally first.")) return;
+  lastJob = "check";
   try {
     await api("/api/diagnose", { code: $("code").value, company: $("company").value });
     enable("s4", true);

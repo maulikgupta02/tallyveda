@@ -30,10 +30,13 @@ import (
 var indexHTML string
 
 const (
-	ConsentText = "I am authorised to share this company's accounting data. I consent to %s receiving the books of %s " +
-		"(ledgers, vouchers, outstanding bills and stock values) for the period %s to %s to assess a credit application."
-	MonitoringConsentText = " I also consent to this computer sending an updated copy to %s daily, " +
-		"until I or the bank stop it."
+	// The consent recorded with every share; the connector page shows the same words.
+	ConsentText = "I confirm that I am authorised to share the accounting data of %[2]s, and I consent to its books of " +
+		"account (ledgers, vouchers, outstanding bills and stock values) for %[3]s to %[4]s being sent encrypted to " +
+		"Tally Connector and shared with %[1]s and the banks and financial institutions it works with, solely to " +
+		"assess and process my credit application. Technical diagnostics are also sent to help resolve problems."
+	MonitoringConsentText = " I also consent to updates being sent automatically each day while Tally is open on " +
+		"this computer, until I or %[1]s stop them."
 )
 
 type App struct {
@@ -60,7 +63,6 @@ type Job struct {
 	Waiting     string    `json:"waiting,omitempty"`
 	WaitingSecs int       `json:"waiting_secs"`
 	Notes       []string  `json:"notes,omitempty"`
-	Log         []string  `json:"log,omitempty"`
 	waitingFrom time.Time `json:"-"`
 }
 
@@ -85,58 +87,28 @@ func (a *App) notify(event, detail string) {
 	}
 }
 
-// Recent keeps the last lines of the log for the page's "Show details".
-var Recent = &ring{max: 200}
-
-type ring struct {
-	mu    sync.Mutex
-	max   int
-	lines []string
-}
-
-func (r *ring) Write(p []byte) (int, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, l := range strings.Split(strings.TrimRight(string(p), "\n"), "\n") {
-		r.lines = append(r.lines, l)
-	}
-	if over := len(r.lines) - r.max; over > 0 {
-		r.lines = r.lines[over:]
-	}
-	return len(p), nil
-}
-
-func (r *ring) last(n int) []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(r.lines) < n {
-		n = len(r.lines)
-	}
-	return append([]string(nil), r.lines[len(r.lines)-n:]...)
-}
-
 // hint turns an error into what the user should do next.
 func hint(err string) string {
 	e := strings.ToLower(err)
 	switch {
 	case strings.Contains(e, "already being synced"):
-		return "Another connector window is already sending this company. Close it, or wait for it to finish."
+		return "This company is already being shared from another Tally Connector window. Please close that window or wait for it to finish."
 	case strings.Contains(e, "code is not valid"), strings.Contains(e, "has expired"):
-		return "This code has been used or has expired. Ask the bank for a new code."
+		return "This access code has already been used or has expired. Please request a new code."
 	case strings.Contains(e, "took too long"), strings.Contains(e, "still busy"), strings.Contains(e, "restart tally"):
-		return "Tally stopped answering. If Tally shows a message box, close it. If Tally is frozen, end it in Task Manager " +
-			"(Ctrl+Shift+Esc), open it again with the company, and press Continue sharing: the part that froze is skipped."
+		return "Tally stopped responding. If Tally shows a message, please close it. Otherwise close Tally from Task Manager " +
+			"(Ctrl+Shift+Esc), open it again with your company, and select Continue sharing. Sharing resumes where it stopped."
 	case strings.Contains(e, "not open in tally"), strings.Contains(e, "loaded"):
-		return "Open (load) this company in Tally, then press Continue sharing."
+		return "Please open this company in Tally, then select Continue sharing."
 	case strings.Contains(e, "tally is not reachable"), strings.Contains(e, "tally is not open"):
-		return "Tally isn't answering on port 9000. Check that Tally is open with the company loaded, and that " +
-			"F1 > Settings > Connectivity says \"Both\" with port 9000."
-	case strings.Contains(e, "bank's server"), strings.Contains(e, "upload failed"), strings.Contains(e, "dial tcp"):
-		return "The connector could not reach the bank's server. Check the internet connection, then press Continue sharing."
+		return "Tally Connector cannot reach Tally. Please make sure Tally is open with your company, and that " +
+			"F1 > Settings > Connectivity is set to \"Both\" on port 9000."
+	case strings.Contains(e, "server"), strings.Contains(e, "upload failed"), strings.Contains(e, "dial tcp"):
+		return "Tally Connector could not reach its server. Please check your internet connection, then select Continue sharing."
 	case strings.Contains(e, "no vouchers were found"):
-		return "Tally has no entries for this company in the period. Check that the right company is selected."
+		return "Tally has no entries for this company in the requested period. Please check that the right company is selected."
 	}
-	return "Press Continue sharing to try again. If it keeps failing, send the details below to the bank."
+	return "Please select Continue sharing to try again. If the problem continues, use \"Run a connection check\" at the bottom of this page."
 }
 
 // Listen starts the UI on a free local port and returns its URL.
@@ -337,7 +309,7 @@ func CheckTally(ctx context.Context, t *tally.Client, b *upload.Backend, version
 	switch {
 	case auth == nil:
 	case sendErr == nil:
-		report += "\nThis report was sent to the bank's support team."
+		report += "\nThe results were sent to the support team."
 	default:
 		report += "\nThe report could not be sent (" + sendErr.Error() + "). It is saved as tally-check.txt in %APPDATA%\\TallyConnector."
 	}
@@ -417,7 +389,6 @@ func (a *App) progress(w http.ResponseWriter, r *http.Request) {
 	if j.Waiting != "" {
 		j.WaitingSecs = int(time.Since(j.waitingFrom).Seconds())
 	}
-	j.Log = Recent.last(40)
 	writeJSON(w, 200, j)
 }
 
@@ -461,7 +432,7 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 	now := time.Now().Format(time.RFC3339)
 	o := extract.Options{Company: *company, From: from, To: to, Version: version, TallyURL: t.URL, Banner: banner,
 		ConsentBy: strings.TrimSpace(in.ConsentName), ConsentMsg: consent}
-	progress("Connecting to "+info.BankName, 0.01)
+	progress("Connecting securely", 0.01)
 	st, err := b.StartWithCode(ctx, in.Code, upload.StartRequest{
 		Company: company, Period: extract.Period{From: from.Format("2006-01-02"), To: to.Format("2006-01-02")},
 		TallyAlterID: company.AltVchID, MonitoringOptIn: monitoring, ConnectorVersion: version, Machine: extract.MachineOf(o),
@@ -490,7 +461,7 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 	if err != nil {
 		return "", fmt.Errorf("%w. Press \"Continue sharing\" above to carry on from where it stopped", err)
 	}
-	summary = fmt.Sprintf("Shared %s with %s. %s", company.Name, info.BankName, summary)
+	summary = fmt.Sprintf("%s has been shared with %s. %s", company.Name, info.BankName, summary)
 	if setupErr != nil {
 		return summary + " Daily updates could not be set up automatically (" + setupErr.Error() + ").", nil
 	}
@@ -506,8 +477,8 @@ func finishEntry(c *monitor.Config, summary string) string {
 	}
 	c.Pending, c.LastSuccess, c.LastError = false, time.Now().Format(time.RFC3339), ""
 	monitor.Put(c)
-	return summary + fmt.Sprintf(" Daily updates are on: this computer will send %s what changed each day, "+
-		"whenever Tally is open. You can stop this at any time by opening the connector again.", c.BankName)
+	return summary + fmt.Sprintf(" Daily updates are on: changes will be sent to %s each day while Tally is open on "+
+		"this computer. You can stop them at any time from this page.", c.BankName)
 }
 
 // Period is the extraction window: the last `months` months up to today,

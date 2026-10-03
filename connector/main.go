@@ -63,12 +63,12 @@ func main() {
 	extract.FieldMemory = monitor.FieldMemory{}
 	extract.OnSlow = support.OnSlow
 	logFile, _ := monitor.OpenLog()
-	// stderr last: it may be invalid in the GUI build, and MultiWriter stops at
-	// the first writer that fails.
-	logOut := io.MultiWriter(app.Recent, os.Stderr)
+	// File first: stderr may be invalid in the GUI build, and MultiWriter stops
+	// at the first writer that fails.
+	var logOut io.Writer = os.Stderr
 	if logFile != nil {
 		defer logFile.Close()
-		logOut = io.MultiWriter(logFile, app.Recent, os.Stderr)
+		logOut = io.MultiWriter(logFile, os.Stderr)
 	}
 	log.SetOutput(logOut)
 	log.SetFlags(log.LstdFlags)
