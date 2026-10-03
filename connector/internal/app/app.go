@@ -214,13 +214,9 @@ func (a *App) diagnose(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CheckTally runs the diagnostic, saves it next to the log and uploads it.
+// CheckTally runs the diagnostic, saves it next to the log and uploads it as
+// it goes (with the code typed on the page, or a saved company's token).
 func CheckTally(ctx context.Context, t *tally.Client, b *upload.Backend, version, code, company string, progress extract.Progress) string {
-	report := diagnose.Run(ctx, t, company, version, progress)
-	log.Printf("tally check:\n%s", report)
-	if d, err := monitor.Dir(); err == nil {
-		os.WriteFile(filepath.Join(d, "tally-check.txt"), []byte(report), 0o600)
-	}
 	var auth map[string]string
 	if code = strings.TrimSpace(code); code != "" {
 		auth = upload.CodeAuth(code)
@@ -233,12 +229,28 @@ func CheckTally(ctx context.Context, t *tally.Client, b *upload.Backend, version
 		}
 		auth, b = upload.TokenAuth(c.Token), upload.New(c.Server)
 	}
-	if auth != nil {
-		if err := b.SendLog(ctx, auth, "diagnose", report, ""); err == nil {
-			report += "\nThis report was sent to the bank's support team."
-		} else {
-			report += "\nThe report could not be sent (" + err.Error() + "). It is saved as tally-check.txt in %APPDATA%\\TallyConnector."
+	session := fmt.Sprintf("check-%d", time.Now().Unix())
+	var sendErr error
+	send := func(text string) {
+		if auth == nil {
+			return
 		}
+		sctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		sendErr = b.SendLog(sctx, auth, "diagnose", text, session)
+	}
+	report := diagnose.Run(ctx, t, company, version, progress, send)
+	log.Printf("tally check:\n%s", report)
+	if d, err := monitor.Dir(); err == nil {
+		os.WriteFile(filepath.Join(d, "tally-check.txt"), []byte(report), 0o600)
+	}
+	send(report)
+	switch {
+	case auth == nil:
+	case sendErr == nil:
+		report += "\nThis report was sent to the bank's support team."
+	default:
+		report += "\nThe report could not be sent (" + sendErr.Error() + "). It is saved as tally-check.txt in %APPDATA%\\TallyConnector."
 	}
 	return report
 }

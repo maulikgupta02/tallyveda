@@ -59,6 +59,7 @@ func main() {
 	if len(os.Args) > 1 && !*monitorRun {
 		attachConsole() // GUI build: show output when run from a command prompt
 	}
+	extract.FieldMemory = monitor.FieldMemory{}
 	logFile, _ := monitor.OpenLog()
 	var logOut io.Writer = os.Stderr
 	if logFile != nil {

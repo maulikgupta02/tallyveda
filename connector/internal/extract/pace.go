@@ -69,6 +69,7 @@ func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn fun
 		case <-time.After(pause):
 		}
 	}
+	log.Printf("tally: sending %s", what)
 	rctx, cancel := context.WithTimeout(ctx, limit)
 	start := time.Now()
 	err := fn(rctx)

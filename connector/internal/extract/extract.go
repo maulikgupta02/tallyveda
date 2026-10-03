@@ -31,10 +31,9 @@ type Progress func(stage string, fraction float64)
 // Balances are computed from every voucher in the period, which is the slow
 // part, so they are fetched separately in small batches (see batch.go).
 var (
-	ledgerMasterFetch    = []string{"Name", "Parent", "MasterId", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
-	ledgerEssentialFetch = []string{"Name", "Parent", "MasterId", "ReservedName"}
-	ledgerBalanceFetch   = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
-	stockValueFetch      = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
+	ledgerMasterFetch  = []string{"Name", "Parent", "MasterId", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
+	ledgerBalanceFetch = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
+	stockValueFetch    = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
 )
 
 // Run extracts the whole period in one go and returns it as a single bundle
@@ -153,18 +152,11 @@ func readMasters(ctx context.Context, p *pacer, company string, f float64) (*mas
 		m.ledgers, err = p.c.Collection(ctx, company, "Ledger", ledgerMasterFetch, time.Time{}, time.Time{})
 		return err
 	})
-	if err != nil && ctx.Err() == nil && !errors.Is(err, tally.ErrNotRunning) {
-		// Some Tally releases choke on one of the optional fields; the
-		// essentials are enough for the analysis.
-		log.Printf("tally: ledger masters failed (%v); retrying with essential fields only", err)
-		m.warnings = append(m.warnings, fmt.Sprintf("ledger GSTIN, state and credit period could not be read: %v", err))
-		err = p.do(ctx, quickLimit, "ledger masters (essential fields)", func(ctx context.Context) (err error) {
-			m.ledgers, err = p.c.Collection(ctx, company, "Ledger", ledgerEssentialFetch, time.Time{}, time.Time{})
-			return err
-		})
-	}
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
+	}
+	if err := readLedgerFields(ctx, p, company, m); err != nil {
+		return nil, err
 	}
 
 	p.report("Reading voucher types", f+0.03)
@@ -183,6 +175,65 @@ func readMasters(ctx context.Context, p *pacer, company string, f float64) (*mas
 		m.voucherTypes = append(m.voucherTypes, Group{Name: n.ObjectName(), Parent: cleanParent(n.Field("PARENT")), ReservedName: n.Field("RESERVEDNAME")})
 	}
 	return m, nil
+}
+
+// Optional ledger fields are asked for one at a time, after the essentials:
+// on some Tally installs one of them makes Tally stop answering (2026-10-04),
+// and asking separately pins down which.
+var optionalLedgerFields = []string{"IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
+
+var fieldLimit = 30 * time.Second
+
+// FieldMemory, if set, remembers fields that froze this Tally so later runs
+// skip them (see monitor.FieldMemory).
+var FieldMemory interface {
+	Skipped(field string) bool
+	Froze(field string)
+}
+
+// readLedgerFields adds each optional field to the ledger masters. A field
+// that times out is remembered and skipped from then on; the sync carries on
+// once Tally answers again.
+func readLedgerFields(ctx context.Context, p *pacer, company string, m *masters) error {
+	byName := make(map[string]*tally.Node, len(m.ledgers))
+	for _, n := range m.ledgers {
+		byName[n.ObjectName()] = n
+	}
+	for _, f := range optionalLedgerFields {
+		if FieldMemory != nil && FieldMemory.Skipped(f) {
+			m.warnings = append(m.warnings, fmt.Sprintf("ledger field %s skipped: it froze this Tally before", f))
+			continue
+		}
+		var nodes []*tally.Node
+		err := p.do(ctx, fieldLimit, "ledger field "+f, func(ctx context.Context) (err error) {
+			nodes, err = p.c.Collection(ctx, company, "Ledger", []string{"Name", f}, time.Time{}, time.Time{})
+			return err
+		})
+		var reqErr *tally.RequestError
+		if errors.Is(err, errSlow) || errors.As(err, &reqErr) {
+			if FieldMemory != nil && errors.Is(err, errSlow) {
+				FieldMemory.Froze(f) // Tally recovered, but don't make it wait again
+			}
+			log.Printf("tally: ledger field %s failed (%v); continuing without it", f, err)
+			m.warnings = append(m.warnings, fmt.Sprintf("ledger field %s could not be read: %v", f, err))
+			continue
+		}
+		if err != nil {
+			if FieldMemory != nil && ctx.Err() == nil {
+				FieldMemory.Froze(f) // Tally never came back: don't ask again
+			}
+			return fmt.Errorf("reading ledger field %s: %w. Restart Tally, then continue; this field will be skipped", f, err)
+		}
+		tag := strings.ToUpper(f)
+		for _, n := range nodes {
+			if dst := byName[n.ObjectName()]; dst != nil {
+				if v := n.Field(tag); v != "" {
+					dst.Attrs[tag] = v
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // ledgersWithBalances builds the bundle's ledgers; balances may be nil.

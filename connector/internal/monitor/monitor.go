@@ -444,8 +444,9 @@ func LogTail(n int64) string {
 	return string(b)
 }
 
-// ShipLogs sends the tail of connector.log to the server every minute while a
-// sync runs, so support can see where it is even if Tally stops answering.
+// ShipLogs sends the tail of connector.log to the server at once and then
+// every 10 seconds while a sync runs, so support can see which Tally request
+// was in flight even if Tally freezes and the connector is closed.
 // The returned func stops it after one last upload.
 func ShipLogs(server, token string) func() {
 	b := upload.New(server)
@@ -461,7 +462,8 @@ func ShipLogs(server, token string) func() {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		t := time.NewTicker(time.Minute)
+		send()
+		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for {
 			select {
@@ -480,4 +482,39 @@ func ShipLogs(server, token string) func() {
 func Logger(w io.Writer) func(string, ...any) {
 	l := log.New(w, "", log.LstdFlags)
 	return func(f string, a ...any) { l.Printf(f, a...) }
+}
+
+// FieldMemory remembers, in tally-skip.json, Tally fields that froze this
+// computer's Tally, so later syncs skip them (see extract.FieldMemory).
+type FieldMemory struct{}
+
+func skipPath() string {
+	d, _ := Dir()
+	return filepath.Join(d, "tally-skip.json")
+}
+
+func (FieldMemory) list() []string {
+	var out []string
+	if raw, err := os.ReadFile(skipPath()); err == nil {
+		json.Unmarshal(raw, &out)
+	}
+	return out
+}
+
+func (m FieldMemory) Skipped(field string) bool {
+	for _, f := range m.list() {
+		if f == field {
+			return true
+		}
+	}
+	return false
+}
+
+func (m FieldMemory) Froze(field string) {
+	if m.Skipped(field) {
+		return
+	}
+	raw, _ := json.Marshal(append(m.list(), field))
+	os.WriteFile(skipPath(), raw, 0o600)
+	log.Printf("remembering that Tally froze on field %s; it will be skipped from now on", field)
 }

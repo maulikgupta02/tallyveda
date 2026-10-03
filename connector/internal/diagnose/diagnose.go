@@ -26,7 +26,12 @@ type step struct {
 
 // Run checks Tally at c and returns a plain-text report. company may be "";
 // then the first company Tally lists is used.
-func Run(ctx context.Context, c *tally.Client, company, version string, progress func(string, float64)) string {
+// report, if not nil, receives the report so far before and after every step,
+// so a check that freezes Tally is still visible if the connector is closed.
+func Run(ctx context.Context, c *tally.Client, company, version string, progress func(string, float64), report func(string)) string {
+	if report == nil {
+		report = func(string) {}
+	}
 	var out strings.Builder
 	fmt.Fprintf(&out, "Tally check by connector %s on %s, %s\nTally at %s\n\n", version, runtime.GOOS, time.Now().Format(time.RFC1123), c.URL)
 
@@ -98,6 +103,7 @@ func Run(ctx context.Context, c *tally.Client, company, version string, progress
 
 	for i, s := range steps {
 		progress("Checking: "+s.name, float64(i+1)/float64(len(steps)+1))
+		report(out.String() + "...   " + s.name + ": waiting for Tally\n")
 		rctx, cancel := context.WithTimeout(ctx, stepLimit)
 		start := time.Now()
 		res, err := s.run(rctx)
@@ -118,6 +124,7 @@ func Run(ctx context.Context, c *tally.Client, company, version string, progress
 		default:
 			fmt.Fprintf(&out, "ok    %s (%s): %s\n", s.name, took, res)
 		}
+		report(out.String())
 		select {
 		case <-ctx.Done():
 			return out.String()

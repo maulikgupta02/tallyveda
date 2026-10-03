@@ -47,8 +47,13 @@
   2026-04-01) still froze Tally before the ledger list was sent.** The data is tiny, so this is
   not volume: some request shape upsets that Tally. 0.2.2 closes the HTTP connection after every
   Tally request, reads ledger masters under a 90 s limit with a fallback to essential fields,
-  ships its log to the server and adds `-diagnose`/*Check Tally* to pinpoint the request. Next
-  step: run the check on that PC and read the result on `/admin/msmes/{id}`.
+  ships its log to the server and adds `-diagnose`/*Check Tally* to pinpoint the request. A 0.2.2
+  run on that PC froze Tally again and was killed within a minute, before the log was sent.
+  0.2.3 logs "tally: sending X" before every request, ships the log at once and then every 10 s,
+  and streams the Tally check step by step. It also reads ledger masters with essential fields
+  only, then each optional field (IsBillWiseOn, BillCreditPeriod, PartyGSTIN, LedStateName,
+  StateName, CountryName) alone with a 30 s limit. A field that times out is recorded in
+  `%APPDATA%\TallyConnector\tally-skip.json` and never requested again on that PC.
 - **First real install (2026-10-03) froze Tally at "Reading ledgers"**: the old single ledger
   request asked Tally to compute every ledger's balances at once. Fixed with paced, per-group
   requests in `MasterId` batches (see architecture.md, `internal/extract/`). Still unverified
