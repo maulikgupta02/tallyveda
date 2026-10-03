@@ -1,0 +1,25 @@
+backend/app/templates/bank_requests.html
+  1eb726b0b7aadb53 1-97
+backend/app/templates/_shell.html
+  1eb726b0b7aadb53 1-37,39-59,61-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "d36759c7d35f412e97c236e2eb3f2f95c226c41b",
+  "prompts": {
+    "1eb726b0b7aadb53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1f9130fb-99be-40c4-84b1-3fa41f9541db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 160,
+      "total_deletions": 0,
+      "accepted_lines": 158,
+      "overriden_lines": 2
+    }
+  }
+}
