@@ -80,3 +80,14 @@ func (s *Session) Finish(ctx context.Context) error {
 	_, err := s.post(ctx, "finish", map[string]any{})
 	return err
 }
+
+// SendLog uploads the connector's log or a Tally diagnostic for support.
+// headers carry a token (Bearer) or a one-time code (X-Link-Code); the code
+// is not used up. Sends with the same session replace each other.
+func (b *Backend) SendLog(ctx context.Context, headers map[string]string, kind, text, session string) error {
+	return b.upload(ctx, "/api/connector/log", headers, map[string]string{"kind": kind, "text": text, "session": session}, nil)
+}
+
+// TokenAuth and CodeAuth are the two ways to authorise SendLog.
+func TokenAuth(token string) map[string]string { return bearer(token) }
+func CodeAuth(code string) map[string]string   { return map[string]string{"X-Link-Code": code} }

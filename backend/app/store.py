@@ -198,6 +198,14 @@ CREATE TABLE IF NOT EXISTS sync_sessions (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sync_sessions_by_app ON sync_sessions(application_id, created_at);
+CREATE TABLE IF NOT EXISTS connector_logs (
+    id TEXT PRIMARY KEY,
+    application_id TEXT NOT NULL,
+    kind TEXT NOT NULL,            -- log | diagnose
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS connector_logs_by_app ON connector_logs(application_id, created_at);
 """
 
 # Columns added after the first release; applied to existing databases.
@@ -374,6 +382,35 @@ def prune_report_files(app_id: str, keep_days: int) -> int:
         delete_report_file(app_id, r["id"], "report.html")
         pruned += 1
     return pruned
+
+
+CONNECTOR_LOGS_KEPT = 20
+
+
+def save_connector_log(app_id: str, kind: str, body: str, session: str = "") -> None:
+    """Keep the connector's own log (and diagnostics) so support can see what
+    happened on the MSME's computer. A running sync re-sends its log every
+    minute; `session` makes those uploads replace each other."""
+    log_id = f"{app_id}:{session}" if session else uuid.uuid4().hex
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO connector_logs (id, application_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT (id) DO UPDATE SET body = excluded.body, created_at = excluded.created_at",
+            (log_id, app_id, kind, body, now().isoformat()),
+        )
+        old = conn.execute(
+            "SELECT id FROM connector_logs WHERE application_id = ? ORDER BY created_at DESC", (app_id,)
+        ).fetchall()[CONNECTOR_LOGS_KEPT:]
+        for r in old:
+            conn.execute("DELETE FROM connector_logs WHERE id = ?", (r["id"],))
+
+
+def list_connector_logs(app_id: str) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM connector_logs WHERE application_id = ? ORDER BY created_at DESC", (app_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def raw_report_ids(app_id: str) -> set[str]:
@@ -632,7 +669,7 @@ def delete_application(app_id: str) -> None:
         if IS_POSTGRES:
             conn.execute("DELETE FROM report_files WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM reports WHERE application_id = ?", (app_id,))
-        for table in ("books", "book_vouchers", "sync_sessions"):
+        for table in ("books", "book_vouchers", "sync_sessions", "connector_logs"):
             conn.execute(f"DELETE FROM {table} WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM users WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM applications WHERE id = ?", (app_id,))

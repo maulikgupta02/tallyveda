@@ -12,10 +12,13 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"tallyconnector/internal/diagnose"
 	"tallyconnector/internal/extract"
 	"tallyconnector/internal/monitor"
 	"tallyconnector/internal/tally"
@@ -75,6 +78,7 @@ func (a *App) Listen(port int) (string, error) {
 	mux.HandleFunc("/api/monitor", a.guard(a.monitorStatus))
 	mux.HandleFunc("/api/monitor/stop", a.guard(a.monitorStop))
 	mux.HandleFunc("/api/resume", a.guard(a.resume))
+	mux.HandleFunc("/api/diagnose", a.guard(a.diagnose))
 	go http.Serve(ln, mux)
 	return fmt.Sprintf("http://%s/?t=%s", ln.Addr().String(), a.token), nil
 }
@@ -198,6 +202,45 @@ func (a *App) monitorStop(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("daily updates for %s stopped by the user", c.Company)
 	writeJSON(w, 200, map[string]bool{"stopped": true})
+}
+
+// diagnose runs the Tally check and sends the report to the server when it
+// can (with the code typed on the page, or a saved company's token).
+func (a *App) diagnose(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Code, Company string }
+	json.NewDecoder(r.Body).Decode(&in)
+	a.run(w, func(ctx context.Context, progress extract.Progress) (string, error) {
+		return CheckTally(ctx, a.Tally, a.Backend, a.Version, in.Code, in.Company, progress), nil
+	})
+}
+
+// CheckTally runs the diagnostic, saves it next to the log and uploads it.
+func CheckTally(ctx context.Context, t *tally.Client, b *upload.Backend, version, code, company string, progress extract.Progress) string {
+	report := diagnose.Run(ctx, t, company, version, progress)
+	log.Printf("tally check:\n%s", report)
+	if d, err := monitor.Dir(); err == nil {
+		os.WriteFile(filepath.Join(d, "tally-check.txt"), []byte(report), 0o600)
+	}
+	var auth map[string]string
+	if code = strings.TrimSpace(code); code != "" {
+		auth = upload.CodeAuth(code)
+	} else if list, _ := monitor.LoadAll(); len(list) > 0 {
+		c := list[0]
+		for _, x := range list {
+			if x.Company == company {
+				c = x
+			}
+		}
+		auth, b = upload.TokenAuth(c.Token), upload.New(c.Server)
+	}
+	if auth != nil {
+		if err := b.SendLog(ctx, auth, "diagnose", report, ""); err == nil {
+			report += "\nThis report was sent to the bank's support team."
+		} else {
+			report += "\nThe report could not be sent (" + err.Error() + "). It is saved as tally-check.txt in %APPDATA%\\TallyConnector."
+		}
+	}
+	return report
 }
 
 // resume continues an interrupted share in the background.
@@ -336,6 +379,7 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 		return "", err
 	}
 	defer unlock()
+	defer monitor.ShipLogs(b.URL, st.Token)()
 	summary, err := extract.Sync(ctx, t, o, st.Plan, &upload.Session{B: b, Token: st.Token, SyncID: st.SyncID}, progress)
 	if err != nil {
 		return "", fmt.Errorf("%w. Press \"Continue sharing\" above to carry on from where it stopped", err)

@@ -43,6 +43,12 @@
   names on TallyPrime 4+, and Day Book performance on companies with >100k vouchers. Any
   change to `connector/internal/tally/` should be treated as unverified until tested against
   real Tally, regardless of how clean the mock-based tests look.
+- **Second attempt (2026-10-04, connector 0.2.1, TallyPrime, company with books only from
+  2026-04-01) still froze Tally before the ledger list was sent.** The data is tiny, so this is
+  not volume: some request shape upsets that Tally. 0.2.2 closes the HTTP connection after every
+  Tally request, reads ledger masters under a 90 s limit with a fallback to essential fields,
+  ships its log to the server and adds `-diagnose`/*Check Tally* to pinpoint the request. Next
+  step: run the check on that PC and read the result on `/admin/msmes/{id}`.
 - **First real install (2026-10-03) froze Tally at "Reading ledgers"**: the old single ledger
   request asked Tally to compute every ledger's balances at once. Fixed with paced, per-group
   requests in `MasterId` batches (see architecture.md, `internal/extract/`). Still unverified

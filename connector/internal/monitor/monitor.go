@@ -381,6 +381,7 @@ func SyncEntry(ctx context.Context, c *Config, version string, progress extract.
 	}
 	from, to := extract.Window(*co, months, time.Now())
 	o := extract.Options{Company: *co, From: from, To: to, Version: version, TallyURL: tc.URL, Banner: banner, ConsentBy: c.ConsentBy}
+	defer ShipLogs(c.Server, c.Token)()
 	backend := upload.New(c.Server)
 	st, err := backend.Start(ctx, c.Token, upload.StartRequest{
 		Company: co, Period: extract.Period{From: from.Format("2006-01-02"), To: to.Format("2006-01-02")},
@@ -407,6 +408,56 @@ func Lock(c *Config) (func(), error) {
 		return nil, fmt.Errorf("%s is already being synced by another connector window", c.Company)
 	}
 	return release, nil
+}
+
+// LogTail returns up to the last n bytes of connector.log.
+func LogTail(n int64) string {
+	d, err := Dir()
+	if err != nil {
+		return ""
+	}
+	f, err := os.Open(filepath.Join(d, "connector.log"))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err == nil && st.Size() > n {
+		f.Seek(st.Size()-n, io.SeekStart)
+	}
+	b, _ := io.ReadAll(f)
+	return string(b)
+}
+
+// ShipLogs sends the tail of connector.log to the server every minute while a
+// sync runs, so support can see where it is even if Tally stops answering.
+// The returned func stops it after one last upload.
+func ShipLogs(server, token string) func() {
+	b := upload.New(server)
+	session := fmt.Sprintf("%d", time.Now().Unix())
+	send := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := b.SendLog(ctx, upload.TokenAuth(token), "log", LogTail(96<<10), session); err != nil {
+			log.Printf("could not send the log to the server: %v", err)
+		}
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				send()
+				return
+			case <-t.C:
+				send()
+			}
+		}
+	}()
+	return func() { close(stop); <-done }
 }
 
 // Logger returns a printf-style logger writing to w with timestamps.

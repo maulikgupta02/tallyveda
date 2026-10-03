@@ -53,6 +53,7 @@ func main() {
 	monitorRun := flag.Bool("monitor-run", false, "run the scheduled daily check")
 	monitorStop := flag.Bool("monitor-stop", false, "stop daily updates and tell the bank")
 	utf8 := flag.Bool("utf8", false, "send requests to Tally as UTF-8 instead of UTF-16")
+	check := flag.Bool("diagnose", false, "check which Tally requests work, print the report and send it to the server (with -code, or a saved company's token)")
 	flag.Parse()
 
 	if len(os.Args) > 1 && !*monitorRun {
@@ -90,6 +91,10 @@ func main() {
 	tc.UTF16 = !*utf8
 	backend := upload.New(*server)
 
+	if *check {
+		fmt.Println(app.CheckTally(ctx, tc, backend, version, *code, *company, func(stage string, f float64) { log.Print(stage) }))
+		return
+	}
 	if *company != "" && (*code != "" || *dump != "") {
 		os.Exit(headless(ctx, tc, backend, *code, *company, *months, *consent, *dump, *monitoring))
 	}

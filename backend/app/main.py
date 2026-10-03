@@ -492,6 +492,30 @@ def finish_sync(sync_id: str) -> None:
         store.request_refresh(app_id)  # after the report, which clears the flag: full re-read at the next check-in
 
 
+class ConnectorLogIn(BaseModel):
+    kind: str = "log"
+    text: str
+    session: str = ""
+
+
+@app.post("/api/connector/log")
+async def connector_log(request: Request):
+    """The connector's log or a Tally diagnostic, for support. Accepts a
+    connector token, or a live one-time code (which it does not use up), so a
+    check can be sent before the first share."""
+    code = request.headers.get("x-link-code", "")
+    a = _check_code(code, request.client.host) if code else _check_token(request)
+    _, data = await _read_json(request)
+    try:
+        body = ConnectorLogIn.model_validate(data)
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid log: {e}")
+    if body.kind not in ("log", "diagnose"):
+        raise HTTPException(400, "kind must be log or diagnose")
+    store.save_connector_log(a["id"], body.kind, body.text[-200_000:], body.session[:64])
+    return {"status": "saved"}
+
+
 @app.post("/api/connector/monitor/stop")
 def monitor_stop(request: Request):
     a = _check_token(request)
@@ -1066,6 +1090,7 @@ def admin_msme_detail(app_id: str, user: dict = Depends(platform_user)):
         user=user, a=a, tenant=store.get_tenant(a["tenant_id"]), reports=store.list_reports(app_id),
         msme_login=store.msme_login_for(app_id), due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
         overdue_days=config.MONITOR_OVERDUE_DAYS, monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
+        connector_logs=store.list_connector_logs(app_id),
     )
 
 

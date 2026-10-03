@@ -61,6 +61,7 @@
   <section class="card" id="s1">
     <div class="step"><span class="num">1</span>Connect to Tally</div>
     <div id="tallyMsg" class="muted">Looking for Tally…</div>
+    <button id="checkBtn" class="secondary">Check Tally</button>
     <div id="tallyHelp" class="hidden">
       <ol class="help">
         <li>Open TallyPrime and load your company.</li>
@@ -99,7 +100,7 @@
     <div id="jobErr" class="err"></div>
     <div id="doneMsg" class="hidden">
       <p class="done">Done. Your bank has received the data.</p>
-      <p class="muted" id="summary"></p>
+      <p class="muted" id="summary" style="white-space: pre-wrap"></p>
       <p class="muted">You can close this tab.</p>
       <button id="another" class="secondary">Share another company</button>
     </div>
@@ -284,6 +285,20 @@ async function stopDaily(c) {
 }
 
 $("another").onclick = () => location.reload();
+
+// Tally check: finds which request, if any, makes this Tally stop answering,
+// and sends the result to support (with the code typed below, if any).
+$("checkBtn").onclick = async () => {
+  if (!confirm("Run a Tally check? It takes a minute or two. Save your work in Tally first.")) return;
+  try {
+    await api("/api/diagnose", { code: $("code").value, company: $("company").value });
+    enable("s4", true);
+    ["s1", "s2", "s3"].forEach(id => enable(id, false));
+    poll();
+  } catch (e) {
+    $("tallyMsg").textContent = e.message;
+  }
+};
 
 // Heartbeat: the connector exits a little while after this tab is closed.
 setInterval(() => api("/api/ping").catch(() => {}), 10000);

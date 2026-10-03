@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"runtime"
@@ -30,9 +31,10 @@ type Progress func(stage string, fraction float64)
 // Balances are computed from every voucher in the period, which is the slow
 // part, so they are fetched separately in small batches (see batch.go).
 var (
-	ledgerMasterFetch  = []string{"Name", "Parent", "MasterId", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
-	ledgerBalanceFetch = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
-	stockValueFetch    = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
+	ledgerMasterFetch    = []string{"Name", "Parent", "MasterId", "ReservedName", "IsBillWiseOn", "BillCreditPeriod", "PartyGSTIN", "LedStateName", "StateName", "CountryName"}
+	ledgerEssentialFetch = []string{"Name", "Parent", "MasterId", "ReservedName"}
+	ledgerBalanceFetch   = []string{"Name", "Parent", "OpeningBalance", "ClosingBalance"}
+	stockValueFetch      = []string{"Name", "Parent", "BaseUnits", "ClosingBalance", "ClosingValue"}
 )
 
 // Run extracts the whole period in one go and returns it as a single bundle
@@ -147,10 +149,20 @@ func readMasters(ctx context.Context, p *pacer, company string, f float64) (*mas
 	}
 
 	p.report("Reading ledgers", f+0.02)
-	err = p.do(ctx, slowLimit, "ledger masters", func(ctx context.Context) (err error) {
+	err = p.do(ctx, quickLimit, "ledger masters", func(ctx context.Context) (err error) {
 		m.ledgers, err = p.c.Collection(ctx, company, "Ledger", ledgerMasterFetch, time.Time{}, time.Time{})
 		return err
 	})
+	if err != nil && ctx.Err() == nil && !errors.Is(err, tally.ErrNotRunning) {
+		// Some Tally releases choke on one of the optional fields; the
+		// essentials are enough for the analysis.
+		log.Printf("tally: ledger masters failed (%v); retrying with essential fields only", err)
+		m.warnings = append(m.warnings, fmt.Sprintf("ledger GSTIN, state and credit period could not be read: %v", err))
+		err = p.do(ctx, quickLimit, "ledger masters (essential fields)", func(ctx context.Context) (err error) {
+			m.ledgers, err = p.c.Collection(ctx, company, "Ledger", ledgerEssentialFetch, time.Time{}, time.Time{})
+			return err
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)
 	}

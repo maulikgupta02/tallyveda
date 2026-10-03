@@ -27,8 +27,10 @@ type Client struct {
 
 func NewClient(url string) *Client {
 	return &Client{
-		URL:   strings.TrimRight(url, "/"),
-		HTTP:  &http.Client{Timeout: 10 * time.Minute},
+		URL: strings.TrimRight(url, "/"),
+		// Tally's built-in HTTP server is minimal: one connection per request,
+		// closed afterwards, is the pattern it handles reliably.
+		HTTP:  &http.Client{Timeout: 10 * time.Minute, Transport: &http.Transport{DisableKeepAlives: true, Proxy: nil}},
 		UTF16: true,
 	}
 }
@@ -41,6 +43,7 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
+	req.Close = true
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("%w at %s: %v", ErrNotRunning, c.URL, err)
@@ -89,6 +92,7 @@ func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", contentType)
+	req.Close = true
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotRunning, err)

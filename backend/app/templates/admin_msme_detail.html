@@ -23,6 +23,7 @@
   a { color: var(--accent); text-decoration: none; cursor: pointer; }
   small { display: block; color: var(--muted); font-size: 12px; }
   .num { font-variant-numeric: tabular-nums; }
+  pre.log { max-height: 420px; overflow: auto; background: var(--bg, #f6f7f9); border: 1px solid var(--line, #e5e7eb); border-radius: 8px; padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
   .muted { color: var(--muted); } .small { font-size: 12px; margin: 10px 0 0; }
 
   .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
@@ -180,6 +181,21 @@
           </tbody>
         </table></div>
       </div>
+    </div>
+  </details>
+
+  <details class="manage"{% if connector_logs %} open{% endif %}>
+    <summary>Connector logs ({{ connector_logs|length }})</summary>
+    <div class="manage-body">
+      <p class="muted">Sent by the connector on the MSME's computer: its log during each sync, and the result of "Check Tally". Newest first.</p>
+      {% for l in connector_logs %}
+      <details>
+        <summary>{{ "Tally check" if l.kind == "diagnose" else "Sync log" }} · {{ l.created_at|when }}</summary>
+        <pre class="log">{{ l.body }}</pre>
+      </details>
+      {% else %}
+      <p class="muted">Nothing received yet. Connector 0.2.2 and later send these.</p>
+      {% endfor %}
     </div>
   </details>
 
