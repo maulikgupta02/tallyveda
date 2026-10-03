@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"time"
 
+	"tallyconnector/internal/activity"
 	"tallyconnector/internal/extract"
 	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
@@ -459,6 +460,7 @@ func ShipLogs(server, token string) func() {
 			log.Printf("could not send the log to the server: %v", err)
 		}
 	}
+	awake := activity.KeepAwake()
 	support.Reset()
 	support.Send = func(kind, text string) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -475,17 +477,26 @@ func ShipLogs(server, token string) func() {
 		send()
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
+		// Ticks come every 10 s; a much longer gap of wall-clock time means
+		// this process wasn't running (the computer slept or froze).
+		lastWall := time.Now().Round(0)
 		for {
 			select {
 			case <-stop:
 				send()
 				return
 			case <-t.C:
+				wall := time.Now().Round(0)
+				if gap := wall.Sub(lastWall); gap > 40*time.Second {
+					log.Printf("this computer was asleep or frozen for about %s (no activity from %s to %s)",
+						gap.Round(time.Second), lastWall.Format("15:04:05"), wall.Format("15:04:05"))
+				}
+				lastWall = wall
 				send()
 			}
 		}
 	}()
-	return func() { close(stop); <-done; support.Send = nil }
+	return func() { close(stop); <-done; support.Send = nil; awake() }
 }
 
 // Logger returns a printf-style logger writing to w with timestamps.
