@@ -99,6 +99,9 @@ func main() {
 		os.Exit(headless(ctx, tc, backend, *code, *company, *months, *consent, *dump, *monitoring))
 	}
 
+	if err := monitor.Upgrade(); err != nil {
+		log.Printf("could not update the installed connector: %v", err)
+	}
 	a := app.New(tc, backend, version)
 	url, err := a.Listen(*port)
 	if err != nil {

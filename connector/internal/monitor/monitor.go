@@ -206,6 +206,22 @@ func Stop(ctx context.Context, c *Config) error {
 	return nil
 }
 
+// Upgrade replaces the installed copy that the scheduled task runs with the
+// running exe, so opening a newer connector also updates the daily updates.
+func Upgrade() error {
+	list, err := LoadAll()
+	if err != nil {
+		return err
+	}
+	for _, c := range list {
+		if c.Daily {
+			_, err := installCopy()
+			return err
+		}
+	}
+	return nil
+}
+
 // StopAll stops every company's daily updates (the -monitor-stop flag).
 func StopAll(ctx context.Context) error {
 	list, err := LoadAll()
