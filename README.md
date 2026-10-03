@@ -129,7 +129,7 @@ TallyConnector.exe -monitor-stop                                 # withdraw moni
 cd connector && SERVER=https://tally.yourbank.in VERSION=1.0.0 ./build.sh
 ```
 
-This produces one `dist/TallyConnector.exe` that runs on every Windows PC (a 32-bit build, so it works on 32-bit, 64-bit and ARM Windows alike), plus `dist/tallyconnector-linux-amd64` for Linux cloud installs (see "Linux / cloud installs" above). Before giving the Windows exe to applicants, sign it with the bank's code-signing certificate (`signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f bank.pfx TallyConnector.exe`). Without a signature, Windows SmartScreen and antivirus tools will warn about an unsigned download.
+This produces one `dist/TallyConnector.exe` for 64-bit Windows 10/11 (ARM Windows runs it under emulation), with version info and a manifest embedded through goversioninfo (`go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest`), plus `dist/tallyconnector-linux-amd64` for Linux cloud installs (see "Linux / cloud installs" above). Before giving the Windows exe to applicants, sign it with the bank's code-signing certificate (`signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f bank.pfx TallyConnector.exe`). Without a signature, Windows SmartScreen and antivirus tools will warn about an unsigned download.
 
 ## Backend configuration (environment variables)
 
