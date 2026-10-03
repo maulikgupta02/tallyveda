@@ -312,6 +312,7 @@ async def connector_upload(request: Request, background: BackgroundTasks):
     a = _check_code(request.headers.get("x-link-code", ""), request.client.host)
     raw, bundle = await _read_bundle(request)
     report_id = _store_upload(a["id"], "initial", raw, bundle)
+    books.forget(a["id"])
     consent = bundle.get("consent") or {}
     store.mark_uploaded(a["id"], (bundle.get("company") or {}).get("name", ""), consent.get("accepted_by", ""),
                         request.client.host)
@@ -334,7 +335,7 @@ def _monitor_status(a: dict) -> dict:
         "reference": a["reference"],
         "months": a["months"],
         "last_report_at": a["last_report_at"],
-        "resume": books.open_session(a["id"]) is not None,
+        "resume": (books.open_session(a["id"]) or {}).get("mode") == "full",
     }
 
 
@@ -350,6 +351,7 @@ async def monitor_upload(request: Request, background: BackgroundTasks):
         raise HTTPException(403, "Monitoring has been stopped")
     raw, bundle = await _read_bundle(request)
     report_id = _store_upload(a["id"], "refresh", raw, bundle)
+    books.forget(a["id"])
     background.add_task(process_report, report_id)
     return {"status": "received", "report_id": report_id}
 
@@ -398,7 +400,11 @@ async def sync_start(request: Request):
         a = _check_token(request)
         if a["monitoring_status"] not in ("active", "sharing"):
             raise HTTPException(403, "Monitoring has been stopped")
-    plan = books.start(a, pfrom, pto, body.want_full, body.tally_alter_id, body.company.get("guid", ""))
+    try:
+        plan = books.start(a, pfrom, pto, body.want_full, body.tally_alter_id, body.company.get("guid", ""),
+                           body.company.get("name", ""))
+    except books.SyncBusy as e:
+        raise HTTPException(503, str(e))
     session = books.get_session(plan["sync_id"])
     books.stage(session, {"company": body.company, "machine": body.machine, "consent": body.consent,
                           "connector_version": body.connector_version})
@@ -480,7 +486,10 @@ def finish_sync(sync_id: str) -> None:
     source = "refresh" if store.list_reports(app_id) else "initial"
     report_id = _store_upload(app_id, source, gzip.compress(json.dumps(bundle).encode()), bundle)
     store.end_share(app_id)
-    process_report(report_id)
+    needs_full = bundle["sync"]["needs_full"]
+    process_report(report_id, bundle)
+    if needs_full:
+        store.request_refresh(app_id)  # after the report, which clears the flag: full re-read at the next check-in
 
 
 @app.post("/api/connector/monitor/stop")
@@ -490,12 +499,17 @@ def monitor_stop(request: Request):
     return {"status": "stopped"}
 
 
-def process_report(report_id: str) -> None:
+def process_report(report_id: str, bundle: dict | None = None) -> None:
     r = store.get_report(report_id)
     app_id = r["application_id"]
     try:
-        bundle = json.loads(gzip.decompress(store.load_report_file(app_id, report_id, "bundle.json.gz")))
+        if bundle is None:
+            raw = store.load_report_file(app_id, report_id, "bundle.json.gz")
+            if raw is None:
+                raise RuntimeError("the raw data for this report is no longer kept")
+            bundle = json.loads(gzip.decompress(raw))
         report = build_report(bundle)
+        del bundle
         snap = snapshot(report)
         prev = store.previous_ready_report(app_id, r["created_at"])
         alerts = compare(prev["indicators"], prev["snapshot"] or {}, report["indicators"], snap) if prev else []
@@ -509,6 +523,12 @@ def process_report(report_id: str) -> None:
     except Exception as e:  # keep the upload; the bank can recompute after a fix
         log.exception("report %s failed", report_id)
         store.fail_report(report_id, f"{type(e).__name__}: {e}")
+        return
+    try:
+        store.prune_report_files(app_id, config.KEEP_RAW_DAYS)
+        books.prune_sessions(app_id, config.KEEP_RAW_DAYS)
+    except Exception:
+        log.exception("retention for %s failed", app_id)
 
 
 # ------------------------------------------------------------- public marketing site
@@ -736,6 +756,8 @@ def issue_msme_login(app_id: str, user: dict = Depends(bank_user), _csrf: None =
 @app.post("/bank/reports/{report_id}/recompute")
 def recompute(report_id: str, user: dict = Depends(bank_user), _csrf: None = Depends(_csrf_guard)):
     r = _report_or_404(report_id, user["tenant_id"])
+    if not store.has_raw(r["application_id"], report_id):
+        raise HTTPException(410, f"The raw data for this report is no longer kept (older than {config.KEEP_RAW_DAYS} days).")
     process_report(report_id)
     return RedirectResponse(f"/bank/applications/{r['application_id']}", status_code=303)
 
@@ -805,6 +827,9 @@ def msme_latest_report_json(user: dict = Depends(msme_user)):
 
 def _render_application(a: dict, template_name: str, **extra) -> str:
     reports = store.list_reports(a["id"])
+    raw = store.raw_report_ids(a["id"])
+    for r in reports:
+        r["has_raw"] = r["id"] in raw
     ready = [r for r in reports if r["status"] == "ready"]
     # Indicator trend table: rows = indicators, columns = reports (oldest first, last 12).
     columns = list(reversed(ready[:12]))
@@ -851,6 +876,12 @@ def _report_file(report_id: str, name: str, media_type: str):
     if not r:
         raise HTTPException(404, "No such report")
     data = store.load_report_file(r["application_id"], report_id, name)
+    if data is None and name == "report.html":
+        # Pages of older reports are dropped by the retention policy and
+        # re-rendered from their figures, which are always kept.
+        report = store.load_report_json(r["application_id"], report_id)
+        if report is not None:
+            data = render_html(report, store.get_application(r["application_id"])).encode()
     if data is None:
         raise HTTPException(404, f"Report not available (status: {r['status']})")
     return Response(data, media_type=media_type)

@@ -341,6 +341,62 @@ def load_report_file(app_id: str, report_id: str, name: str) -> bytes | None:
     return path.read_bytes() if path.exists() else None
 
 
+def delete_report_file(app_id: str, report_id: str, name: str) -> None:
+    if IS_POSTGRES:
+        with db() as conn:
+            conn.execute("DELETE FROM report_files WHERE report_id = ? AND name = ?", (report_id, name))
+    else:
+        (_report_dir(app_id, report_id) / name).unlink(missing_ok=True)
+
+
+def prune_report_files(app_id: str, keep_days: int) -> int:
+    """Apply the retention policy (config.KEEP_RAW_DAYS) to one application.
+    Returns how many reports lost their raw upload."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at FROM reports WHERE application_id = ? ORDER BY created_at", (app_id,)
+        ).fetchall()
+    if not rows:
+        return 0
+    cutoff = (now() - timedelta(days=keep_days)).isoformat()
+    keep = {rows[0]["id"], rows[-1]["id"]}
+    last_of_month: dict[str, str] = {}
+    for r in rows:
+        last_of_month[r["created_at"][:7]] = r["id"]
+    keep |= set(last_of_month.values())
+    pruned = 0
+    for r in rows:
+        if r["id"] in keep or r["created_at"] >= cutoff:
+            continue
+        if not has_raw(app_id, r["id"]):
+            continue  # already pruned
+        delete_report_file(app_id, r["id"], "bundle.json.gz")
+        delete_report_file(app_id, r["id"], "report.html")
+        pruned += 1
+    return pruned
+
+
+def raw_report_ids(app_id: str) -> set[str]:
+    """Reports of this application whose raw upload is still kept."""
+    if IS_POSTGRES:
+        with db() as conn:
+            rows = conn.execute(
+                "SELECT report_id FROM report_files WHERE application_id = ? AND name = 'bundle.json.gz'", (app_id,)
+            ).fetchall()
+        return {r["report_id"] for r in rows}
+    d = config.DATA_DIR / "applications" / app_id / "reports"
+    return {p.parent.name for p in d.glob("*/bundle.json.gz")} if d.exists() else set()
+
+
+def has_raw(app_id: str, report_id: str) -> bool:
+    if IS_POSTGRES:
+        with db() as conn:
+            return conn.execute(
+                "SELECT 1 FROM report_files WHERE report_id = ? AND name = 'bundle.json.gz'", (report_id,)
+            ).fetchone() is not None
+    return (_report_dir(app_id, report_id) / "bundle.json.gz").exists()
+
+
 # ----------------------------------------------------------- tenants & users
 
 

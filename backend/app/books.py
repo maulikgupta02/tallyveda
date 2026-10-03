@@ -74,11 +74,36 @@ def _set_session(sync_id: str, **cols) -> None:
         conn.execute(f"UPDATE sync_sessions SET {sets}, updated_at = ? WHERE id = ?", (*vals, _now(), sync_id))
 
 
+class SyncBusy(Exception):
+    pass
+
+
 def start(app: dict, period_from: str, period_to: str, want_full: bool = False, tally_alter_id: int | None = None,
-          company_guid: str = "") -> dict:
+          company_guid: str = "", company_name: str = "") -> dict:
     """Open (or resume) a sync session and tell the connector what to send."""
     app_id = app["id"]
+    with store.db() as conn:
+        busy = conn.execute(
+            "SELECT 1 FROM sync_sessions WHERE application_id = ? AND status = 'finishing' AND updated_at > ?",
+            (app_id, (store.now() - timedelta(minutes=15)).isoformat()),
+        ).fetchone()
+    if busy:
+        raise SyncBusy("The previous update is still being processed. Try again in a few minutes.")
+    with store.db() as conn:
+        # A full sync whose finish never completed (the server restarted): reopen
+        # it; every month is already in, so the connector only finishes it.
+        conn.execute(
+            "UPDATE sync_sessions SET status = 'open' WHERE application_id = ? AND mode = 'full' AND status = 'finishing'",
+            (app_id,),
+        )
+        conn.execute(
+            "UPDATE sync_sessions SET status = 'abandoned' WHERE application_id = ? AND mode = 'delta' AND status = 'finishing'",
+            (app_id,),
+        )
     current = open_session(app_id)
+    if current and current["mode"] == "full" and current["created_at"] < (store.now() - timedelta(days=7)).isoformat():
+        _set_session(current["id"], status="abandoned", staged={})  # too stale to finish; start over
+        current = None
     if current and current["mode"] == "full":
         return _plan(current, None)
     if current:  # an unfinished delta: whatever it applied is redone by the next one
@@ -97,6 +122,7 @@ def start(app: dict, period_from: str, period_to: str, want_full: bool = False, 
             # Alter IDs going backwards means the company was restored from a backup.
             or (tally_alter_id is not None and 0 < tally_alter_id < book["max_alter_id"])
             or (company_guid and state.get("company", {}).get("guid") not in ("", None, company_guid))
+            or (company_name and state.get("company", {}).get("name") not in ("", None, company_name))
             or state.get("needs_full", False)
         )
     session = {
@@ -128,6 +154,7 @@ def _plan(session: dict, book: dict | None) -> dict:
         "since_alter_id": 0,
         "refresh_ledgers": [],
         "last_to": "",
+        "stock_dates": [],
     }
     if session["mode"] == "delta" and book:
         plan["since_alter_id"] = book["max_alter_id"]
@@ -137,6 +164,17 @@ def _plan(session: dict, book: dict | None) -> dict:
         plan["refresh_ledgers"] = sorted(
             _ledgers_between(session["application_id"], book["state"]["period"]["to"], session["period_to"], left_open=True)
         )
+        # The stock snapshots a year and two years back drift as the window
+        # moves; ask for any that is more than a few days off its date.
+        have = [date.fromisoformat(s["as_of"]) for s in book["state"].get("stock_snapshots", [])]
+        books_from = book["state"].get("company", {}).get("books_from") or ""
+        end = date.fromisoformat(session["period_to"])
+        for back in (365, 730):
+            want = end - timedelta(days=back)
+            if books_from and want.isoformat() < books_from:
+                continue
+            if have and not any(abs((d - want).days) <= 3 for d in have):
+                plan["stock_dates"].append(want.isoformat())
     return plan
 
 
@@ -274,6 +312,22 @@ def _roll_openings(app_id: str, voucher_types: list[dict], old_from: str, new_fr
     return movement
 
 
+def _renamed(before: dict, after: dict, vouchers: list[dict]) -> bool:
+    """Tally renames a ledger or voucher type inside every voucher without
+    changing their AlterIds, so stored vouchers would keep the old name. If a
+    name that was in the masters has gone and stored vouchers still use it,
+    re-read everything."""
+    def names(state, key):
+        return {x["name"] for x in state.get(key, [])}
+
+    gone_ledgers = names(before, "ledgers") - names(after, "ledgers")
+    gone_types = names(before, "voucher_types") - names(after, "voucher_types")
+    if not gone_ledgers and not gone_types:
+        return False
+    return any(v.get("type") in gone_types or any(e["ledger"] in gone_ledgers for e in v.get("entries", []))
+               for v in vouchers)
+
+
 def finish(session: dict) -> dict:
     """Apply the session to the book and return the full bundle for the report."""
     app_id = session["application_id"]
@@ -330,17 +384,25 @@ def finish(session: dict) -> dict:
 
     with store.db() as conn:
         conn.execute("DELETE FROM book_vouchers WHERE application_id = ? AND vdate < ?", (app_id, pfrom))
+        rows = conn.execute(
+            "SELECT body FROM book_vouchers WHERE application_id = ? AND vdate >= ? AND vdate <= ? ORDER BY vdate, guid",
+            (app_id, pfrom, pto),
+        ).fetchall()
+    vouchers = [json.loads(r["body"]) for r in rows]
+    del rows
+    if session["mode"] == "delta" and book is not None and not state["needs_full"]:
+        state["needs_full"] = _renamed(book["state"], state, vouchers)
+
+    with store.db() as conn:
         conn.execute(
             "INSERT INTO books (application_id, state, max_alter_id, last_full_at, updated_at) VALUES (?, ?, ?, ?, ?)"
             " ON CONFLICT (application_id) DO UPDATE SET state = excluded.state, max_alter_id = excluded.max_alter_id,"
             " last_full_at = excluded.last_full_at, updated_at = excluded.updated_at",
             (app_id, json.dumps(state), max_alter, last_full, _now()),
         )
-        rows = conn.execute(
-            "SELECT body FROM book_vouchers WHERE application_id = ? AND vdate >= ? AND vdate <= ? ORDER BY vdate, guid",
-            (app_id, pfrom, pto),
-        ).fetchall()
-        conn.execute("UPDATE sync_sessions SET status = 'done', updated_at = ? WHERE id = ?", (_now(), session["id"]))
+        # The staged masters can be megabytes; the book now holds them.
+        conn.execute("UPDATE sync_sessions SET status = 'done', staged = '{}', updated_at = ? WHERE id = ?",
+                     (_now(), session["id"]))
 
     return {
         "schema_version": 1,
@@ -355,11 +417,34 @@ def finish(session: dict) -> dict:
         "voucher_types": state.get("voucher_types", []),
         "stock_snapshots": state.get("stock_snapshots", []),
         "bills": state.get("bills", []),
-        "vouchers": [json.loads(r["body"]) for r in rows],
+        "vouchers": vouchers,
         "warnings": staged.get("warnings", []),
-        "sync": {"mode": session["mode"], "session": session["id"]},
+        "sync": {"mode": session["mode"], "session": session["id"], "needs_full": state["needs_full"]},
     }
 
 
 def mark(session_id: str, status: str) -> None:
     _set_session(session_id, status=status)
+
+
+def forget(app_id: str) -> None:
+    """Drop the book after a one-shot upload from an older connector, so the
+    next incremental sync starts with a full read instead of merging into a
+    copy that no longer matches the latest report."""
+    with store.db() as conn:
+        conn.execute("DELETE FROM books WHERE application_id = ?", (app_id,))
+        conn.execute("DELETE FROM book_vouchers WHERE application_id = ?", (app_id,))
+        conn.execute("UPDATE sync_sessions SET status = 'abandoned', staged = '{}' WHERE application_id = ? AND status = 'open'",
+                     (app_id,))
+
+
+def prune_sessions(app_id: str, keep_days: int) -> None:
+    """Old finished or abandoned sessions are only a log; drop them."""
+    cutoff = (store.now() - timedelta(days=keep_days)).isoformat()
+    with store.db() as conn:
+        conn.execute(
+            "DELETE FROM sync_sessions WHERE application_id = ? AND status <> 'open' AND updated_at < ?", (app_id, cutoff)
+        )
+        conn.execute(
+            "UPDATE sync_sessions SET staged = '{}' WHERE application_id = ? AND status IN ('abandoned', 'failed')", (app_id,)
+        )

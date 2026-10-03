@@ -130,8 +130,10 @@ honours SVFROMDATE/SVTODATE. Each failure mode degrades safely: the last few day
 `VoucherStubs` re-filters locally, mass deletions are refused, and a full re-read runs weekly. Known
 gaps: post-dated vouchers that existed at a full read but were outside its window are not re-read
 when they fall due, and are fixed by the next full read. Deletions older than 92 days wait for the
-next full read. Storage grows by one `bundle.json.gz` per report (about 450 KB for about 7k
-vouchers) plus the book rows; there is no retention policy yet, which matters on Neon's free tier.
+next full read. Storage: retention keeps raw uploads for 30 days plus the first report and the last of each
+month (about 25 MB per company per year instead of about 200 MB). The book itself is about 6 MB per
+7k-voucher company. `finish` holds the whole window in memory about twice (the bundle plus its
+JSON/gzip), so companies with well over 100k vouchers may approach Render free's 512 MB.
 Still open:
 - **Admin web UI resolved** (2026-10-02, ticket 2d48bed7): `/admin` now covers tenant/MSME/user
   management with an audit trail (`audit_log` table) of every action — see

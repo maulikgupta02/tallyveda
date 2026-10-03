@@ -19,7 +19,8 @@ type Plan struct {
 	MonthsDone     []string `json:"months_done"`
 	HaveMasters    bool     `json:"have_masters"`
 	SinceAlterID   int64    `json:"since_alter_id"`
-	LastTo         string   `json:"last_to"` // end date of the previous sync
+	LastTo         string   `json:"last_to"`     // end date of the previous sync
+	StockDates     []string `json:"stock_dates"` // older stock snapshots the server is missing
 	RefreshLedgers []string `json:"refresh_ledgers"`
 }
 
@@ -176,8 +177,10 @@ func syncDelta(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (
 
 	// What changed: skip the voucher scan entirely when Tally's company-wide
 	// change number hasn't moved.
+	// With no AlterIds to compare (SinceAlterID 0), "changed since 0" would list
+	// every voucher; rely on the recent days and the periodic full read instead.
 	var changed []tally.VoucherStub
-	if o.Company.AltVchID == 0 || o.Company.AltVchID > plan.SinceAlterID {
+	if plan.SinceAlterID > 0 && (o.Company.AltVchID == 0 || o.Company.AltVchID > plan.SinceAlterID) {
 		p.report("Looking for changed vouchers", 0.10)
 		err := p.do(ctx, slowLimit, "changed vouchers", func(ctx context.Context) (err error) {
 			changed, err = p.c.VoucherStubs(ctx, name, booksStart(o), o.To.AddDate(1, 0, 0), plan.SinceAlterID)
@@ -260,8 +263,17 @@ func syncDelta(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (
 			return "", err
 		}
 	}
+	var dates []time.Time
 	if len(affected) > 0 {
-		extra, err := readExtras(ctx, p, o, []time.Time{o.To})
+		dates = append(dates, o.To)
+	}
+	for _, s := range plan.StockDates {
+		if d, err := time.Parse("2006-01-02", s); err == nil {
+			dates = append(dates, d)
+		}
+	}
+	if len(dates) > 0 {
+		extra, err := readExtras(ctx, p, o, dates)
 		if err != nil {
 			return "", err
 		}

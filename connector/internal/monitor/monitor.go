@@ -395,37 +395,18 @@ func SyncEntry(ctx context.Context, c *Config, version string, progress extract.
 }
 
 // Lock keeps two connector processes (the UI and the scheduled task) from
-// syncing the same company at once. The holder refreshes the lock every
-// minute, so one left behind by a crash or shutdown goes stale in minutes.
+// syncing the same company at once. It is an OS file lock, so it is released
+// the moment its process exits, even after a crash or a power cut.
 func Lock(c *Config) (func(), error) {
 	d, err := Dir()
 	if err != nil {
 		return nil, err
 	}
-	p := filepath.Join(d, "sync-"+c.ID()+".lock")
-	if st, err := os.Stat(p); err == nil && time.Since(st.ModTime()) > 5*time.Minute {
-		os.Remove(p)
-	}
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
+	release, ok := tryLock(filepath.Join(d, "sync-"+c.ID()+".lock"))
+	if !ok {
 		return nil, fmt.Errorf("%s is already being synced by another connector window", c.Company)
 	}
-	fmt.Fprintf(f, "%d", os.Getpid())
-	f.Close()
-	stop := make(chan struct{})
-	go func() {
-		t := time.NewTicker(time.Minute)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case now := <-t.C:
-				os.Chtimes(p, now, now)
-			}
-		}
-	}()
-	return func() { close(stop); os.Remove(p) }, nil
+	return release, nil
 }
 
 // Logger returns a printf-style logger writing to w with timestamps.

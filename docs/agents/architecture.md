@@ -197,7 +197,15 @@ itself). They never share code or a process.
    and if so runs a delta sync (0.2+; 0.1.x re-uploaded the whole window via
    `/api/connector/monitor/upload`). The connector keeps one entry per shared company in
    `companies.json` (`internal/monitor`). One scheduled task serves every daily entry, and a
-   per-company heartbeat lock file stops the UI and the task syncing the same company at once.
+   per-company OS file lock (`lock_windows.go`/`lock_other.go`; released when the process
+   dies) stops the UI and the task syncing the same company at once.
+   Server-side safety: a `finishing` full session left by a server restart is reopened, and the
+   connector only finishes it. An open full session older than 7 days is restarted. A delta whose
+   masters dropped a ledger or voucher-type name that stored vouchers still use sets
+   `needs_full` and `force_refresh` (Tally renames inside vouchers without new AlterIds). One-shot
+   uploads from 0.1.x call `books.forget`, so the next 0.2 sync is full. Retention
+   (`store.prune_report_files`, `books.prune_sessions`, `TC_KEEP_RAW_DAYS`) runs after every
+   report.
 6. Bank views results via the dashboard (`/bank`) or a specific application's history
    (`/bank/applications/{id}`, including an indicator trend table and alerts).
 

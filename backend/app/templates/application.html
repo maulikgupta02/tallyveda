@@ -388,7 +388,7 @@
             </td>
             <td>
               {% if r.status == "ready" %}<a class="btn" href="/bank/reports/{{ r.id }}">View</a>{% endif %}
-              <form class="inline" method="post" action="/bank/reports/{{ r.id }}/recompute"><button class="btn" type="submit">Recompute</button></form>
+              {% if r.has_raw %}<form class="inline" method="post" action="/bank/reports/{{ r.id }}/recompute"><button class="btn" type="submit">Recompute</button></form>{% endif %}
             </td>
           </tr>
           {% else %}

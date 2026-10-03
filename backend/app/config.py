@@ -35,7 +35,12 @@ DEFAULT_MONTHS = int(os.environ.get("TC_DEFAULT_MONTHS", "24"))
 MONITOR_OVERDUE_DAYS = int(os.environ.get("TC_MONITOR_OVERDUE_DAYS", "3"))
 # Incremental syncs send only changes; every N days the connector re-reads the
 # whole window instead, as a safety net for anything change tracking can miss.
-FULL_SYNC_DAYS = int(os.environ.get("TC_FULL_SYNC_DAYS", "7"))
+FULL_SYNC_DAYS = int(os.environ.get("TC_FULL_SYNC_DAYS", "30"))
+# Retention: every report's figures (report.json) are kept for good, since the
+# trend charts and alerts read them. The raw upload (bundle.json.gz, the big
+# file) and the rendered page are kept for this many days, plus the first
+# report and the last one of each month. Older pages are re-rendered on demand.
+KEEP_RAW_DAYS = int(os.environ.get("TC_KEEP_RAW_DAYS", "30"))
 # Optional: path to the built TallyConnector.exe, served at /download. Useful for a
 # local/VM deploy with the exe on disk, but a Render free web service's filesystem is
 # ephemeral and has no build step for it — set TC_CONNECTOR_URL instead (e.g. a GitHub

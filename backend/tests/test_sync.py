@@ -169,3 +169,61 @@ def test_one_off_share_token_ends_with_the_share(client, model):
     assert client.post("/api/connector/verify", json={"code": a["link_code"]}).status_code == 404
     assert client.post("/api/connector/sync/start", headers=bearer,
                        json={"company": b["company"], "period": b["period"]}).status_code == 401
+
+
+def test_retention_keeps_recent_first_and_month_end_raw_data(client, model):
+    from app import config, store
+
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Retention", "monitoring": True}).json()
+    b = bundle_from_model(model, date(2026, 4, 30), months=3)
+    b["consent"] = {"accepted_by": "R Agarwal", "monitoring_opt_in": True}
+    r = client.post("/api/connector/upload", content=gz(b), headers={"X-Link-Code": a["link_code"]})
+    bearer = {"Authorization": f"Bearer {r.json()['monitor_token']}"}
+    for _ in range(4):
+        client.post("/api/connector/monitor/upload", content=gz(b), headers=bearer)
+    reports = sorted(store.list_reports(a["id"]), key=lambda r: r["created_at"])
+    assert len(reports) == 5 and all(r["status"] == "ready" for r in reports)
+
+    # Backdate: first report in January, two in February, one in March, one today.
+    now = store.now()
+    days = [100, 75, 70, 40, 0]
+    with store.db() as conn:
+        for r, ago in zip(reports, days):
+            conn.execute("UPDATE reports SET created_at = ? WHERE id = ?", ((now - timedelta(days=ago)).isoformat(), r["id"]))
+    reports = sorted(store.list_reports(a["id"]), key=lambda r: r["created_at"])
+    store.prune_report_files(a["id"], config.KEEP_RAW_DAYS)
+    kept = store.raw_report_ids(a["id"])
+    by_month = {}
+    for r in reports:
+        by_month[r["created_at"][:7]] = r["id"]
+    expected = {reports[0]["id"], reports[-1]["id"], *by_month.values()}
+    assert kept == expected and len(kept) < len(reports)
+
+    pruned = next(r for r in reports if r["id"] not in kept)
+    page = client.get(f"/bank/reports/{pruned['id']}", auth=AUTH)
+    assert page.status_code == 200 and "<html" in page.text.lower()  # re-rendered from report.json
+    assert client.post(f"/bank/reports/{pruned['id']}/recompute", auth=AUTH).status_code == 410
+    assert client.get(f"/bank/reports/{pruned['id']}.json", auth=AUTH).status_code == 200
+
+
+def test_renamed_ledger_schedules_a_full_read(client, model):
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Rename", "monitoring": True}).json()
+    b = bundle_from_model(model, date(2026, 4, 30), months=2)
+    plan = client.post("/api/connector/sync/start", headers={"X-Link-Code": a["link_code"]},
+                       json={"company": b["company"], "period": b["period"], "monitoring_opt_in": True}).json()
+    bearer = {"Authorization": f"Bearer {plan['token']}"}
+    client.post(f"/api/connector/sync/{plan['sync_id']}/masters", headers=bearer,
+                content=gz({k: b[k] for k in ("groups", "ledgers", "voucher_types")}))
+    post_months(client, bearer, plan["sync_id"], b, months_newest_first(b["period"]["from"], b["period"]["to"]))
+    client.post(f"/api/connector/sync/{plan['sync_id']}/finish", headers=bearer)
+
+    used = b["vouchers"][0]["entries"][0]["ledger"]
+    renamed = [dict(l, name=l["name"] + " (renamed)") if l["name"] == used else l for l in b["ledgers"]]
+    plan = client.post("/api/connector/sync/start", headers=bearer, json={"company": b["company"], "period": b["period"]}).json()
+    assert plan["mode"] == "delta"
+    client.post(f"/api/connector/sync/{plan['sync_id']}/masters", headers=bearer,
+                content=gz({"groups": b["groups"], "voucher_types": b["voucher_types"], "ledgers": renamed}))
+    client.post(f"/api/connector/sync/{plan['sync_id']}/finish", headers=bearer)
+    assert client.post("/api/connector/monitor/status", headers=bearer).json()["due"]
+    plan = client.post("/api/connector/sync/start", headers=bearer, json={"company": b["company"], "period": b["period"]}).json()
+    assert plan["mode"] == "full"
