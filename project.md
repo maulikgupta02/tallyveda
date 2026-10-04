@@ -1,4 +1,4 @@
-# tally_connector
+# tallyveda (TallyVeda; repo was tally_connector until 2026-10-05)
 
 Lets a bank pull a loan applicant's Tally books (via a small Windows connector the
 applicant runs) and turns them into an automatic credit report — revenue, customer
