@@ -76,6 +76,7 @@ from . import books, config, mailer, marketing, store
 from .analysis.alerts import compare, snapshot
 from .report import dashboard as dashboard_views, dashboard_charts as dc
 from .report import format as fmt
+from .report import glossary
 from .report.builder import build_report, render_html, report_json
 
 log = logging.getLogger("tally_connector")
@@ -207,6 +208,7 @@ templates.globals.update(
     month_label=dc.month_label,
     nav_counts=store.nav_counts,
     tally_state=_tally_state,
+    hint=glossary.hint,
     STATUS_WORD=dc.STATUS_WORD,
     inr=fmt.inr,
 )

@@ -7,7 +7,7 @@
 <link rel="icon" href="/favicon.ico?v=2" sizes="32x32">
 <link rel="icon" href="/static/icon-tv-192.png" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon-tv.png">
-<link rel="stylesheet" href="/static/app.css?v=5">
+<link rel="stylesheet" href="/static/app.css?v=6">
 <style>
   .topbar .fresh { margin-left: auto; font-size: 13px; color: var(--muted); }
   .topbar .out { font-size: 13px; font-weight: 600; color: var(--text-2); padding: 0 12px; min-height: 36px; display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
@@ -112,6 +112,7 @@
   }
 </style>
 </head>
+{% from "_shell.html" import tip %}
 {% set MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] %}
 {% macro nice_day(s) %}{{ s[8:10]|int }} {{ MONTHS[s[5:7]|int - 1] }} {{ s[:4] }}{% endmacro %}
 
@@ -136,7 +137,7 @@
 {% macro strip(tiles, sparks=False) %}
   <div class="strip">
     {% for t in tiles %}
-    <div><span class="stat-l">{{ t.label }}</span><span class="stat-v">{{ t.value }}</span>
+    <div><span class="stat-l">{{ tip(t.label) }}</span><span class="stat-v">{{ t.value }}</span>
       {% if t.context %}<span class="stat-s">{{ t.context[:1]|upper ~ t.context[1:] }}</span>{% endif %}
       {% if sparks and t.sparkline %}{{ spark(t.sparkline, width=160, height=30)|safe }}{% endif %}</div>
     {% endfor %}
@@ -232,25 +233,25 @@
     {% set bal_month = money_g.charts.balance_months[-1] if money_g and money_g.charts.balance_months else None %}
     <div class="tile-grid">
       <section class="card tile">
-        <span class="stat-l">To collect from customers</span>
+        <span class="stat-l">{{ tip("To collect from customers") }}</span>
         <span class="stat-v">{{ collect.value }}</span>
         {% if collect.context %}<span class="stat-s">{{ collect.context[:1]|upper ~ collect.context[1:] }}</span>{% endif %}
         <a href="/msme?tab=money">Money to collect</a>
       </section>
       <section class="card tile">
-        <span class="stat-l">Bank balance</span>
+        <span class="stat-l">{{ tip("Bank balance") }}</span>
         <span class="stat-v{{ ' neg-v' if bank.value.startswith('-') }}">{{ bank.value }}</span>
         {% if bal_month %}<span class="stat-s">{{ "Overdrawn at the end of " if bank.value.startswith('-') else "At the end of " }}{{ bal_month }}</span>{% endif %}
         <a href="/msme?tab=money">Cash by month</a>
       </section>
       <section class="card tile">
-        <span class="stat-l">Stock</span>
+        <span class="stat-l">{{ tip("Stock") }}</span>
         <span class="stat-v">{{ stock.value }}</span>
         {% if stock.context %}<span class="stat-s">{{ stock.context[:1]|upper ~ stock.context[1:] }}</span>{% endif %}
       </section>
       <section class="card tile">
         {% if gst %}
-        <span class="stat-l">GST payable</span>
+        <span class="stat-l">{{ tip("GST payable") }}</span>
         <span class="stat-v">{{ gst.amount }}</span>
         <span class="stat-s">Due date not recorded in Tally</span>
         {% else %}

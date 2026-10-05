@@ -80,6 +80,12 @@ mark "TV".
   headline, stepper, trust points, footer) and the current step only on the right. System fonts
   only (it is served offline by the exe).
 
+## Metric tooltips (2026-10-05)
+Every metric label (dashboard tiles, portfolio columns, MSME home figures) is wrapped in `_shell.tip(label)`:
+a dotted underline and a dark tooltip on hover or keyboard focus (`.tip` in app.css). The text comes from
+`glossary.HINTS`, keyed by the label; glossary terms reuse `TERMS` wording. A new tile needs a `HINTS`
+entry, or `tests/test_glossary.py` fails.
+
 ## Colors
 The single `:root` block, identical across all six files above:
 ```

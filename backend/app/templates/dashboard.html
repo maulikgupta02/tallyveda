@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ bank_name }} · Portfolio · TallyVeda</title>
-<link rel="stylesheet" href="/static/app.css?v=5">
+<link rel="stylesheet" href="/static/app.css?v=6">
 <style>
   .head .search { width: 280px; max-width: 100%; }
   .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }
@@ -63,7 +63,7 @@
 </style>
 </head>
 <body>
-{% from "_shell.html" import bank_side, live_dot %}
+{% from "_shell.html" import bank_side, live_dot, tip %}
 {% macro pill(status) -%}
 <span class="pill {{ status }}"><i></i>{{ {"attention": "Attention", "watch": "Watch", "healthy": "Healthy", "nodata": "No data"}.get(status, status|replace("_", " ")|capitalize) }}</span>
 {%- endmacro %}
@@ -141,7 +141,7 @@
         </div>
         <div class="scrollx">
           <table class="tbl" id="borrowers">
-            <thead><tr><th>Borrower</th><th>Health</th><th class="num">Sales, 12 mo</th><th class="num">Debtor days</th><th class="num">Owed &gt; 90 d</th><th class="num">New alerts</th><th><span class="sr">Actions</span></th></tr></thead>
+            <thead><tr><th>Borrower</th><th>{{ tip("Health") }}</th><th class="num">{{ tip("Sales, 12 mo") }}</th><th class="num">{{ tip("Debtor days") }}</th><th class="num">{{ tip("Owed > 90 days") }}</th><th class="num">{{ tip("New alerts") }}</th><th><span class="sr">Actions</span></th></tr></thead>
             <tbody>
             {% for row in rows %}
             {% set a = apps_by_id[row.id] %}

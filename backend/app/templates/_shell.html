@@ -20,6 +20,9 @@
 
 {% macro count(n, hot=false) %}{% if n %}<span class="cnt{{ ' hot' if hot }}">{{ n }}</span>{% endif %}{% endmacro %}
 
+{# A metric label with its explanation on hover (and keyboard focus). #}
+{% macro tip(label) %}{% set h = hint(label) %}{% if h %}<span class="tip" tabindex="0" data-tip="{{ h }}">{{ label }}</span>{% else %}{{ label }}{% endif %}{% endmacro %}
+
 {# Green "Live" while Tally answers the connector's 15-minute checks, red "Asleep" otherwise. #}
 {% macro live_dot(a) %}{% set ts = tally_state(a) %}{% if ts %}<span class="live{{ '' if ts.live else ' off' }}" title="{{ ts.label }}. {{ ts.why }}"><i></i>{{ "Live" if ts.live else "Asleep" }}</span>{% endif %}{% endmacro %}
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ a.applicant_name }} · {{ bank_name }} · TallyVeda</title>
-<link rel="stylesheet" href="/static/app.css?v=5">
+<link rel="stylesheet" href="/static/app.css?v=6">
 <style>
   .head { align-items: flex-start; }
   .head > div:first-child { flex: 1 1 420px; }
@@ -111,7 +111,7 @@
 </style>
 </head>
 <body>
-{% from "_shell.html" import bank_side, live_dot %}
+{% from "_shell.html" import bank_side, live_dot, tip %}
 {% set ro = readonly|default(false) %}
 {% macro pill(status) -%}
 <span class="pill {{ status }}"><i></i>{{ {"attention": "Attention", "watch": "Watch", "healthy": "Healthy", "nodata": "No data", "awaiting_data": "Awaiting data"}.get(status, status|replace("_", " ")|capitalize) }}</span>
@@ -195,7 +195,7 @@
     <section class="strip kstrip" aria-label="Key numbers" style="--cols: {{ n if n <= 6 else 4 }}">
       {% for t in g.tiles %}
       <div>
-        <span class="stat-l">{{ t.label }}{{ tile_status(t.status) }}</span>
+        <span class="stat-l">{{ tip(t.label) }}{{ tile_status(t.status) }}</span>
         <span class="stat-v" title="{{ t.value }}">{{ t.value }}</span>
         {% if t.context %}<span class="stat-s">{{ t.context }}</span>{% endif %}
         {% if t.gauge %}{{ bullet_gauge(t.gauge.value, t.gauge.lo, t.gauge.hi, t.gauge.bands, label=t.label ~ ": " ~ t.value)|safe }}{% endif %}

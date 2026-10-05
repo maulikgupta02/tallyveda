@@ -83,3 +83,94 @@ def term(key: str) -> dict:
 
 def all_terms() -> list[dict]:
     return sorted((term(k) for k in TERMS), key=lambda t: t["abbr"].lower())
+
+
+def _t(key: str) -> str:
+    _, _, plain, formula = TERMS[key]
+    return f"{plain} {formula}".strip()
+
+
+# Hover text for every dashboard tile and column, by its label. Labels that
+# are a glossary term reuse its wording; tests check that no tile lacks one.
+HINTS = {
+    "Sales, 12 mo": "Sales booked in the last 12 months, after returns.",
+    "Sales, 12 months": "What you sold in the last 12 months, after returns.",
+    "Revenue growth": _t("yoy"),
+    "Monthly average": "Average sales per month over the last 12 months.",
+    "Seasonality": "The month with the highest sales, and how much monthly sales swing. " + _t("cv"),
+    "Credit notes / returns": "Credit notes (returns, discounts given back) as a share of gross billing. A high or rising share can mean disputes or reversed sales.",
+    "Returns": "Goods returned and credit notes as a share of what you billed.",
+    "Cash sales": "Share of sales paid in cash at the time of sale rather than billed on credit.",
+    "Customers billed": "How many different customers were billed in the last 12 months.",
+    "Gross margin": _t("gross_margin") + " Marked approximate when closing stock could not be read.",
+    "EBITDA": _t("ebitda"),
+    "EBITDA margin": "EBITDA as a share of sales: operating profit before interest, tax and depreciation for each ₹100 of sales.",
+    "Net margin": _t("net_margin"),
+    "Profit, 12 months": "Profit after all expenses booked in the last 12 months, before tax.",
+    "Interest cost": "Interest booked on loans, overdraft and cash credit in the last 12 months.",
+    "Depreciation": "Depreciation booked in the last 12 months: the yearly wear-down of machines, vehicles and other assets.",
+    "Overheads": "Indirect expenses (salaries, rent, power, office) as a share of sales.",
+    "Other income": "Income outside the main business, such as interest received, discounts or commission.",
+    "Cost of goods": _t("cogs"),
+    "Receivables": "Money customers owe the company today.",
+    "To collect": "Money your customers owe you today.",
+    "Debtor days": _t("dso"),
+    "Owed > 90 days": "Share of unpaid bills that are more than 3 months old. The amount is shown below.",
+    "Collection ratio": _t("collection_ratio"),
+    "Top customer": _t("top1"),
+    "Top 5 customers": _t("top5"),
+    "Customers owing": "How many customers have an unpaid balance today.",
+    "Stuck debtors": "Customers who owe money but have paid nothing in the last 90 days.",
+    "Payables": "Money the company owes its suppliers today.",
+    "You owe suppliers": "Money you owe your suppliers today.",
+    "Creditor days": _t("dpo"),
+    "Purchases, 12 mo": "Purchases booked in the last 12 months.",
+    "Top supplier": "Share of purchases from the single largest supplier.",
+    "Top 5 suppliers": "Share of purchases from the five largest suppliers.",
+    "Cash cycle": _t("ccc"),
+    "Cash tied up": "How many days your money is stuck between paying suppliers and collecting from customers. Shorter is better.",
+    "Inventory days": _t("dio"),
+    "Stock": "Value of goods in stock on the report date, as Tally values them.",
+    "Current ratio": _t("current_ratio"),
+    "Net working capital": "Current assets minus current liabilities: the short-term money left over after paying short-term dues.",
+    "Current assets": "Cash, bank, money customers owe, stock and advances: what turns into cash within a year.",
+    "Current liabilities": "Suppliers, taxes, provisions and the overdraft or cash credit: what must be paid within a year.",
+    "Debt / net worth": _t("debt_tnw"),
+    "Total liabilities / net worth": _t("tol_tnw"),
+    "Interest cover": _t("icr"),
+    "DSCR": _t("dscr"),
+    "Debt service, 12 mo": "Loan repayments plus interest paid in the last 12 months.",
+    "Net worth": _t("tnw"),
+    "Loans": "Total borrowings outstanding: term loans, overdraft or cash credit, and unsecured loans.",
+    "Bank balance": "Combined balance of all bank accounts on the report date. An overdraft or cash credit counts as negative.",
+    "In the bank": "What you have in your bank accounts today, after any overdraft.",
+    "Average balance": "Average month-end bank balance over the last 12 months.",
+    "Lowest balance": "The lowest month-end bank balance in the last 12 months, and the month it happened.",
+    "Balance swings": "How much the month-end bank balance moves up and down. Large swings mean cash comes in lumps.",
+    "Cash receipts": _t("cash_receipts"),
+    "Large cash receipts": "Cash received of ₹2 lakh or more in one go. " + _t("269st"),
+    "Large cash payments": "Cash payments above ₹10,000 in one go. " + _t("40a3"),
+    "Days cash went negative": "Days when the cash-in-hand ledger fell below zero, which can't happen with real cash and usually means entries are missing or wrong.",
+    "GST collected, 12 mo": "GST charged on sales in the last 12 months.",
+    "GST paid, 12 mo": "GST actually paid to the government in the last 12 months.",
+    "GST payable now": "GST collected but not yet paid, on the report date.",
+    "TDS payable now": "Tax deducted at source that has not yet been paid to the government.",
+    "GST vs sales": "Whether GST charged each month moves in line with sales. A mismatch can mean sales booked without tax or tax booked without sales.",
+    "GST filing status": "Whether GST returns are filed on time. This needs a link to the GST portal; Tally doesn't hold it.",
+    "Books lag": "Days between the report date and the last entry in Tally. A long lag means the books are behind.",
+    "Vouchers in books": "Number of entries (sales, purchases, receipts, payments, journals) read from Tally.",
+    "Tally company": "The Tally company these books were read from.",
+    "Due in 30 days": "Payments due in the next 30 days, such as GST, TDS and loan EMIs. See the to-do list.",
+    "Kept customers": _t("nrr"),
+    "New customers": "Customers billed this year who were not billed the year before.",
+    "Lost customers": "Customers billed last year who have not been billed this year.",
+    "To collect from customers": "Money your customers owe you today.",
+    "GST payable": "GST you have collected but not yet paid to the government.",
+    # Portfolio columns
+    "Health": "Attention: any red indicator, a serious red flag, or data overdue. Watch: 3 or more amber indicators, or a new alert. Healthy: everything else.",
+    "New alerts": "Changes found since the previous day's data, such as a new red flag or an indicator turning red.",
+}
+
+
+def hint(label: str) -> str:
+    return HINTS.get(label, "")
