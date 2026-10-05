@@ -3,9 +3,9 @@
 // on a PC whose Tally has no data. It is a separate program on purpose: the
 // connector itself never writes to Tally.
 //
-// It only writes to an open company whose name starts with "TallyVeda Demo",
-// and only if that company has no vouchers other than ones it imported itself
-// (so an interrupted run can be resumed). Tally can't create a company from
+// Each build carries one demo company's books and only writes to an open
+// company with exactly that name, and only if that company has no vouchers
+// other than ones it imported itself (so an interrupted run can be resumed). Tally can't create a company from
 // outside, so the user creates the empty company first.
 //
 //	TallyVedaDemoSeed.exe [-tally http://localhost:9000] [-company "TallyVeda Demo"]
@@ -35,16 +35,17 @@ import (
 //go:embed data
 var data embed.FS
 
-const (
-	prefix      = "TallyVeda Demo"
+// Set per demo company at build time (cmd/demoseed/build.sh).
+var (
+	companyName = "TallyVeda Demo"
 	booksFrom   = "2024-04-01"
-	batchSize   = 200
-	defaultName = "TallyVeda Demo"
 )
+
+const batchSize = 200
 
 func main() {
 	tallyURL := flag.String("tally", "http://localhost:9000", "Tally XML server URL")
-	company := flag.String("company", "", "demo company to fill (default: the open company whose name starts with \""+prefix+"\")")
+	company := flag.String("company", "", "demo company to fill (default: the one this build is for)")
 	flag.Parse()
 	err := run(context.Background(), *tallyURL, *company)
 	if err != nil {
@@ -72,7 +73,7 @@ func run(ctx context.Context, url, name string) error {
 		return err
 	}
 	if co.BooksFrom != "" && co.BooksFrom > booksFrom {
-		return fmt.Errorf("%q keeps books from %s, but the demo books start on 1-Apr-2024.\nCreate the demo company again with \"Financial year beginning from\" and \"Books beginning from\" both set to 1-Apr-2024.", co.Name, co.BooksFrom)
+		return fmt.Errorf("%q keeps books from %s, but the demo books start on %s.\nCreate the demo company again with \"Financial year beginning from\" and \"Books beginning from\" both set to %s.", co.Name, co.BooksFrom, tallyDate(booksFrom), tallyDate(booksFrom))
 	}
 
 	ours := map[string]bool{}
@@ -94,7 +95,7 @@ func run(ctx context.Context, url, name string) error {
 	for _, s := range stubs {
 		g := strings.ToLower(s.GUID)
 		if !ours[g] {
-			return fmt.Errorf("%q already has vouchers that this program did not create, so nothing was written.\nCreate a new, empty company whose name starts with %q and run this again.", co.Name, prefix)
+			return fmt.Errorf("%q already has vouchers that this program did not create, so nothing was written.\nCreate a new, empty company named %q and run this again.", co.Name, companyName)
 		}
 		done[g] = true
 	}
@@ -161,44 +162,36 @@ func run(ctx context.Context, url, name string) error {
 }
 
 func pickCompany(ctx context.Context, tc *tally.Client, name string) (*tally.Company, error) {
+	if name == "" {
+		name = companyName
+	}
+	if !strings.EqualFold(name, companyName) {
+		return nil, fmt.Errorf("this program only fills a company named %q, to keep it away from real books", companyName)
+	}
 	cos, err := tc.Companies(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not list the open companies: %v", err)
 	}
-	var demo []tally.Company
-	for _, c := range cos {
-		if strings.HasPrefix(strings.ToLower(c.Name), strings.ToLower(prefix)) {
-			demo = append(demo, c)
+	for i := range cos {
+		if strings.EqualFold(cos[i].Name, name) {
+			return &cos[i], nil
 		}
 	}
-	howTo := fmt.Sprintf("In TallyPrime press Alt+K (Company) > Create and enter:\n"+
+	return nil, fmt.Errorf("No company named %q is open in Tally.\n"+
+		"In TallyPrime press Alt+K (Company) > Create and enter:\n"+
 		"  Company name:                  %s\n"+
-		"  State:                         Maharashtra\n"+
-		"  Financial year beginning from: 1-Apr-2024\n"+
-		"  Books beginning from:          1-Apr-2024\n"+
-		"Accept the rest as they are, keep the company open, and run this again.", defaultName)
-	if name != "" {
-		if !strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix)) {
-			return nil, fmt.Errorf("this program only fills companies whose name starts with %q, to keep it away from real books", prefix)
-		}
-		for i := range demo {
-			if strings.EqualFold(demo[i].Name, name) {
-				return &demo[i], nil
-			}
-		}
-		return nil, fmt.Errorf("%q is not open in Tally.\n%s", name, howTo)
+		"  Financial year beginning from: %s\n"+
+		"  Books beginning from:          %s\n"+
+		"Accept the rest as they are, keep the company open, and run this again.", name, companyName, tallyDate(booksFrom), tallyDate(booksFrom))
+}
+
+// tallyDate shows 2023-04-01 the way Tally's company screen takes it: 1-Apr-2023.
+func tallyDate(iso string) string {
+	t, err := time.Parse("2006-01-02", iso)
+	if err != nil {
+		return iso
 	}
-	switch len(demo) {
-	case 0:
-		return nil, fmt.Errorf("No company whose name starts with %q is open in Tally.\n%s", prefix, howTo)
-	case 1:
-		return &demo[0], nil
-	}
-	names := make([]string, len(demo))
-	for i, c := range demo {
-		names[i] = c.Name
-	}
-	return nil, fmt.Errorf("Several demo companies are open (%s). Close all but one, or run this with -company \"<name>\".", strings.Join(names, ", "))
+	return t.Format("2-Jan-2006")
 }
 
 type result struct {

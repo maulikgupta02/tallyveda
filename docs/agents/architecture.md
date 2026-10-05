@@ -407,12 +407,22 @@ tenants and the direct tenant" above).
 
 
 ## Demo data seeder (test PCs only)
-`connector/cmd/demoseed` builds `TallyVedaDemoSeed.exe` (`cmd/demoseed/build.sh`), a separate program
-that imports `dev/demo_seed_data.py`'s synthetic books (the mock_tally company, 2024-04-01 to the build
-date) into an open, empty company named "TallyVeda Demo" (any name starting with it also works). Tally can't create a company
-over XML, so the user creates it first. It refuses a company holding vouchers it didn't write (fixed
-uuid5 GUIDs), and resumes an interrupted run. The connector itself still never writes to Tally; never
-ship the seeder in the connector zip.
+`connector/cmd/demoseed` (`build.sh`) builds one exe per demo company; each embeds that company's books,
+generated to the build date, and fills only an open, empty company of exactly its name (`main.companyName`,
+`main.booksFrom` set by ldflags). Tally can't create a company over XML, so the user creates it first. The
+exe refuses a company holding vouchers it didn't write (fixed uuid5 GUIDs) and resumes an interrupted run.
+The connector itself never writes to Tally; never ship these in the connector zip.
+
+| exe | company | books from | generator | meant to show |
+|---|---|---|---|---|
+| TallyVedaDemoSeed | TallyVeda Demo | 1-Apr-2024 | dev/mock_tally.py | mixed: one big customer stops paying, window dressing |
+| TallyVedaDemo-Healthy | TallyVeda Demo Healthy | 1-Apr-2023 | dev/demo_companies.py | all indicators green, no flags |
+| TallyVedaDemo-Stressed | TallyVeda Demo Stressed | 1-Apr-2023 | " | Attention: 8+ reds, negative net worth, stuck debtors, negative cash, unpaid GST |
+| TallyVedaDemo-Seasonal | TallyVeda Demo Seasonal | 1-Apr-2023 | " | Watch: ambers (growth, margin, concentration), two seasons, cash-law flags |
+| TallyVedaDemo-RedFlags | TallyVeda Demo Red Flags | 1-Apr-2023 | " | ratios fine, books not: circular trading, window dressing, back-dating, suspense, fund diversion |
+
+`tests/test_demo_companies.py` pins those outcomes. None of the demo companies has stock items (valuing
+opening-only items hung TallyPrime 1.1.7), so stock and inventory days are empty for them.
 
 ## When Tally hangs (connector 0.5.2, 0.5.3)
 A request that runs past its limit waits up to `idleWait` (20 min) for Tally to answer again. If it never

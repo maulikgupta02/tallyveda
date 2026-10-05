@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Writes the demo books the seeder exe imports into an empty Tally company.
 
-    python3 dev/demo_seed_data.py connector/cmd/demoseed/data
+    python3 dev/demo_seed_data.py connector/cmd/demoseed/data [healthy|stressed|seasonal|redflags]
 
-Uses the same synthetic company as dev/mock_tally.py (2024-04-01 to today), in
-Tally's import format. Files are imported in name order: masters first, so
+Without a profile it writes the synthetic company of dev/mock_tally.py
+(2024-04-01 to today); with one, a dev/demo_companies.py company (2023-04-01
+to today). Output is in Tally's import format. Files are imported in name order: masters first, so
 every voucher finds its ledgers. Each line of a file is one TALLYMESSAGE.
 Vouchers are written in creation order, so the back-dated entries the report
 should find are keyed in last here too. Cancelled vouchers are left out.
@@ -89,8 +90,12 @@ def voucher(v, guid: str) -> str:
     return msg(head + "".join(entry(l, a) for l, a in v.entries) + "</VOUCHER>")
 
 
-def main(out_dir: str) -> None:
-    co = Company(end=date.today())
+def main(out_dir: str, profile: str = "") -> None:
+    if profile:
+        from demo_companies import PROFILES, DemoCompany
+        co = DemoCompany(PROFILES[profile], date.today())
+    else:
+        co = Company(end=date.today())
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("*.xml.gz"):
@@ -107,4 +112,4 @@ def main(out_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "connector/cmd/demoseed/data")
+    main(sys.argv[1] if len(sys.argv) > 1 else "connector/cmd/demoseed/data", sys.argv[2] if len(sys.argv) > 2 else "")
