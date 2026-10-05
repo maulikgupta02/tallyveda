@@ -737,6 +737,8 @@ renderSteps();
 loadMonitor();
 checkTally();
 checkUpdate();
+// The page can stay open for hours; look again so a release published since shows up.
+setInterval(() => { if ($("updBox").classList.contains("hidden")) checkUpdate(); }, 30 * 60 * 1000);
 
 async function checkUpdate() {
   try {
