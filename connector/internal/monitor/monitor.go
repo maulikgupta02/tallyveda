@@ -182,7 +182,7 @@ func Prune(ctx context.Context) error {
 		wg.Add(1)
 		go func(i int, c *Config) {
 			defer wg.Done()
-			st, err := upload.New(c.Server).MonitorStatus(ctx, c.Token)
+			st, err := upload.New(c.Server).MonitorStatus(ctx, c.Token, upload.Heartbeat{Version: Version})
 			gone[i] = errors.Is(err, upload.ErrTokenRevoked) || (err == nil && !st.Active && !c.Pending)
 		}(i, c)
 	}
@@ -482,16 +482,20 @@ func runOne(ctx context.Context, c *Config, version string, logf func(string, ..
 		}
 	}()
 
-	// Runs come every 15 minutes; with Tally closed there is nothing to read, so
-	// don't wake the server (or fill the log) until it is open.
+	// Every run reports whether Tally answered, so the bank sees "Tally closed"
+	// rather than silence; with Tally closed there is nothing more to do.
 	pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	_, perr := tally.NewClient(c.TallyURL).Ping(pctx)
 	cancel()
+	beat := upload.Heartbeat{Tally: "ok", Version: version}
 	if perr != nil {
-		return nil
+		beat = upload.Heartbeat{Tally: "down", Error: perr.Error(), Version: version}
 	}
 	backend := upload.New(c.Server)
-	st, err := backend.MonitorStatus(ctx, c.Token)
+	st, err := backend.MonitorStatus(ctx, c.Token, beat)
+	if perr != nil && err == nil && st.Active {
+		return nil
+	}
 	if errors.Is(err, upload.ErrTokenRevoked) || (err == nil && !st.Active) {
 		logf("%s: the bank has stopped daily updates; removing them from this computer", c.Company)
 		keep = false

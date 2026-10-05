@@ -383,8 +383,12 @@ tenants and the direct tenant" above).
   three for a full local round trip — see `project.md` for its current verification status).
 
 ## Sync cadence, growing history and updates (2026-10-05, connector 0.5.0)
-- **Schedule:** the Windows task runs at sign-in and every 15 minutes all day. A run first pings Tally
-  (no server call if Tally is closed), then asks `/api/connector/monitor/status`. A refresh is due on the
+- **Schedule:** the Windows task runs at sign-in and every 15 minutes all day. A run first pings Tally,
+  then asks `/api/connector/monitor/status`, sending a heartbeat (`{"tally": "ok"|"down", "error",
+  "version"}`, 0.5.1+) even when Tally is closed. `store.record_heartbeat` keeps `tally_ok_at` and
+  `tally_down_since`, and `main._tally_state` turns them into the "Tally on their computer" row: answering,
+  not answering since X (computer on, Tally closed or port 9000 off), or no contact for 40+ minutes
+  (computer off, asleep or signed out). A refresh is due on the
   first check-in of each Indian calendar day (`store.monitoring_due`), or while history is still short.
 - **Growing history (both directions):** a first share reads only `books.FIRST_WINDOW_MONTHS` (3) so the
   bank gets a report within minutes. Each later sync is a delta (forward: what changed) plus a `backfill`
@@ -400,3 +404,11 @@ tenants and the direct tenant" above).
   installed copy is never downgraded by opening an older download (`installed-version`). Unsigned for
   now: a code-signing certificate is planned.
 
+
+## Demo data seeder (test PCs only)
+`connector/cmd/demoseed` builds `TallyVedaDemoSeed.exe` (`cmd/demoseed/build.sh`), a separate program
+that imports `dev/demo_seed_data.py`'s synthetic books (the mock_tally company, 2024-04-01 to the build
+date) into an open, empty company whose name starts with "TallyVeda Demo". Tally can't create a company
+over XML, so the user creates it first. It refuses a company holding vouchers it didn't write (fixed
+uuid5 GUIDs), and resumes an interrupted run. The connector itself still never writes to Tally; never
+ship the seeder in the connector zip.

@@ -8,3 +8,6 @@ connector/dist/
 /docs/agents/mockups/
 connector/resource_windows_amd64.syso
 connector/versioninfo.json
+
+# Demo seeder data, generated at build time
+connector/cmd/demoseed/data/*.xml.gz

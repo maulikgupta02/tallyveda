@@ -39,6 +39,7 @@
   .rail .kv:first-of-type { border-top: 0; }
   .rail .kv > span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; }
   .on-good { color: var(--good-text); font-weight: 600; }
+  .on-warn { color: var(--warning-text); font-weight: 600; }
   .mix-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin-top: 12px; }
   .mix-legend a { margin-left: auto; font-weight: 600; }
 
@@ -127,6 +128,7 @@
   <div class="kv"><span>Updates</span><span class="{{ 'on-good' if a.monitoring_status == 'active' }}">{{ (monitoring_label ~ " · on") if a.monitoring_status == "active" else (monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered")) }}</span></div>
   <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when if a.last_report_at else "Never" }}</span></div>
   {% if a.monitor_last_seen_at %}<div class="kv"><span>Connector last seen</span><span>{{ a.monitor_last_seen_at|when }}</span></div>{% endif %}
+  {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally on their computer</span><span class="{{ 'on-good' if ts.tone == 'good' else 'on-warn' }}" title="{{ ts.detail }}">{{ ts.text }}</span></div>{% endif %}
           {% if a.connector_version %}<div class="kv"><span>Connector version</span><span>{{ a.connector_version }}</span></div>{% endif %}
   {% if ready and ready[0].period_to %}<div class="kv"><span>Books up to</span><span>{{ ready[0].period_to }}</span></div>{% endif %}
   <div class="kv"><span>Reports received</span><span>{{ reports|length }}</span></div>
@@ -391,6 +393,7 @@
             <div>
               <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when }}</span></div>
               <div class="kv"><span>Client last checked in</span><span>{{ a.monitor_last_seen_at|when }}</span></div>
+              {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally on their computer</span><span class="{{ 'on-good' if ts.tone == 'good' else 'on-warn' }}" title="{{ ts.detail }}">{{ ts.text }}</span></div>{% endif %}
               <div class="kv"><span>Next refresh</span><span>{{ "Requested, on next check-in" if a.force_refresh else ("Due now" if due else "A day after the last report") }}</span></div>
             </div>
             <div class="btns">

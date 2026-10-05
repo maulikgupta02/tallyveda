@@ -72,6 +72,14 @@ def test_daily_monitoring_flow(client, model):
     assert "Changes since previous report" in html
     assert client.get(f"/bank/reports/{reports[0]['id']}.json", auth=AUTH).json()["alerts"]
 
+    # Heartbeats: Tally closed on a computer that is on, then open again.
+    client.post("/api/connector/monitor/status", headers=bearer,
+                json={"tally": "down", "error": "tally is not reachable", "version": "0.5.1"})
+    page = client.get(f"/bank/applications/{a['id']}", auth=AUTH).text
+    assert "Not answering since" in page and "0.5.1" in page
+    client.post("/api/connector/monitor/status", headers=bearer, json={"tally": "ok"})
+    assert "Answering · checked" in client.get(f"/bank/applications/{a['id']}", auth=AUTH).text
+
     # Client withdraws consent: token stops working for uploads.
     client.post("/api/connector/monitor/stop", headers=bearer)
     assert not client.post("/api/connector/monitor/status", headers=bearer).json()["active"]

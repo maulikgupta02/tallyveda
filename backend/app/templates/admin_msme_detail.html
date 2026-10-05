@@ -11,6 +11,7 @@
   .box .btns { margin-top: 12px; }
   .kv > span:last-child { text-align: right; min-width: 0; overflow-wrap: anywhere; }
   .kv .on { font-weight: 600; color: var(--good-text); }
+  .kv .warn-t { font-weight: 600; color: var(--warning-text); }
   .code { font: 600 15px var(--mono); letter-spacing: .06em; }
   .mono { font: 500 13px var(--mono); }
   .inline-edit { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
@@ -121,6 +122,7 @@
             <div class="kv"><span>Daily updates</span><span class="{{ 'on' if a.monitoring_status == 'active' }}">{{ monitoring_label }}</span></div>
             <div class="kv"><span>Last data</span><span>{{ a.last_report_at|when if a.last_report_at else "Never" }}</span></div>
             <div class="kv"><span>Connector last seen</span><span>{{ a.monitor_last_seen_at|when if a.monitor_last_seen_at else "Never" }}</span></div>
+            {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally on their computer</span><span class="{{ 'on' if ts.tone == 'good' else 'warn-t' }}" title="{{ ts.detail }}">{{ ts.text }}</span></div>{% endif %}
             <div class="kv"><span>Connector version</span><span>{{ a.connector_version or "Not known yet" }}</span></div>
             {% if a.monitoring_status == "active" %}<div class="kv"><span>Next update</span><span>{{ "Due now" if due else "Not due yet" }}</span></div>{% endif %}
             {% if overdue %}<p class="notice warn" style="margin-top:8px">No data for over {{ overdue_days }} days.</p>{% endif %}

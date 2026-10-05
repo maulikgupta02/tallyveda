@@ -74,9 +74,19 @@ func (b *Backend) MonitorUpload(ctx context.Context, token string, bundle any) e
 	return b.upload(ctx, "/api/connector/monitor/upload", bearer(token), bundle, nil)
 }
 
-func (b *Backend) MonitorStatus(ctx context.Context, token string) (*MonitorStatus, error) {
+// Heartbeat is what a scheduled run found on this computer, so the bank can
+// tell "Tally is closed" from "the computer is off". Tally is "ok" or "down";
+// empty when the caller didn't check.
+type Heartbeat struct {
+	Tally   string `json:"tally,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+func (b *Backend) MonitorStatus(ctx context.Context, token string, beat Heartbeat) (*MonitorStatus, error) {
 	var st MonitorStatus
-	return &st, b.call(ctx, "/api/connector/monitor/status", bearer(token), []byte("{}"), &st)
+	body, _ := json.Marshal(beat)
+	return &st, b.call(ctx, "/api/connector/monitor/status", bearer(token), body, &st)
 }
 
 func (b *Backend) MonitorStop(ctx context.Context, token string) error {

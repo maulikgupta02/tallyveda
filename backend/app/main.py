@@ -170,6 +170,23 @@ def _day(stamp: str | None) -> str:
     return f"{d.day} {_MONTHS[d.month - 1]} {d.year}"
 
 
+def _tally_state(a: dict) -> dict | None:
+    """What the latest scheduled checks say about Tally on the client's computer.
+
+    Runs come every 15 minutes while the computer is on and someone is signed in,
+    so a gap of 40 minutes means no run happened at all. None before a connector
+    that reports Tally (0.5.1+) has checked in."""
+    seen = a.get("monitor_last_seen_at")
+    if a.get("monitoring_status") != "active" or not seen or not (a.get("tally_ok_at") or a.get("tally_down_since")):
+        return None
+    if (datetime.now(timezone.utc) - _ist(seen)).total_seconds() > 40 * 60:
+        return {"text": f"No contact since {_when(seen)}: the computer is off, asleep or signed out of Windows", "tone": "warn"}
+    if a.get("tally_down_since"):
+        return {"text": f"Not answering since {_when(a['tally_down_since'])}: the computer is on, but Tally is closed "
+                        "or its connectivity (port 9000) is off", "tone": "warn", "detail": a.get("tally_error") or ""}
+    return {"text": f"Answering · checked {_when(seen)}", "tone": "good"}
+
+
 templates.filters["when"] = _when
 templates.filters["day"] = _day
 templates.filters["inr"] = fmt.inr
@@ -187,6 +204,7 @@ templates.globals.update(
     emi_grid=dc.emi_grid,
     month_label=dc.month_label,
     nav_counts=store.nav_counts,
+    tally_state=_tally_state,
     STATUS_WORD=dc.STATUS_WORD,
     inr=fmt.inr,
 )
@@ -418,8 +436,16 @@ def _monitor_status(a: dict) -> dict:
 
 
 @app.post("/api/connector/monitor/status")
-def monitor_status(request: Request):
-    return _monitor_status(_check_token(request))
+async def monitor_status(request: Request):
+    a = _check_token(request)
+    try:
+        beat = json.loads(await request.body() or b"{}")
+    except ValueError:
+        beat = {}
+    if isinstance(beat, dict):
+        store.record_heartbeat(a["id"], str(beat.get("tally") or ""), str(beat.get("error") or ""))
+        store.set_connector_version(a["id"], str(beat.get("version") or ""))
+    return _monitor_status(a)
 
 
 @app.post("/api/connector/monitor/upload")

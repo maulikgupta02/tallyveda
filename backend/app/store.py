@@ -220,6 +220,11 @@ MIGRATIONS = {
         "monitor_token_hash": "TEXT",
         "monitor_started_at": "TEXT",
         "monitor_last_seen_at": "TEXT",  # last time the client's scheduled task checked in
+        # What the scheduled task found on that computer: Tally last answering,
+        # and since when it hasn't (NULL while it answers).
+        "tally_ok_at": "TEXT",
+        "tally_down_since": "TEXT",
+        "tally_error": "TEXT",
         "force_refresh": "INTEGER NOT NULL DEFAULT 0",
         "latest_report_id": "TEXT",
         "last_report_at": "TEXT",
@@ -640,6 +645,17 @@ def set_contact_email(app_id: str, email: str) -> None:
             "UPDATE applications SET contact_email = ?, otp_hash = NULL, otp_verified_at = NULL WHERE id = ?",
             (email.strip().lower() or None, app_id),
         )
+
+
+def record_heartbeat(app_id: str, tally: str, error: str = "") -> None:
+    """Notes whether Tally answered the connector's scheduled check."""
+    with db() as conn:
+        if tally == "ok":
+            conn.execute("UPDATE applications SET tally_ok_at = ?, tally_down_since = NULL, tally_error = NULL WHERE id = ?",
+                         (now().isoformat(), app_id))
+        elif tally == "down":
+            conn.execute("UPDATE applications SET tally_down_since = COALESCE(tally_down_since, ?), tally_error = ? WHERE id = ?",
+                         (now().isoformat(), error[:300], app_id))
 
 
 def set_connector_version(app_id: str, version: str) -> None:
