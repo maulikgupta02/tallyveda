@@ -564,6 +564,7 @@ async def sync_start(request: Request):
     except books.SyncBusy as e:
         raise HTTPException(503, str(e))
     store.set_connector_version(a["id"], body.connector_version)
+    store.record_heartbeat(a["id"], "ok")
     session = books.get_session(plan["sync_id"])
     books.stage(session, {"company": body.company, "machine": body.machine, "consent": body.consent,
                           "connector_version": body.connector_version})
@@ -577,6 +578,7 @@ def _sync_session(sync_id: str, request: Request) -> dict:
         raise HTTPException(404, "Unknown sync")
     if s["status"] != "open":
         raise HTTPException(409, f"This sync is {s['status']}")
+    store.record_heartbeat(a["id"], "ok")  # data just read from Tally: it is answering
     return s
 
 
