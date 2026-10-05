@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ a.applicant_name }} · {{ bank_name }} · TallyVeda</title>
-<link rel="stylesheet" href="/static/app.css?v=4">
+<link rel="stylesheet" href="/static/app.css?v=5">
 <style>
   .head { align-items: flex-start; }
   .head > div:first-child { flex: 1 1 420px; }
@@ -111,7 +111,7 @@
 </style>
 </head>
 <body>
-{% from "_shell.html" import bank_side %}
+{% from "_shell.html" import bank_side, live_dot %}
 {% set ro = readonly|default(false) %}
 {% macro pill(status) -%}
 <span class="pill {{ status }}"><i></i>{{ {"attention": "Attention", "watch": "Watch", "healthy": "Healthy", "nodata": "No data", "awaiting_data": "Awaiting data"}.get(status, status|replace("_", " ")|capitalize) }}</span>
@@ -128,7 +128,7 @@
   <div class="kv"><span>Updates</span><span class="{{ 'on-good' if a.monitoring_status == 'active' }}">{{ (monitoring_label ~ " · on") if a.monitoring_status == "active" else (monitoring_label if a.monitoring_status != "off" else ("Offered, not accepted yet" if a.monitoring_offered else "Not offered")) }}</span></div>
   <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when if a.last_report_at else "Never" }}</span></div>
   {% if a.monitor_last_seen_at %}<div class="kv"><span>Connector last seen</span><span>{{ a.monitor_last_seen_at|when }}</span></div>{% endif %}
-  {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally on their computer</span><span class="{{ 'on-good' if ts.tone == 'good' else 'on-warn' }}" title="{{ ts.detail }}">{{ ts.text }}</span></div>{% endif %}
+  {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally</span><span title="{{ ts.detail }}">{{ live_dot(a) }} <small class="muted">{{ ts.label }}</small></span></div>{% if ts.why %}<p class="muted" style="margin:-4px 0 6px;font-size:12px">{{ ts.why }}</p>{% endif %}{% endif %}
           {% if a.connector_version %}<div class="kv"><span>Connector version</span><span>{{ a.connector_version }}</span></div>{% endif %}
   {% if ready and ready[0].period_to %}<div class="kv"><span>Books up to</span><span>{{ ready[0].period_to }}</span></div>{% endif %}
   <div class="kv"><span>Reports received</span><span>{{ reports|length }}</span></div>
@@ -393,7 +393,7 @@
             <div>
               <div class="kv"><span>Last data received</span><span>{{ a.last_report_at|when }}</span></div>
               <div class="kv"><span>Client last checked in</span><span>{{ a.monitor_last_seen_at|when }}</span></div>
-              {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally on their computer</span><span class="{{ 'on-good' if ts.tone == 'good' else 'on-warn' }}" title="{{ ts.detail }}">{{ ts.text }}</span></div>{% endif %}
+              {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally</span><span title="{{ ts.detail }}">{{ live_dot(a) }} <small class="muted">{{ ts.label }}</small></span></div>{% if ts.why %}<p class="muted" style="margin:-4px 0 6px;font-size:12px">{{ ts.why }}</p>{% endif %}{% endif %}
               <div class="kv"><span>Next refresh</span><span>{{ "Requested, on next check-in" if a.force_refresh else ("Due now" if due else "A day after the last report") }}</span></div>
             </div>
             <div class="btns">

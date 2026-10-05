@@ -20,6 +20,9 @@
 
 {% macro count(n, hot=false) %}{% if n %}<span class="cnt{{ ' hot' if hot }}">{{ n }}</span>{% endif %}{% endmacro %}
 
+{# Green "Live" while Tally answers the connector's 15-minute checks, red "Asleep" otherwise. #}
+{% macro live_dot(a) %}{% set ts = tally_state(a) %}{% if ts %}<span class="live{{ '' if ts.live else ' off' }}" title="{{ ts.label }}. {{ ts.why }}"><i></i>{{ "Live" if ts.live else "Asleep" }}</span>{% endif %}{% endmacro %}
+
 {% macro bank_side(bank_name, active, nav, read_only_back="") %}
   <aside class="side">
     <div class="who"><span class="mark">{{ (bank_name.split()|map("first")|join)[:2]|upper }}</span><div><b>{{ bank_name }}</b><small>SME desk</small></div></div>

@@ -180,11 +180,13 @@ def _tally_state(a: dict) -> dict | None:
     if a.get("monitoring_status") != "active" or not seen or not (a.get("tally_ok_at") or a.get("tally_down_since")):
         return None
     if (datetime.now(timezone.utc) - _ist(seen)).total_seconds() > 40 * 60:
-        return {"text": f"No contact since {_when(seen)}: the computer is off, asleep or signed out of Windows", "tone": "warn"}
+        return {"live": False, "label": f"No contact since {_when(seen)}",
+                "why": "The computer is off, asleep or signed out of Windows."}
     if a.get("tally_down_since"):
-        return {"text": f"Not answering since {_when(a['tally_down_since'])}: the computer is on, but Tally is closed "
-                        "or its connectivity (port 9000) is off", "tone": "warn", "detail": a.get("tally_error") or ""}
-    return {"text": f"Answering · checked {_when(seen)}", "tone": "good"}
+        return {"live": False, "label": f"Since {_when(a['tally_down_since'])}",
+                "why": "The computer is on, but Tally is closed or its connectivity (port 9000) is off.",
+                "detail": a.get("tally_error") or ""}
+    return {"live": True, "label": f"Checked {_when(seen)}", "why": ""}
 
 
 templates.filters["when"] = _when

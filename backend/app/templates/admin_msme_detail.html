@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ a.applicant_name }} · Admin</title>
-<link rel="stylesheet" href="/static/app.css?v=4">
+<link rel="stylesheet" href="/static/app.css?v=5">
 <style>
   .title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .box { padding: 0 20px 18px; display: flex; flex-direction: column; }
@@ -29,7 +29,7 @@
 </head>
 <body>
 {% set nav = "msmes" %}
-{% from "_shell.html" import admin_side with context %}
+{% from "_shell.html" import admin_side, live_dot with context %}
 <div class="shell">
   {{ admin_side(nav, user if user is defined else none) }}
 
@@ -122,7 +122,7 @@
             <div class="kv"><span>Daily updates</span><span class="{{ 'on' if a.monitoring_status == 'active' }}">{{ monitoring_label }}</span></div>
             <div class="kv"><span>Last data</span><span>{{ a.last_report_at|when if a.last_report_at else "Never" }}</span></div>
             <div class="kv"><span>Connector last seen</span><span>{{ a.monitor_last_seen_at|when if a.monitor_last_seen_at else "Never" }}</span></div>
-            {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally on their computer</span><span class="{{ 'on' if ts.tone == 'good' else 'warn-t' }}" title="{{ ts.detail }}">{{ ts.text }}</span></div>{% endif %}
+            {% set ts = tally_state(a) %}{% if ts %}<div class="kv"><span>Tally</span><span title="{{ ts.detail }}">{{ live_dot(a) }} <small class="muted">{{ ts.label }}</small></span></div>{% if ts.why %}<p class="muted" style="margin:-4px 0 6px;font-size:12px">{{ ts.why }}</p>{% endif %}{% endif %}
             <div class="kv"><span>Connector version</span><span>{{ a.connector_version or "Not known yet" }}</span></div>
             {% if a.monitoring_status == "active" %}<div class="kv"><span>Next update</span><span>{{ "Due now" if due else "Not due yet" }}</span></div>{% endif %}
             {% if overdue %}<p class="notice warn" style="margin-top:8px">No data for over {{ overdue_days }} days.</p>{% endif %}

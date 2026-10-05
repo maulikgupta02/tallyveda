@@ -247,3 +247,9 @@ pre.log { margin: 0; max-height: 420px; overflow: auto; background: #0f172a; col
   .stat-v { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Tally live / asleep indicator */
+.live { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--good-text); white-space: nowrap; }
+.live i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px var(--good-soft); }
+.live.off { color: var(--critical-text); }
+.live.off i { background: var(--critical); box-shadow: 0 0 0 3px var(--critical-soft); }

@@ -76,9 +76,12 @@ def test_daily_monitoring_flow(client, model):
     client.post("/api/connector/monitor/status", headers=bearer,
                 json={"tally": "down", "error": "tally is not reachable", "version": "0.5.1"})
     page = client.get(f"/bank/applications/{a['id']}", auth=AUTH).text
-    assert "Not answering since" in page and "0.5.1" in page
+    assert "Tally is closed" in page and "0.5.1" in page
     client.post("/api/connector/monitor/status", headers=bearer, json={"tally": "ok"})
-    assert "Answering · checked" in client.get(f"/bank/applications/{a['id']}", auth=AUTH).text
+    assert "Checked " in client.get(f"/bank/applications/{a['id']}", auth=AUTH).text
+    assert '<span class="live"' in client.get("/bank", auth=AUTH).text
+    client.post("/api/connector/monitor/status", headers=bearer, json={"tally": "down"})
+    assert '<span class="live off"' in client.get("/bank", auth=AUTH).text
 
     # Client withdraws consent: token stops working for uploads.
     client.post("/api/connector/monitor/stop", headers=bearer)

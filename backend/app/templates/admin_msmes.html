@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MSMEs · Admin</title>
-<link rel="stylesheet" href="/static/app.css?v=4">
+<link rel="stylesheet" href="/static/app.css?v=5">
 <style>
   #newMsme .form-row > label { flex: 1 1 180px; }
   #newMsme .form-row > label.months { flex: 0 0 96px; }
@@ -13,7 +13,7 @@
 </head>
 <body>
 {% set nav = "msmes" %}
-{% from "_shell.html" import admin_side with context %}
+{% from "_shell.html" import admin_side, live_dot with context %}
 <div class="shell">
   {{ admin_side(nav, user if user is defined else none) }}
 
@@ -79,7 +79,7 @@
           <td><a class="name" href="/admin/msmes?{{ filters|urlencode }}&amp;sel={{ a.id }}"><b>{{ a.applicant_name }}</b>{% if a.reference %}<small>{{ a.reference }}</small>{% endif %}</a></td>
           <td>{% if a.tenant_kind == "direct" %}<span class="pill accent">Direct</span>{% else %}{{ a.tenant_name }}{% endif %}</td>
           <td><span class="pill {{ a.status }}"><i></i>{{ a.status.replace("_", " ")|capitalize }}</span></td>
-          <td>{{ mon_labels.get(mon, mon.replace("_", " ")|capitalize) }}</td>
+          <td>{{ mon_labels.get(mon, mon.replace("_", " ")|capitalize) }} {{ live_dot(a) }}</td>
           <td class="muted">{{ a.last_report_at|when if a.last_report_at else "Never" }}</td>
         </tr>
         {% else %}

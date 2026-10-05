@@ -386,7 +386,8 @@ tenants and the direct tenant" above).
 - **Schedule:** the Windows task runs at sign-in and every 15 minutes all day. A run first pings Tally,
   then asks `/api/connector/monitor/status`, sending a heartbeat (`{"tally": "ok"|"down", "error",
   "version"}`, 0.5.1+) even when Tally is closed. `store.record_heartbeat` keeps `tally_ok_at` and
-  `tally_down_since`, and `main._tally_state` turns them into the "Tally on their computer" row: answering,
+  `tally_down_since`, and `main._tally_state` turns them into the data feed's "Tally" row and the green Live / red Asleep dot
+  (`_shell.live_dot`, also on the portfolio and the admin MSME list): answering,
   not answering since X (computer on, Tally closed or port 9000 off), or no contact for 40+ minutes
   (computer off, asleep or signed out). A refresh is due on the
   first check-in of each Indian calendar day (`store.monitoring_due`), or while history is still short.
