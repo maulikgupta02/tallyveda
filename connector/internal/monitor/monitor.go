@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"tallyconnector/internal/extract"
 	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
+	"tallyconnector/internal/update"
 	"tallyconnector/internal/upload"
 )
 
@@ -312,11 +314,12 @@ func StopAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-func installCopy() (string, error) {
-	self, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
+// Version is the running connector's version, set by main. The installed copy
+// is never replaced by an older one (someone opening an old download after an
+// update).
+var Version = "dev"
+
+func installedPath() (string, error) {
 	d, err := Dir()
 	if err != nil {
 		return "", err
@@ -325,8 +328,38 @@ func installCopy() (string, error) {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	dst := filepath.Join(d, name)
+	return filepath.Join(d, name), nil
+}
+
+// InstalledVersion is the version of the copy the scheduled task runs.
+func InstalledVersion() string {
+	d, err := Dir()
+	if err != nil {
+		return ""
+	}
+	b, _ := os.ReadFile(filepath.Join(d, "installed-version"))
+	return strings.TrimSpace(string(b))
+}
+
+func setInstalledVersion(v string) {
+	if d, err := Dir(); err == nil {
+		os.WriteFile(filepath.Join(d, "installed-version"), []byte(v), 0o600)
+	}
+}
+
+func installCopy() (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	dst, err := installedPath()
+	if err != nil {
+		return "", err
+	}
 	if same(self, dst) {
+		return dst, nil
+	}
+	if _, err := os.Stat(dst); err == nil && update.Newer(InstalledVersion(), Version) {
 		return dst, nil
 	}
 	in, err := os.Open(self)
@@ -346,7 +379,49 @@ func installCopy() (string, error) {
 	if err := out.Close(); err != nil {
 		return "", err
 	}
-	return dst, os.Rename(tmp, dst)
+	if err := os.Rename(tmp, dst); err != nil {
+		return "", err
+	}
+	setInstalledVersion(Version)
+	return dst, nil
+}
+
+// AutoUpdate installs a newer release over the copy the scheduled task runs,
+// when the server allows background updates. The current run carries on with
+// the old code; the next one uses the new version.
+func AutoUpdate(ctx context.Context, logf func(string, ...any)) {
+	list, err := LoadAll()
+	if err != nil || len(list) == 0 {
+		return
+	}
+	d, err := Dir()
+	if err != nil {
+		return
+	}
+	stamp := filepath.Join(d, "update-checked")
+	if st, err := os.Stat(stamp); err == nil && time.Since(st.ModTime()) < 6*time.Hour {
+		return
+	}
+	os.WriteFile(stamp, nil, 0o600)
+	os.Chtimes(stamp, time.Now(), time.Now())
+	l, err := update.Check(ctx, list[0].Server)
+	if err != nil || !l.Auto || !update.Newer(l.Version, Version) || !update.Newer(l.Version, InstalledVersion()) {
+		return
+	}
+	dst, err := installedPath()
+	if err != nil {
+		return
+	}
+	file, err := update.Fetch(ctx, list[0].Server, l, filepath.Dir(dst))
+	if err == nil {
+		err = update.Replace(dst, file)
+	}
+	if err != nil {
+		logf("could not update to %s: %v", l.Version, err)
+		return
+	}
+	setInstalledVersion(l.Version)
+	logf("updated to %s; the next run uses it", l.Version)
 }
 
 func same(a, b string) bool {
@@ -371,6 +446,10 @@ func OpenLog() (*os.File, error) {
 // Run is one scheduled check over every daily entry. It returns nil when
 // there was nothing to do or Tally was closed (the next run retries).
 func Run(ctx context.Context, version string, logf func(string, ...any)) error {
+	if self, err := os.Executable(); err == nil {
+		update.Cleanup(self)
+	}
+	AutoUpdate(ctx, logf)
 	list, err := LoadAll()
 	if err != nil {
 		return err
@@ -403,6 +482,14 @@ func runOne(ctx context.Context, c *Config, version string, logf func(string, ..
 		}
 	}()
 
+	// Runs come every 15 minutes; with Tally closed there is nothing to read, so
+	// don't wake the server (or fill the log) until it is open.
+	pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	_, perr := tally.NewClient(c.TallyURL).Ping(pctx)
+	cancel()
+	if perr != nil {
+		return nil
+	}
 	backend := upload.New(c.Server)
 	st, err := backend.MonitorStatus(ctx, c.Token)
 	if errors.Is(err, upload.ErrTokenRevoked) || (err == nil && !st.Active) {
@@ -482,7 +569,39 @@ func SyncEntry(ctx context.Context, c *Config, version string, progress extract.
 	if err != nil {
 		return "", err
 	}
-	return extract.Sync(ctx, tc, o, st.Plan, &upload.Session{B: backend, Token: c.Token, SyncID: st.SyncID}, progress)
+	req := upload.StartRequest{
+		Company: co, Period: extract.Period{From: from.Format("2006-01-02"), To: to.Format("2006-01-02")},
+		TallyAlterID: co.AltVchID, ConnectorVersion: version, Machine: extract.MachineOf(o),
+		Consent: extract.Consent{AcceptedBy: c.ConsentBy, AcceptedAt: c.ConsentAt, MonitoringOptIn: c.Daily,
+			Text: fmt.Sprintf("Update under the consent given by %s on %s.", c.ConsentBy, c.ConsentAt)},
+	}
+	sess := &upload.Session{B: backend, Token: c.Token, SyncID: st.SyncID}
+	summary, err := extract.Sync(ctx, tc, o, st.Plan, sess, progress)
+	if err != nil || !sess.More {
+		return summary, err
+	}
+	more, err := Continue(ctx, tc, o, backend, c.Token, req, sess, progress)
+	return strings.TrimSpace(summary + " " + more), err
+}
+
+// Continue keeps a growing history going: while the server wants older months,
+// it opens the next sync and sends them, each one also carrying what changed.
+func Continue(ctx context.Context, tc *tally.Client, o extract.Options, b *upload.Backend, token string,
+	req upload.StartRequest, sess *upload.Session, progress extract.Progress) (string, error) {
+	var notes []string
+	for round := 0; sess.More && round < 12; round++ {
+		st, err := b.StartAgain(ctx, token, req)
+		if err != nil {
+			return strings.Join(notes, " "), err
+		}
+		sess = &upload.Session{B: b, Token: token, SyncID: st.SyncID}
+		summary, err := extract.Sync(ctx, tc, o, st.Plan, sess, progress)
+		if err != nil {
+			return strings.Join(notes, " "), err
+		}
+		notes = append(notes, summary)
+	}
+	return strings.Join(notes, " "), nil
 }
 
 // Lock keeps two connector processes (the UI and the scheduled task) from

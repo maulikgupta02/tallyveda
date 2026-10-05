@@ -381,3 +381,22 @@ tenants and the direct tenant" above).
   function `main()` in `connector/main.go`; build via `connector/build.sh`.
 - Dev: `dev/mock_tally.py` (standalone fake Tally server), `dev/e2e.sh` (orchestrates all
   three for a full local round trip — see `project.md` for its current verification status).
+
+## Sync cadence, growing history and updates (2026-10-05, connector 0.5.0)
+- **Schedule:** the Windows task runs at sign-in and every 15 minutes all day. A run first pings Tally
+  (no server call if Tally is closed), then asks `/api/connector/monitor/status`. A refresh is due on the
+  first check-in of each Indian calendar day (`store.monitoring_due`), or while history is still short.
+- **Growing history (both directions):** a first share reads only `books.FIRST_WINDOW_MONTHS` (3) so the
+  bank gets a report within minutes. Each later sync is a delta (forward: what changed) plus a `backfill`
+  span of up to `books.BACKFILL_MONTHS` (6) older months (backward), and the connector loops
+  (`monitor.Continue`) while `/sync/{id}/finish` answers `more: true`, until the book reaches the bank's
+  `target_from`. Opening balances roll back over the added months (`_roll_openings`). Reports whose window
+  start moved earlier than the previous report's raise no alerts (`snapshot["window_from"]`). A one-off
+  share keeps its token until the history is complete.
+- **Updates:** `connector/release.sh` publishes `static/downloads/latest.json` (version, SHA-256, size,
+  `auto`). `/api/connector/latest` serves it and `/download/connector.exe` the exe from the zip. Background
+  runs install a newer release over the scheduled copy when `auto` is true (`monitor.AutoUpdate`); the
+  page offers "Update now", which replaces the running exe and the scheduled copy and restarts. The
+  installed copy is never downgraded by opening an older download (`installed-version`). Unsigned for
+  now: a code-signing certificate is planned.
+

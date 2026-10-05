@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"tallyconnector/internal/monitor"
 	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
+	"tallyconnector/internal/update"
 	"tallyconnector/internal/upload"
 )
 
@@ -130,6 +132,7 @@ func (a *App) Listen(port int) (string, error) {
 	mux.HandleFunc("/api/monitor/stop", a.guard(a.monitorStop))
 	mux.HandleFunc("/api/resume", a.guard(a.resume))
 	mux.HandleFunc("/api/diagnose", a.guard(a.diagnose))
+	mux.HandleFunc("/api/update", a.guard(a.selfUpdate))
 	go http.Serve(ln, mux)
 	return fmt.Sprintf("http://%s/?t=%s", ln.Addr().String(), a.token), nil
 }
@@ -345,6 +348,61 @@ func CheckTally(ctx context.Context, t *tally.Client, b *upload.Backend, version
 	return report
 }
 
+// selfUpdate tells the page whether a newer release exists (GET), or installs
+// it over this exe and the scheduled copy and restarts (POST).
+func (a *App) selfUpdate(w http.ResponseWriter, r *http.Request) {
+	l, err := update.Check(r.Context(), a.Backend.URL)
+	if r.Method == http.MethodGet {
+		out := map[string]any{"current": a.Version, "available": false}
+		if err == nil {
+			out["latest"], out["available"] = l.Version, update.Newer(l.Version, a.Version)
+		}
+		writeJSON(w, 200, out)
+		return
+	}
+	if err != nil {
+		writeJSON(w, 502, map[string]string{"error": "could not reach the update server: " + err.Error()})
+		return
+	}
+	if !update.Newer(l.Version, a.Version) {
+		writeJSON(w, 400, map[string]string{"error": "this is already the latest version"})
+		return
+	}
+	a.mu.Lock()
+	running := a.job.Running
+	a.mu.Unlock()
+	if running {
+		writeJSON(w, 409, map[string]string{"error": "please wait until sharing has finished"})
+		return
+	}
+	self, err := os.Executable()
+	if err == nil {
+		var file string
+		if file, err = update.Fetch(r.Context(), a.Backend.URL, l, filepath.Dir(self)); err == nil {
+			err = update.Replace(self, file)
+		}
+	}
+	if err != nil {
+		writeJSON(w, 500, map[string]string{"error": err.Error()})
+		return
+	}
+	// The scheduled task runs its own copy; give it the new version too.
+	monitor.Version = l.Version
+	if err := monitor.Upgrade(); err != nil {
+		log.Printf("updating the scheduled copy: %v", err)
+	}
+	log.Printf("updated from %s to %s; restarting", a.Version, l.Version)
+	writeJSON(w, 200, map[string]bool{"restarting": true})
+	go func() {
+		time.Sleep(time.Second)
+		if err := exec.Command(self, os.Args[1:]...).Start(); err != nil {
+			log.Printf("could not restart: %v", err)
+			return
+		}
+		os.Exit(0)
+	}()
+}
+
 // resume continues an interrupted share in the background.
 func (a *App) resume(w http.ResponseWriter, r *http.Request) {
 	var in struct{ ID string }
@@ -361,7 +419,7 @@ func (a *App) resume(w http.ResponseWriter, r *http.Request) {
 			monitor.Put(c)
 			return "", err
 		}
-		return finishEntry(c, summary), nil
+		return finishEntry(c, summary, true), nil
 	})
 }
 
@@ -462,11 +520,12 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 	o := extract.Options{Company: *company, From: from, To: to, Version: version, TallyURL: t.URL, Banner: banner,
 		ConsentBy: strings.TrimSpace(in.ConsentName), ConsentMsg: consent}
 	progress("Connecting securely", 0.01)
-	st, err := b.StartWithCode(ctx, in.Code, upload.StartRequest{
+	req := upload.StartRequest{
 		Company: company, Period: extract.Period{From: from.Format("2006-01-02"), To: to.Format("2006-01-02")},
 		TallyAlterID: company.AltVchID, MonitoringOptIn: monitoring, ConnectorVersion: version, Machine: extract.MachineOf(o),
 		Consent: extract.Consent{AcceptedAt: now, AcceptedBy: o.ConsentBy, Text: consent, MonitoringOptIn: monitoring},
-	})
+	}
+	st, err := b.StartWithCode(ctx, in.Code, req)
 	if err != nil {
 		return "", err
 	}
@@ -486,22 +545,43 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 	}
 	defer unlock()
 	defer monitor.ShipLogs(b.URL, st.Token)()
-	summary, err := extract.Sync(ctx, t, o, st.Plan, &upload.Session{B: b, Token: st.Token, SyncID: st.SyncID}, progress)
+	sess := &upload.Session{B: b, Token: st.Token, SyncID: st.SyncID}
+	summary, err := extract.Sync(ctx, t, o, st.Plan, sess, progress)
 	if err != nil {
 		return "", fmt.Errorf("%w. Select \"Continue sharing\" on this page to carry on from where it stopped", err)
 	}
+	// The latest months are in and the bank has a first report; now add the
+	// older months, newest first.
+	complete := true
+	if sess.More {
+		progress("First report sent. Adding older months", 0.5)
+		if _, err := monitor.Continue(ctx, t, o, b, st.Token, req, sess, progress); err != nil {
+			log.Printf("older months: %v", err)
+			complete = false
+		}
+	}
 	summary = fmt.Sprintf("%s has been shared with %s. %s", company.Name, info.BankName, summary)
+	if !complete {
+		summary += " The latest months have been shared; the older months could not all be read yet."
+		if c.Daily {
+			summary += " They will follow automatically while Tally is open."
+		} else {
+			summary += " Select \"Continue sharing\" on this page to finish."
+		}
+	}
 	if setupErr != nil {
 		return summary + " Daily updates could not be set up automatically (" + setupErr.Error() + ").", nil
 	}
-	return finishEntry(c, summary), nil
+	return finishEntry(c, summary, complete), nil
 }
 
-// finishEntry records a finished share: a one-off share's entry is removed,
-// a daily one is kept for the scheduled task.
-func finishEntry(c *monitor.Config, summary string) string {
+// finishEntry records a finished share: a one-off share's entry is removed once
+// all of it has been sent, a daily one is kept for the scheduled task.
+func finishEntry(c *monitor.Config, summary string, complete bool) string {
 	if !c.Daily {
-		monitor.Remove(c.Token)
+		if complete {
+			monitor.Remove(c.Token)
+		}
 		return summary
 	}
 	c.Pending, c.LastSuccess, c.LastError = false, time.Now().Format(time.RFC3339), ""

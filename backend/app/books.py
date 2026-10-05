@@ -30,6 +30,41 @@ from .analysis.book import NON_ACCOUNTING_TYPES, _voucher_base_resolver
 
 MASTER_KEYS = ("groups", "ledgers", "voucher_types")
 
+# The first share reads only the latest months, so the bank sees a report within
+# minutes. Each later sync then works in both directions: it sends what changed
+# since the last one (forward) and extends the history back by BACKFILL_MONTHS
+# (backward), until it reaches the period the bank asked for.
+FIRST_WINDOW_MONTHS = 3
+BACKFILL_MONTHS = 6
+
+
+def _month_start(d: str, back: int = 0) -> str:
+    y, m = int(d[:4]), int(d[5:7]) - back
+    while m < 1:
+        y, m = y - 1, m + 12
+    return f"{y:04d}-{m:02d}-01"
+
+
+def history(app_id: str) -> dict | None:
+    """How much of the requested history the book holds."""
+    book = get_book(app_id)
+    if not book:
+        return None
+    period = book["state"]["period"]
+    target = book["state"].get("target_from") or period["from"]
+    return {"have_from": period["from"], "target_from": target, "to": period["to"], "pending": period["from"] > target,
+            "months_have": len(_month_keys(period["from"], period["to"])),
+            "months_target": len(_month_keys(target, period["to"]))}
+
+
+def _month_keys(pfrom: str, pto: str) -> list[str]:
+    y, m = int(pfrom[:4]), int(pfrom[5:7])
+    out = []
+    while f"{y:04d}-{m:02d}" <= pto[:7]:
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
 
 def _now() -> str:
     return store.now().isoformat()
@@ -110,21 +145,28 @@ def start(app: dict, period_from: str, period_to: str, want_full: bool = False, 
         _set_session(current["id"], status="abandoned")
 
     book = get_book(app_id)
+    target_from = period_from
     full = want_full or book is None
+    backfill = None
     if book and not full:
         state = book["state"]
         last_full = datetime.fromisoformat(book["last_full_at"]) if book["last_full_at"] else None
         full = (
             last_full is None
             or store.now() - last_full > timedelta(days=config.FULL_SYNC_DAYS)
-            # A longer window needs history the book doesn't have.
-            or period_from < state["period"]["from"]
             # Alter IDs going backwards means the company was restored from a backup.
             or (tally_alter_id is not None and 0 < tally_alter_id < book["max_alter_id"])
             or (company_guid and state.get("company", {}).get("guid") not in ("", None, company_guid))
             or (company_name and state.get("company", {}).get("name") not in ("", None, company_name))
             or state.get("needs_full", False)
         )
+        have_from = state["period"]["from"]
+        if not full and have_from > target_from:
+            # History still short of what the bank asked for: extend it backwards.
+            period_from = max(target_from, _month_start(have_from, BACKFILL_MONTHS))
+            backfill = {"from": period_from, "to": (date.fromisoformat(have_from) - timedelta(days=1)).isoformat()}
+    if book is None and not want_full:
+        period_from = max(target_from, _month_start(period_to, FIRST_WINDOW_MONTHS - 1))
     session = {
         "id": uuid.uuid4().hex,
         "application_id": app_id,
@@ -133,15 +175,21 @@ def start(app: dict, period_from: str, period_to: str, want_full: bool = False, 
         "period_from": period_from,
         "period_to": period_to,
         "months_done": [],
-        "staged": {},
+        "staged": {"target_from": target_from, **({"backfill": backfill} if backfill else {})},
     }
     with store.db() as conn:
         conn.execute(
-            "INSERT INTO sync_sessions (id, application_id, mode, status, period_from, period_to, created_at, updated_at)"
-            " VALUES (?, ?, ?, 'open', ?, ?, ?, ?)",
-            (session["id"], app_id, session["mode"], period_from, period_to, _now(), _now()),
+            "INSERT INTO sync_sessions (id, application_id, mode, status, period_from, period_to, staged, created_at, updated_at)"
+            " VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?)",
+            (session["id"], app_id, session["mode"], period_from, period_to, json.dumps(session["staged"]), _now(), _now()),
         )
     return _plan(session, book)
+
+
+def more_to_come(session: dict) -> bool:
+    """True when this sync leaves history still to fetch, so the connector should
+    start another one straight away."""
+    return session["period_from"] > session["staged"].get("target_from", session["period_from"])
 
 
 def _plan(session: dict, book: dict | None) -> dict:
@@ -155,6 +203,7 @@ def _plan(session: dict, book: dict | None) -> dict:
         "refresh_ledgers": [],
         "last_to": "",
         "stock_dates": [],
+        "backfill": session["staged"].get("backfill"),
     }
     if session["mode"] == "delta" and book:
         plan["since_alter_id"] = book["max_alter_id"]
@@ -350,6 +399,9 @@ def finish(session: dict) -> dict:
             if key in staged:
                 state[key] = staged[key]
         roll = _roll_openings(app_id, state.get("voucher_types", []), old_from, pfrom) if pfrom > old_from else {}
+        # Backfill moved the start earlier: the opening balance then excludes the
+        # movement in the months just added.
+        back = _roll_openings(app_id, state.get("voucher_types", []), pfrom, old_from) if pfrom < old_from else {}
         old = {l["name"]: l for l in state.get("ledgers", [])}
         balances = staged.get("balances", {})
         ledgers = []
@@ -360,7 +412,7 @@ def finish(session: dict) -> dict:
                 l["opening_balance"], l["closing_balance"] = b["opening_balance"], b["closing_balance"]
             elif l["name"] in old:
                 prev = old[l["name"]]
-                l["opening_balance"] = round(prev.get("opening_balance", 0) + roll.get(l["name"], 0), 2)
+                l["opening_balance"] = round(prev.get("opening_balance", 0) + roll.get(l["name"], 0) - back.get(l["name"], 0), 2)
                 l["closing_balance"] = prev.get("closing_balance", 0)
             ledgers.append(l)
         state["ledgers"] = ledgers
@@ -380,6 +432,7 @@ def finish(session: dict) -> dict:
         if key in staged:
             state[key] = staged[key]
     state["period"] = {"from": pfrom, "to": pto}
+    state["target_from"] = staged.get("target_from") or state.get("target_from") or pfrom
     state["needs_full"] = bool(staged.get("needs_full")) or (session["mode"] == "delta" and state.get("needs_full", False))
 
     with store.db() as conn:
@@ -419,7 +472,8 @@ def finish(session: dict) -> dict:
         "bills": state.get("bills", []),
         "vouchers": vouchers,
         "warnings": staged.get("warnings", []),
-        "sync": {"mode": session["mode"], "session": session["id"], "needs_full": state["needs_full"]},
+        "sync": {"mode": session["mode"], "session": session["id"], "needs_full": state["needs_full"],
+                 "target_from": state["target_from"], "history_pending": pfrom > state["target_from"]},
     }
 
 

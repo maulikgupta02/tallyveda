@@ -6,6 +6,8 @@ Connector endpoints (called by TallyConnector.exe):
     POST /api/connector/monitor/status   Bearer token           is a refresh due?
     POST /api/connector/monitor/upload   Bearer token + gzip JSON  daily refresh
     POST /api/connector/monitor/stop     Bearer token           client withdraws consent
+    GET  /api/connector/latest           newest connector version, SHA-256, size (update check)
+    GET  /download/connector.exe         that exe, for in-place updates
 
 Bank endpoints (HTTP Basic auth, per-tenant bank user — see store.py's `users` table):
     GET  /bank[?filter=attention|watch|alerts|overdue]   portfolio dashboard (this tenant only)
@@ -54,6 +56,7 @@ import secrets
 import re
 import threading
 import time
+import zipfile
 import zlib
 from collections import defaultdict, deque
 from datetime import date, datetime, timezone
@@ -404,7 +407,7 @@ def _monitor_status(a: dict) -> dict:
     return {
         "active": a["monitoring_status"] == "active",
         "status": a["monitoring_status"],
-        "due": store.monitoring_due(a),
+        "due": store.monitoring_due(a) or bool((books.history(a["id"]) or {}).get("pending")),
         "bank_name": tenant["name"] if tenant else config.BANK_NAME,
         "applicant_name": a["applicant_name"],
         "reference": a["reference"],
@@ -597,7 +600,7 @@ def sync_finish(sync_id: str, request: Request, background: BackgroundTasks):
     books.mark(sync_id, "finishing")
     background.add_task(finish_sync, sync_id)
     a = store.get_application(s["application_id"])
-    return {"status": "received", "monitoring": a["monitoring_status"] == "active"}
+    return {"status": "received", "monitoring": a["monitoring_status"] == "active", "more": books.more_to_come(s)}
 
 
 def finish_sync(sync_id: str) -> None:
@@ -613,7 +616,8 @@ def finish_sync(sync_id: str) -> None:
         return
     source = "refresh" if store.list_reports(app_id) else "initial"
     report_id = _store_upload(app_id, source, gzip.compress(json.dumps(bundle).encode()), bundle)
-    store.end_share(app_id)
+    if not bundle["sync"].get("history_pending"):
+        store.end_share(app_id)  # a one-off share keeps its token until all the history is in
     needs_full = bundle["sync"]["needs_full"]
     process_report(report_id, bundle)
     if needs_full:
@@ -670,8 +674,12 @@ def process_report(report_id: str, bundle: dict | None = None) -> None:
         report = build_report(bundle)
         del bundle
         snap = snapshot(report)
+        snap["window_from"] = report["period"]["from"].isoformat()
         prev = store.previous_ready_report(app_id, r["created_at"])
-        alerts = compare(prev["indicators"], prev["snapshot"] or {}, report["indicators"], snap) if prev else []
+        # While the history is still being filled in, each report covers a longer
+        # window than the last; comparing them would raise false alerts.
+        grew = prev and (prev["snapshot"] or {}).get("window_from", snap["window_from"]) > snap["window_from"]
+        alerts = compare(prev["indicators"], prev["snapshot"] or {}, report["indicators"], snap) if prev and not grew else []
         report["alerts"] = alerts
         report["report_id"] = report_id
         report["previous_report_at"] = prev["created_at"] if prev else None
@@ -1083,7 +1091,7 @@ def _render_application(a: dict, template_name: str, **extra) -> str:
             "cells": [next((i for i in c["indicators"] if i["key"] == ind["key"]), None) for c in columns],
         })
     return templates.get_template(template_name).render(
-        a=a, reports=reports, columns=columns, rows=rows, sync=books.progress(a["id"]),
+        a=a, reports=reports, columns=columns, rows=rows, sync=books.progress(a["id"]), history=books.history(a["id"]),
         monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
         due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
         overdue_days=config.MONITOR_OVERDUE_DAYS,
@@ -1321,6 +1329,7 @@ def admin_msme_detail(app_id: str, user: dict = Depends(platform_user)):
     a = _get_or_404(app_id)
     return templates.get_template("admin_msme_detail.html").render(
         user=user, a=a, tenant=store.get_tenant(a["tenant_id"]), reports=store.list_reports(app_id),
+        history=books.history(app_id),
         msme_login=store.msme_login_for(app_id), due=store.monitoring_due(a), overdue=store.monitoring_overdue(a),
         overdue_days=config.MONITOR_OVERDUE_DAYS, monitoring_label=MONITORING_LABELS[a["monitoring_status"]],
         connector_logs=store.list_connector_logs(app_id), sync=books.progress(app_id),
@@ -1494,6 +1503,37 @@ def download():
     if not bundled.exists():
         raise HTTPException(404, "Connector download not configured")
     return FileResponse(bundled, filename="TallyVeda.zip", headers={"Cache-Control": "no-store"})
+
+
+_exe_cache: dict = {}
+
+
+def _bundled_exe() -> bytes:
+    """TallyConnector.exe from the bundled zip, kept in memory per zip version."""
+    bundled = _STATIC_DIR / "downloads" / "TallyConnector.zip"
+    if not bundled.exists():
+        raise HTTPException(404, "Connector download not configured")
+    stamp = bundled.stat().st_mtime_ns
+    if _exe_cache.get("stamp") != stamp:
+        with zipfile.ZipFile(bundled) as z:
+            _exe_cache.update(stamp=stamp, data=z.read("TallyConnector.exe"))
+    return _exe_cache["data"]
+
+
+@app.get("/api/connector/latest")
+def connector_latest():
+    """The newest connector, for its update check: version, SHA-256 and size of
+    the exe, and whether background updates may install it without asking."""
+    manifest = _STATIC_DIR / "downloads" / "latest.json"
+    if not manifest.exists():
+        raise HTTPException(404, "No connector release published")
+    return {**json.loads(manifest.read_text()), "url": "/download/connector.exe"}
+
+
+@app.get("/download/connector.exe", include_in_schema=False)
+def download_exe():
+    return Response(_bundled_exe(), media_type="application/octet-stream",
+                    headers={"Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="TallyConnector.exe"'})
 
 
 @app.get("/healthz", include_in_schema=False)

@@ -31,6 +31,7 @@ import (
 	"tallyconnector/internal/monitor"
 	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
+	"tallyconnector/internal/update"
 	"tallyconnector/internal/upload"
 )
 
@@ -60,6 +61,7 @@ func main() {
 	if len(os.Args) > 1 && !*monitorRun {
 		attachConsole() // GUI build: show output when run from a command prompt
 	}
+	monitor.Version = version
 	extract.FieldMemory = monitor.FieldMemory{}
 	extract.OnSlow = support.OnSlow
 	logFile, _ := monitor.OpenLog()
@@ -104,6 +106,9 @@ func main() {
 		os.Exit(headless(ctx, tc, backend, *code, *company, *months, *consent, *dump, *monitoring))
 	}
 
+	if self, err := os.Executable(); err == nil {
+		update.Cleanup(self)
+	}
 	if err := monitor.Upgrade(); err != nil {
 		log.Printf("could not update the installed connector: %v", err)
 	}

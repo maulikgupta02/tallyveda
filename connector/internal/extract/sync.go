@@ -22,6 +22,15 @@ type Plan struct {
 	LastTo         string   `json:"last_to"`     // end date of the previous sync
 	StockDates     []string `json:"stock_dates"` // older stock snapshots the server is missing
 	RefreshLedgers []string `json:"refresh_ledgers"`
+	// Backfill: older months to add this time, while the history is still
+	// short of the period the bank asked for (newest first, like a full read).
+	Backfill *Span `json:"backfill"`
+}
+
+// Span is a date range, as the server sends it.
+type Span struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // Sink receives the pieces of a sync. Each call that changes vouchers returns
@@ -176,6 +185,15 @@ func syncDelta(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (
 	}
 	add(newLedgers)
 
+	older := 0
+	if plan.Backfill != nil {
+		n, err := backfill(ctx, p, name, *plan.Backfill, sink)
+		if err != nil {
+			return "", err
+		}
+		older = n
+	}
+
 	// What changed: skip the voucher scan entirely when Tally's company-wide
 	// change number hasn't moved.
 	// With no AlterIds to compare (SinceAlterID 0), "changed since 0" would list
@@ -290,7 +308,39 @@ func syncDelta(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (
 	if err := sink.Finish(ctx); err != nil {
 		return "", err
 	}
+	if plan.Backfill != nil {
+		return fmt.Sprintf("Added %d older vouchers (%s to %s) and sent %d recent or changed ones.",
+			older, plan.Backfill.From, plan.Backfill.To, count), nil
+	}
 	return fmt.Sprintf("Sent %d recent or changed vouchers; %d ledgers updated.", count, len(affected)), nil
+}
+
+// backfill sends the older months in span, newest first. Their ledgers' opening
+// balances are rolled back on the server, so no balances are read for them.
+func backfill(ctx context.Context, p *pacer, company string, span Span, sink Sink) (int, error) {
+	from, err1 := time.Parse("2006-01-02", span.From)
+	to, err2 := time.Parse("2006-01-02", span.To)
+	if err1 != nil || err2 != nil || to.Before(from) {
+		return 0, fmt.Errorf("server sent an invalid backfill %v", span)
+	}
+	months := monthChunks(from, to)
+	total := 0
+	for i := len(months) - 1; i >= 0; i-- {
+		ch := months[i]
+		label := ch[0].Format("Jan 2006")
+		f := 0.05 + 0.10*float64(len(months)-1-i)/float64(len(months))
+		p.report("Reading older vouchers for "+label, f)
+		vs, _, err := readVouchers(ctx, p, company, ch[0], ch[1])
+		if err != nil {
+			return total, err
+		}
+		p.report(fmt.Sprintf("Sending %d older vouchers for %s", len(vs), label), f)
+		if _, err := sink.Vouchers(ctx, ch[0], ch[1], ch[0].Format("2006-01"), vs); err != nil {
+			return total, err
+		}
+		total += len(vs)
+	}
+	return total, nil
 }
 
 func balancesOf(nodes map[string]*tally.Node) []Balance {

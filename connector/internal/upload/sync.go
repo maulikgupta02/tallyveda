@@ -3,6 +3,7 @@ package upload
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"tallyconnector/internal/extract"
@@ -45,11 +46,13 @@ func (b *Backend) Start(ctx context.Context, token string, req StartRequest) (*S
 	return &s, nil
 }
 
-// Session sends one sync's pieces; it implements extract.Sink.
+// Session sends one sync's pieces; it implements extract.Sink. After Finish,
+// More says the server wants another sync straight away (older history).
 type Session struct {
 	B      *Backend
 	Token  string
 	SyncID string
+	More   bool
 }
 
 type affected struct {
@@ -78,8 +81,28 @@ func (s *Session) Present(ctx context.Context, from, to time.Time, guids []strin
 }
 
 func (s *Session) Finish(ctx context.Context) error {
-	_, err := s.post(ctx, "finish", map[string]any{})
+	var out struct {
+		More bool `json:"more"`
+	}
+	err := s.B.upload(ctx, "/api/connector/sync/"+s.SyncID+"/finish", bearer(s.Token), map[string]any{}, &out)
+	s.More = out.More
 	return err
+}
+
+// StartAgain opens the next sync of a growing history. The server may still be
+// processing the previous one for a little while, so it waits for that.
+func (b *Backend) StartAgain(ctx context.Context, token string, req StartRequest) (*Started, error) {
+	for wait := 0; ; wait++ {
+		st, err := b.Start(ctx, token, req)
+		if err == nil || wait >= 20 || !strings.Contains(err.Error(), "still being processed") {
+			return st, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(30 * time.Second):
+		}
+	}
 }
 
 // SendLog uploads the connector's log or a Tally diagnostic for support.

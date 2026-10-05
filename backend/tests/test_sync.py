@@ -61,7 +61,7 @@ def test_full_sync_resumes_and_delta_matches_a_fresh_read(client, model):
 
     # Full read: masters, then three months, then the connector is interrupted.
     r = client.post("/api/connector/sync/start", headers={"X-Link-Code": a["link_code"]},
-                    json={"company": first["company"], "period": period, "monitoring_opt_in": True,
+                    json={"company": first["company"], "period": period, "monitoring_opt_in": True, "want_full": True,
                           "consent": {"accepted_by": "R Agarwal", "monitoring_opt_in": True}})
     plan = r.json()
     assert plan["mode"] == "full" and plan["monitoring"] and plan["token"]
@@ -152,6 +152,66 @@ def test_full_sync_resumes_and_delta_matches_a_fresh_read(client, model):
     for name, m in movement.items():
         if name not in affected:
             assert got[name]["opening_balance"] == pytest.approx(before[name]["opening_balance"] + m, abs=0.01), name
+
+
+def test_first_share_is_quick_then_history_grows_backwards(client, model):
+    """The first share covers the latest months; each later sync sends what changed
+    and adds older months until the requested period is in, rolling the opening
+    balances back over the months it adds."""
+    from app import books, store
+
+    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": "Growing", "monitoring": True}).json()
+    full = bundle_from_model(model, date(2026, 4, 30))
+    for i, v in enumerate(full["vouchers"]):
+        v["alter_id"] = i + 1
+    target = full["period"]
+    plan = client.post("/api/connector/sync/start", headers={"X-Link-Code": a["link_code"]},
+                       json={"company": full["company"], "period": target, "monitoring_opt_in": True,
+                             "consent": {"accepted_by": "R Agarwal", "monitoring_opt_in": True}}).json()
+    assert plan["mode"] == "full" and plan["period"] == {"from": "2026-02-01", "to": target["to"]}
+    bearer = {"Authorization": f"Bearer {plan['token']}"}
+    sid, window = plan["sync_id"], plan["period"]
+    first_ledgers = [dict(l, opening_balance=round(1000 + i * 7.5, 2)) for i, l in enumerate(full["ledgers"])]
+    client.post(f"/api/connector/sync/{sid}/masters", headers=bearer,
+                content=gz({k: full[k] for k in ("groups", "voucher_types")} | {"ledgers": first_ledgers}))
+    post_months(client, bearer, sid, full, months_newest_first(window["from"], window["to"]))
+    done = client.post(f"/api/connector/sync/{sid}/finish", headers=bearer).json()
+    assert done["more"] and done["monitoring"]
+    assert store.get_application(a["id"])["status"] == "ready"  # a report after the first three months
+    assert client.post("/api/connector/monitor/status", headers=bearer).json()["due"]  # history still to come
+
+    openings = {l["name"]: l["opening_balance"] for l in first_ledgers}
+    have_from, steps = window["from"], 0
+    while True:
+        steps += 1
+        plan = client.post("/api/connector/sync/start", headers=bearer,
+                           json={"company": full["company"], "period": target}).json()
+        assert plan["mode"] == "delta" and plan["backfill"]["to"] == (date.fromisoformat(have_from) - timedelta(days=1)).isoformat()
+        sid, bf = plan["sync_id"], plan["backfill"]
+        client.post(f"/api/connector/sync/{sid}/masters", headers=bearer,
+                    content=gz({k: full[k] for k in ("groups", "voucher_types")} |
+                               {"ledgers": [{k: v for k, v in l.items() if "balance" not in k} for l in full["ledgers"]]}))
+        post_months(client, bearer, sid, full, months_newest_first(bf["from"], bf["to"]))
+        for v in full["vouchers"]:
+            if bf["from"] <= v["date"] <= bf["to"] and not v["is_cancelled"]:
+                for e in v["entries"]:
+                    openings[e["ledger"]] -= e["amount"]
+        done = client.post(f"/api/connector/sync/{sid}/finish", headers=bearer).json()
+        have_from = bf["from"]
+        if not done["more"]:
+            break
+    assert have_from == target["from"] and steps == 4  # 3 months, then 6 at a time back to 24
+    assert not client.post("/api/connector/monitor/status", headers=bearer).json()["due"]
+    assert books.history(a["id"]) == books.history(a["id"]) | {"pending": False, "have_from": target["from"]}
+
+    reports = sorted(store.list_reports(a["id"]), key=lambda r: r["created_at"])
+    assert len(reports) == 5 and all(r["status"] == "ready" for r in reports)
+    assert all(not r["alerts"] for r in reports)  # a growing window is not a change in the business
+    bundle = json.loads(gzip.decompress(store.load_report_file(a["id"], reports[-1]["id"], "bundle.json.gz")))
+    assert bundle["period"] == target
+    assert {v["guid"] for v in bundle["vouchers"]} == {v["guid"] for v in full["vouchers"]}
+    for l in bundle["ledgers"]:
+        assert l["opening_balance"] == pytest.approx(openings[l["name"]], abs=0.01), l["name"]
 
 
 def test_one_off_share_token_ends_with_the_share(client, model):

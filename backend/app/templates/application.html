@@ -177,9 +177,12 @@
     {% if sync %}
     <div class="notice warn">
       {% if sync.mode == "full" %}Receiving the books from Tally: {{ sync.months_done }} of {{ sync.months_total }} months received{% if not sync.have_masters %} (ledgers not yet received){% endif %}.
-      The report is built once every month has arrived.{% else %}Receiving today's update from Tally.{% endif %}
+      The first report comes after the latest months; older months follow.{% else %}Receiving today's update from Tally.{% endif %}
       Last activity {{ sync.updated_at|when }}.
     </div>
+    {% endif %}
+    {% if history and history.pending %}
+    <div class="notice">Building the history: {{ history.months_have }} of {{ history.months_target }} months received (from {{ history.have_from|day }}). The analysis covers what has arrived and grows with each update; changes between these reports are not raised as alerts.</div>
     {% endif %}
     {% if overdue %}<div class="notice bad">No data for over {{ overdue_days }} days: the client's computer or Tally may be off.</div>{% endif %}
 

@@ -117,3 +117,12 @@ def test_lead_rate_limit(client):
 def main_module_max_leads() -> int:
     from app.main import MAX_LEADS_PER_HOUR
     return MAX_LEADS_PER_HOUR
+
+
+def test_connector_update_endpoints_match_the_published_exe(client):
+    import hashlib
+
+    latest = client.get("/api/connector/latest").json()
+    exe = client.get(latest["url"])
+    assert exe.status_code == 200 and len(exe.content) == latest["size"]
+    assert hashlib.sha256(exe.content).hexdigest() == latest["sha256"]
