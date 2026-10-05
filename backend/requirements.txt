@@ -3,3 +3,4 @@ uvicorn>=0.30
 jinja2>=3.1
 python-multipart>=0.0.9
 psycopg[binary]>=3.2
+tzdata>=2024.1

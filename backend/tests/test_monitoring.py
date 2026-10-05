@@ -90,8 +90,12 @@ def test_due_schedule():
 
     utc = lambda *a: datetime(*a, tzinfo=timezone.utc)
     app = {"monitoring_status": "active", "force_refresh": 0, "last_report_at": utc(2026, 9, 10, 8, 0).isoformat()}
-    assert not store.monitoring_due(app, utc(2026, 9, 10, 20, 0))  # under a day since the last report
-    assert store.monitoring_due(app, utc(2026, 9, 11, 9, 0))       # a day has passed
+    assert not store.monitoring_due(app, utc(2026, 9, 10, 15, 0))  # 13:30 IST -> 20:30 IST, same Indian day
+    assert store.monitoring_due(app, utc(2026, 9, 11, 3, 30))      # 09:00 IST next day, under 24 hours later
+    # A share that finished at 02:36 IST is due at 09:00 IST the next day, not skipped all day.
+    night = app | {"last_report_at": utc(2026, 10, 3, 21, 6).isoformat()}
+    assert not store.monitoring_due(night, utc(2026, 10, 4, 14, 43))  # 20:13 IST the same Indian day
+    assert store.monitoring_due(night, utc(2026, 10, 5, 3, 30))
     assert store.monitoring_due({**app, "last_report_at": None}, utc(2026, 9, 10, 8, 1))  # never reported yet
     assert store.monitoring_due(app | {"force_refresh": 1}, utc(2026, 9, 10, 8, 1))
     assert not store.monitoring_due(app | {"monitoring_status": "stopped_by_bank"}, utc(2026, 12, 1))

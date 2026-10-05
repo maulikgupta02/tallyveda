@@ -31,6 +31,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from . import config
 
@@ -900,8 +901,13 @@ def request_refresh(app_id: str) -> None:
         conn.execute("UPDATE applications SET force_refresh = 1 WHERE id = ?", (app_id,))
 
 
+IST = ZoneInfo("Asia/Kolkata")
+
+
 def monitoring_due(app: dict, at: datetime | None = None) -> bool:
-    """Daily cadence: due once a calendar day has passed since the last report."""
+    """Daily cadence: due on the first check-in of each Indian calendar day. A plain
+    24 hours misses whole days: the connector only checks in 09:00-21:00, so a share
+    that finished at night was never 24 hours old during the next day's window."""
     if app["monitoring_status"] != "active":
         return False
     if app["force_refresh"]:
@@ -909,8 +915,8 @@ def monitoring_due(app: dict, at: datetime | None = None) -> bool:
     at = at or now()
     if not app["last_report_at"]:
         return True
-    since = at - datetime.fromisoformat(app["last_report_at"])
-    return since >= timedelta(days=1)
+    last = datetime.fromisoformat(app["last_report_at"]).astimezone(IST).date()
+    return at.astimezone(IST).date() > last
 
 
 def monitoring_overdue(app: dict, at: datetime | None = None) -> bool:

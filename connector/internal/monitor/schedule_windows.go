@@ -42,7 +42,9 @@ const taskXML = `<?xml version="1.0" encoding="UTF-16"?>
 </Task>`
 
 func schedule(exe string) error {
-	start := time.Now().AddDate(0, 0, 1).Format("2006-01-02") + "T09:00:00"
+	// Today, not tomorrow: a start in the past just means the next 2-hour slot, while
+	// a start tomorrow skipped every update on the day daily updates were turned on.
+	start := time.Now().Format("2006-01-02") + "T09:00:00"
 	desc := fmt.Sprintf("Sends daily updates of your Tally accounts to the organisation you chose. To stop, open "+
 		"TallyVeda (TallyConnector.exe) and click 'Stop daily updates', or run: \"%s\" -monitor-stop", exe)
 	def := fmt.Sprintf(taskXML, html.EscapeString(desc), start, html.EscapeString(exe))

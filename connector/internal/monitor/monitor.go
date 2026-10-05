@@ -209,7 +209,8 @@ func Stop(ctx context.Context, c *Config) error {
 }
 
 // Upgrade replaces the installed copy that the scheduled task runs with the
-// running exe, so opening a newer connector also updates the daily updates.
+// running exe and re-registers the task, so opening a newer connector also
+// updates the daily updates and their schedule.
 func Upgrade() error {
 	list, err := LoadAll()
 	if err != nil {
@@ -217,8 +218,11 @@ func Upgrade() error {
 	}
 	for _, c := range list {
 		if c.Daily {
-			_, err := installCopy()
-			return err
+			exe, err := installCopy()
+			if err != nil || runtime.GOOS != "windows" {
+				return err
+			}
+			return schedule(exe)
 		}
 	}
 	return nil

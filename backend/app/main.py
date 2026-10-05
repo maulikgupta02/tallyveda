@@ -56,7 +56,8 @@ import threading
 import time
 import zlib
 from collections import defaultdict, deque
-from datetime import date
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -140,8 +141,34 @@ templates = Environment(
     autoescape=select_autoescape(["html"]),
 )
 templates.filters["code"] = store.display_code
-templates.filters["when"] = lambda s: s[:16].replace("T", " ") if s else ""
-templates.filters["day"] = lambda s: s[:10] if s else ""
+IST = ZoneInfo("Asia/Kolkata")
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _ist(stamp: str) -> datetime:
+    t = datetime.fromisoformat(stamp)
+    return (t if t.tzinfo else t.replace(tzinfo=timezone.utc)).astimezone(IST)
+
+
+def _when(stamp: str | None) -> str:
+    """A stored UTC timestamp as Indian time, e.g. "4 Oct, 20:13 IST" (year added when it isn't this year)."""
+    if not stamp:
+        return ""
+    t = _ist(stamp)
+    year = "" if t.year == datetime.now(IST).year else f" {t.year}"
+    return f"{t.day} {_MONTHS[t.month - 1]}{year}, {t:%H:%M} IST"
+
+
+def _day(stamp: str | None) -> str:
+    """A date, or a timestamp's Indian date, e.g. "4 Oct 2026"."""
+    if not stamp:
+        return ""
+    d = _ist(stamp) if "T" in stamp else date.fromisoformat(stamp[:10])
+    return f"{d.day} {_MONTHS[d.month - 1]} {d.year}"
+
+
+templates.filters["when"] = _when
+templates.filters["day"] = _day
 templates.filters["inr"] = fmt.inr
 templates.filters["pct"] = fmt.pct
 templates.filters["days"] = fmt.days

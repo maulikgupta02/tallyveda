@@ -157,7 +157,7 @@
     {% endif %}
     <span class="fresh">
       {%- if latest and latest.period_to %}Books up to {{ nice_day(latest.period_to) }} · {% endif -%}
-      {{ "updated " ~ nice_day(a.last_report_at) ~ ", " ~ a.last_report_at[11:16] if a.last_report_at else "No data yet" }}
+      {{ "updated " ~ (a.last_report_at|when) if a.last_report_at else "No data yet" }}
     </span>
     <a class="out" href="/signout?to=/msme">Sign out</a>
   </div>
