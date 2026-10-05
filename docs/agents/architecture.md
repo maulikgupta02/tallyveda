@@ -414,9 +414,13 @@ over XML, so the user creates it first. It refuses a company holding vouchers it
 uuid5 GUIDs), and resumes an interrupted run. The connector itself still never writes to Tally; never
 ship the seeder in the connector zip.
 
-## When Tally hangs (connector 0.5.2)
+## When Tally hangs (connector 0.5.2, 0.5.3)
 A request that runs past its limit waits up to `idleWait` (20 min) for Tally to answer again. If it never
 does (often a message box on Tally's screen), `pacer.do` returns `errStuck` and batch readers return it at
 once instead of splitting and waiting again. Stock values are optional: once they make Tally slow or hang,
 `readStock` stops and remembers `StockItem:ClosingValue` in tally-skip.json, so later syncs skip them
 (seen on TallyPrime 1.1.7, 2026-10-05).
+Bill-wise outstanding is treated the same way (`Bills:ClosingBalance`; ageing falls back to FIFO).
+Only one sync talks to a Tally at a time (`monitor.LockTally`, an OS file lock per Tally URL): the page
+waits for it, a scheduled run skips and retries next time. Two syncs at once (the page sharing one
+company while the scheduled task updated another, 2026-10-05) left each waiting until Tally looked hung.

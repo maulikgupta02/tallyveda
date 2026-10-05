@@ -1,9 +1,9 @@
 package extract
 
 import (
-	"fmt"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 

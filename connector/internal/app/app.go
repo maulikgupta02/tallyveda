@@ -544,6 +544,13 @@ func RunJob(ctx context.Context, t *tally.Client, b *upload.Backend, version str
 		return "", err
 	}
 	defer unlock()
+	unlockTally, err := monitor.LockTally(ctx, t.URL, true, func() {
+		progress("Waiting for another company on this Tally to finish sharing", 0)
+	})
+	if err != nil {
+		return "", err
+	}
+	defer unlockTally()
 	defer monitor.ShipLogs(b.URL, st.Token)()
 	sess := &upload.Session{B: b, Token: st.Token, SyncID: st.SyncID}
 	summary, err := extract.Sync(ctx, t, o, st.Plan, sess, progress)

@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,4 +49,27 @@ func TestPruneDropsRevokedEntriesAndKeepsTheNewestDuplicate(t *testing.T) {
 	if len(list) != 1 || list[0].Token != "a-new" {
 		t.Fatalf("want only the newest Acme entry, got %+v", list)
 	}
+}
+
+func TestLockTallyOneSyncAtATime(t *testing.T) {
+	t.Setenv("TC_HOME", t.TempDir())
+	ctx := context.Background()
+	release, err := LockTally(ctx, "http://localhost:9000", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LockTally(ctx, "http://LOCALHOST:9000/", false, nil); !errors.Is(err, ErrTallyBusy) {
+		t.Fatalf("second sync on the same Tally: got %v, want ErrTallyBusy", err)
+	}
+	other, err := LockTally(ctx, "http://localhost:9001", false, nil)
+	if err != nil {
+		t.Fatalf("a different Tally should not be blocked: %v", err)
+	}
+	other()
+	release()
+	again, err := LockTally(ctx, "http://localhost:9000", false, nil)
+	if err != nil {
+		t.Fatalf("after release: %v", err)
+	}
+	again()
 }

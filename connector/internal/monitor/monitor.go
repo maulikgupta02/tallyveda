@@ -513,6 +513,10 @@ func runOne(ctx context.Context, c *Config, version string, logf func(string, ..
 		c.Months = st.Months
 	}
 	summary, err := SyncEntry(ctx, c, version, func(stage string, f float64) { logf("%s: %3.0f%% %s", c.Company, f*100, stage) })
+	if errors.Is(err, ErrTallyBusy) {
+		logf("%s: %v; will try again on the next run", c.Company, err)
+		return nil
+	}
 	if errors.Is(err, ErrTallyClosed) {
 		c.LastError = err.Error()
 		logf("%s: update due but %v; will try again later", c.Company, err)
@@ -538,6 +542,11 @@ func SyncEntry(ctx context.Context, c *Config, version string, progress extract.
 		return "", err
 	}
 	defer unlock()
+	unlockTally, err := LockTally(ctx, c.TallyURL, false, nil)
+	if err != nil {
+		return "", err
+	}
+	defer unlockTally()
 	tc := tally.NewClient(c.TallyURL)
 	banner, err := tc.Ping(ctx)
 	if err != nil {
@@ -606,6 +615,39 @@ func Continue(ctx context.Context, tc *tally.Client, o extract.Options, b *uploa
 		notes = append(notes, summary)
 	}
 	return strings.Join(notes, " "), nil
+}
+
+// ErrTallyBusy means another company on the same Tally is being synced.
+var ErrTallyBusy = errors.New("another company on this Tally is being shared right now")
+
+// LockTally lets one sync at a time talk to a Tally: Tally answers one request
+// at a time, and two syncs at once (the page and a scheduled run, 2026-10-05)
+// left each waiting on the other until Tally looked hung. With wait it blocks
+// until the other sync finishes, calling onWait once; without, it returns
+// ErrTallyBusy at once.
+func LockTally(ctx context.Context, tallyURL string, wait bool, onWait func()) (func(), error) {
+	d, err := Dir()
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimRight(tallyURL, "/"))))
+	p := filepath.Join(d, "tally-"+hex.EncodeToString(sum[:6])+".lock")
+	for waited := false; ; waited = true {
+		if release, ok := tryLock(p); ok {
+			return release, nil
+		}
+		if !wait {
+			return nil, ErrTallyBusy
+		}
+		if !waited && onWait != nil {
+			onWait()
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+	}
 }
 
 // Lock keeps two connector processes (the UI and the scheduled task) from

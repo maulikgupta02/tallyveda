@@ -307,7 +307,10 @@ func stockDates(o Options) []time.Time {
 	return out
 }
 
-const stockValueKey = "StockItem:ClosingValue"
+const (
+	stockValueKey = "StockItem:ClosingValue"
+	billsKey      = "Bills:ClosingBalance"
+)
 
 // readStock values every stock item on each date. A date that can't be read
 // in full is dropped with a warning: a partial snapshot would understate stock.
@@ -375,6 +378,10 @@ func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, 
 // backend falls back to FIFO ageing); err is set only when ctx is done.
 func readBills(ctx context.Context, p *pacer, o Options, f float64) ([]Bill, string, error) {
 	p.report("Reading outstanding bills", f)
+	if FieldMemory != nil && FieldMemory.Skipped(billsKey) {
+		notify("note", "Skipped outstanding bills: they froze Tally on an earlier run.")
+		return nil, "bill-wise outstanding skipped: it froze this Tally before (ageing will use FIFO)", nil
+	}
 	var nodes []*tally.Node
 	err := p.do(ctx, voucherLimit, "outstanding bills", func(ctx context.Context) (err error) {
 		nodes, err = p.c.Collection(ctx, o.Company.Name, "Bills", []string{"Name", "Parent", "BillDate", "BillDueDate", "ClosingBalance"}, o.From, o.To)
@@ -383,6 +390,10 @@ func readBills(ctx context.Context, p *pacer, o Options, f float64) ([]Bill, str
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, "", ctx.Err()
+		}
+		// Ageing falls back to FIFO without bills, so after one freeze don't ask again.
+		if FieldMemory != nil && (errors.Is(err, errSlow) || errors.Is(err, errStuck)) {
+			FieldMemory.Froze(billsKey)
 		}
 		notify("note", fmt.Sprintf("Skipped outstanding bills: %v.", err))
 		return nil, fmt.Sprintf("bill-wise outstanding could not be read (ageing will use FIFO): %v", err), nil
