@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 
 	"tallyconnector/internal/activity"
@@ -136,7 +137,15 @@ func Find(id string) (*Config, error) {
 	return nil, err
 }
 
-// Put adds or replaces the entry with c's token.
+// sameShare reports whether two entries share the same company with the same
+// requester, so the newer one (a fresh access code) supersedes the older.
+func sameShare(a, b *Config) bool {
+	return a.Server == b.Server && a.Company == b.Company && a.BankName == b.BankName
+}
+
+// Put adds or replaces the entry with c's token. A new entry replaces older
+// ones for the same company and requester: trying again with a new code would
+// otherwise leave one "Continue sharing" entry per attempt.
 func Put(c *Config) error {
 	list, err := LoadAll()
 	if err != nil {
@@ -148,7 +157,66 @@ func Put(c *Config) error {
 			return saveAll(list)
 		}
 	}
-	return saveAll(append(list, c))
+	keep := []*Config{}
+	for _, x := range list {
+		if !sameShare(x, c) {
+			keep = append(keep, x)
+		}
+	}
+	return saveAll(append(keep, c))
+}
+
+// Prune drops entries the server no longer knows (the request was deleted or
+// its updates stopped) and, of duplicates for the same company and requester,
+// keeps only the most recently installed. Entries it can't check (offline) stay.
+func Prune(ctx context.Context) error {
+	list, err := LoadAll()
+	if err != nil || len(list) == 0 {
+		return err
+	}
+	gone := make([]bool, len(list))
+	var wg sync.WaitGroup
+	for i, c := range list {
+		wg.Add(1)
+		go func(i int, c *Config) {
+			defer wg.Done()
+			st, err := upload.New(c.Server).MonitorStatus(ctx, c.Token)
+			gone[i] = errors.Is(err, upload.ErrTokenRevoked) || (err == nil && !st.Active && !c.Pending)
+		}(i, c)
+	}
+	wg.Wait()
+	keep := []*Config{}
+	for i, c := range list {
+		if gone[i] {
+			continue
+		}
+		dup := -1
+		for j, k := range keep {
+			if sameShare(k, c) {
+				dup = j
+			}
+		}
+		switch {
+		case dup < 0:
+			keep = append(keep, c)
+		case c.InstalledAt > keep[dup].InstalledAt:
+			keep[dup] = c
+		}
+	}
+	if len(keep) == len(list) {
+		return nil
+	}
+	daily := false
+	for _, c := range keep {
+		daily = daily || c.Daily
+	}
+	if err := saveAll(keep); err != nil {
+		return err
+	}
+	if !daily {
+		return unschedule()
+	}
+	return nil
 }
 
 // Remove deletes the entry with this token, and the scheduled task once no

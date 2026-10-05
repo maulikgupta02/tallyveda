@@ -250,6 +250,11 @@ func (a *App) ping(w http.ResponseWriter, r *http.Request) {
 
 // monitorStatus lists every company shared from this computer.
 func (a *App) monitorStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	if err := monitor.Prune(ctx); err != nil {
+		log.Printf("tidying the saved companies: %v", err)
+	}
+	cancel()
 	list, _ := monitor.LoadAll()
 	out := []map[string]any{}
 	for _, c := range list {
