@@ -254,7 +254,7 @@ func batchByID(ctx context.Context, p *pacer, company, objType, label string, ms
 		switch {
 		case ctx.Err() != nil:
 			return ctx.Err()
-		case errors.Is(err, tally.ErrNotRunning):
+		case errors.Is(err, tally.ErrNotRunning), errors.Is(err, errStuck):
 			return err
 		case err != nil:
 			if errors.Is(err, errSlow) {
@@ -306,7 +306,7 @@ func batchByGroup(ctx context.Context, p *pacer, company, objType, label string,
 		switch {
 		case ctx.Err() != nil:
 			return ctx.Err()
-		case errors.Is(err, tally.ErrNotRunning):
+		case errors.Is(err, tally.ErrNotRunning), errors.Is(err, errStuck):
 			return err
 		case errors.Is(err, errSlow):
 			p.slowSeen++

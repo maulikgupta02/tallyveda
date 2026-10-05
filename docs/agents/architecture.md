@@ -413,3 +413,10 @@ date) into an open, empty company named "TallyVeda Demo" (any name starting with
 over XML, so the user creates it first. It refuses a company holding vouchers it didn't write (fixed
 uuid5 GUIDs), and resumes an interrupted run. The connector itself still never writes to Tally; never
 ship the seeder in the connector zip.
+
+## When Tally hangs (connector 0.5.2)
+A request that runs past its limit waits up to `idleWait` (20 min) for Tally to answer again. If it never
+does (often a message box on Tally's screen), `pacer.do` returns `errStuck` and batch readers return it at
+once instead of splitting and waiting again. Stock values are optional: once they make Tally slow or hang,
+`readStock` stops and remembers `StockItem:ClosingValue` in tally-skip.json, so later syncs skip them
+(seen on TallyPrime 1.1.7, 2026-10-05).

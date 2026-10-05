@@ -307,6 +307,8 @@ func stockDates(o Options) []time.Time {
 	return out
 }
 
+const stockValueKey = "StockItem:ClosingValue"
+
 // readStock values every stock item on each date. A date that can't be read
 // in full is dropped with a warning: a partial snapshot would understate stock.
 func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, f1 float64) ([]StockSnapshot, []string) {
@@ -324,6 +326,10 @@ func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, 
 	if len(items) == 0 || len(dates) == 0 {
 		return nil, nil
 	}
+	if FieldMemory != nil && FieldMemory.Skipped(stockValueKey) {
+		notify("note", "Skipped stock values: they froze Tally on an earlier run.")
+		return nil, []string{"stock values skipped: they froze this Tally before"}
+	}
 	var out []StockSnapshot
 	step := (f1 - f0) / float64(len(dates))
 	for i, asOf := range dates {
@@ -337,6 +343,14 @@ func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, 
 			warns = append(warns, fmt.Sprintf("%s could not be read: %v", label, err))
 			notify("note", fmt.Sprintf("Skipped %s: %v.", label, err))
 			if ctx.Err() != nil {
+				return out, warns
+			}
+			// Stock only refines the analysis: once it has made Tally hang, stop
+			// asking, on this run and later ones.
+			if p.slowSeen > 0 || errors.Is(err, errStuck) {
+				if FieldMemory != nil {
+					FieldMemory.Froze(stockValueKey)
+				}
 				return out, warns
 			}
 			continue
@@ -406,7 +420,7 @@ func fetchVouchers(ctx context.Context, p *pacer, company string, from, to time.
 			return nodes, nil
 		}
 		var reqErr *tally.RequestError
-		if errors.As(err, &reqErr) || ctx.Err() != nil {
+		if errors.As(err, &reqErr) || errors.Is(err, errStuck) || ctx.Err() != nil {
 			return nil, err
 		}
 		lastErr = err

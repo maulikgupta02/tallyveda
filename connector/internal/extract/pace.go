@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"fmt"
 	"context"
 	"errors"
 	"log"
@@ -41,6 +42,10 @@ func notify(event, detail string) {
 
 // errSlow means a request hit its time limit; Tally has since become free.
 var errSlow = errors.New("tally took too long to answer")
+
+// errStuck means Tally never became free again after a slow request (often a
+// message box waiting on its screen): retrying or splitting only waits again.
+var errStuck = errors.New("Tally stopped responding")
 
 type pacer struct {
 	c        *tally.Client
@@ -97,7 +102,10 @@ func (p *pacer) do(ctx context.Context, limit time.Duration, what string, fn fun
 	log.Printf("tally: %s passed its %s limit; waiting for Tally to finish. The request was:\n%s", what, limit, p.c.LastRequest())
 	p.progress(p.stage+" (Tally is busy, waiting for it to finish)", p.frac)
 	if werr := p.c.WaitIdle(ctx, idleWait); werr != nil {
-		return werr
+		if ctx.Err() != nil {
+			return werr
+		}
+		return fmt.Errorf("%w: %v. Check the Tally window for a message, close it, and continue", errStuck, werr)
 	}
 	p.last = maxPause * 2 // give Tally a longer breather after a slow request
 	p.progress(p.stage, p.frac)
