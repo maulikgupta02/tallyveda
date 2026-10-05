@@ -8,7 +8,7 @@
 // (so an interrupted run can be resumed). Tally can't create a company from
 // outside, so the user creates the empty company first.
 //
-//	TallyVedaDemoSeed.exe [-tally http://localhost:9000] [-company "TallyVeda Demo Traders"]
+//	TallyVedaDemoSeed.exe [-tally http://localhost:9000] [-company "TallyVeda Demo"]
 package main
 
 import (
@@ -39,7 +39,7 @@ const (
 	prefix      = "TallyVeda Demo"
 	booksFrom   = "2024-04-01"
 	batchSize   = 200
-	defaultName = "TallyVeda Demo Traders"
+	defaultName = "TallyVeda Demo"
 )
 
 func main() {

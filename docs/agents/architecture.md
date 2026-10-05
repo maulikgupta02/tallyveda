@@ -409,7 +409,7 @@ tenants and the direct tenant" above).
 ## Demo data seeder (test PCs only)
 `connector/cmd/demoseed` builds `TallyVedaDemoSeed.exe` (`cmd/demoseed/build.sh`), a separate program
 that imports `dev/demo_seed_data.py`'s synthetic books (the mock_tally company, 2024-04-01 to the build
-date) into an open, empty company whose name starts with "TallyVeda Demo". Tally can't create a company
+date) into an open, empty company named "TallyVeda Demo" (any name starting with it also works). Tally can't create a company
 over XML, so the user creates it first. It refuses a company holding vouchers it didn't write (fixed
 uuid5 GUIDs), and resumes an interrupted run. The connector itself still never writes to Tally; never
 ship the seeder in the connector zip.
