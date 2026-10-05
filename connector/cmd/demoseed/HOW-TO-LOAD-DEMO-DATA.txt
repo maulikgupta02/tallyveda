@@ -1,0 +1,106 @@
+TallyVeda demo data - for test computers only
+=============================================
+
+This zip fills empty Tally companies with made-up books, so TallyVeda can be
+tested end to end on a computer whose Tally has no real data. There are five
+programs, one per demo company. Each one fills only the company with its own
+name, and only when that company is empty. It never touches any other company.
+
+Never run these on a computer that keeps a business's real books in Tally.
+
+
+Before you start
+----------------
+1. TallyPrime is open on this computer.
+2. Tally's data connection is on: F1 (Help) > Settings > Connectivity, set
+   "TallyPrime acts as" to Server or Both, and the port to 9000.
+3. Licensed Tally only: Tally's Educational Mode accepts entries dated only on
+   the 1st, 2nd and 31st of a month, so most of the demo books would not go in.
+
+
+The five demo companies
+-----------------------
+Create each company in TallyPrime with exactly these details (Alt+K, Company >
+Create). Anything not listed: leave as Tally suggests.
+
+1. TallyVedaDemoSeed.exe
+   Company name ................... TallyVeda Demo
+   State .......................... Maharashtra
+   Financial year beginning from .. 1-Apr-2024
+   Books beginning from ........... 1-Apr-2024
+   What it is: a food-grain trading company, about Rs 6 Cr a year. Mixed
+   picture: its largest customer stops paying in 2026, March sales spike and
+   are reversed in April, some entries are back-dated.
+
+2. TallyVedaDemo-Healthy.exe
+   Company name ................... TallyVeda Demo Healthy
+   State .......................... Maharashtra
+   Financial year beginning from .. 1-Apr-2023
+   Books beginning from ........... 1-Apr-2023
+   What it is: an FMCG distributor, about Rs 60 Cr a year, growing 18% a year,
+   customers pay in about a month, little debt, clean books.
+   Expected on the bank dashboard: Healthy, every indicator green, no red flags.
+
+3. TallyVedaDemo-Stressed.exe
+   Company name ................... TallyVeda Demo Stressed
+   State .......................... Gujarat
+   Financial year beginning from .. 1-Apr-2023
+   Books beginning from ........... 1-Apr-2023
+   What it is: an engineering components manufacturer whose sales fall about
+   17% a year. Customers pay later and later (three stop paying), suppliers
+   are paid late, losses, cash credit fully drawn, GST left unpaid from
+   February 2026, cash in hand goes negative.
+   Expected: Attention, most indicators red, negative net worth.
+
+4. TallyVedaDemo-Seasonal.exe
+   Company name ................... TallyVeda Demo Seasonal
+   State .......................... Karnataka
+   Financial year beginning from .. 1-Apr-2023
+   Books beginning from ........... 1-Apr-2023
+   What it is: an agri-input dealer (seeds, fertiliser) with two selling
+   seasons (June-July and October-November), one customer buying about a
+   third of everything, a lot of cash trade.
+   Expected: Watch, several amber indicators (slow growth, thin margin,
+   customer concentration), cash receipts of Rs 2 lakh or more and cash
+   payments above Rs 10,000 flagged.
+
+5. TallyVedaDemo-RedFlags.exe
+   Company name ................... TallyVeda Demo Red Flags
+   State .......................... Delhi
+   Financial year beginning from .. 1-Apr-2023
+   Books beginning from ........... 1-Apr-2023
+   What it is: an electronics trader growing 22% a year whose ratios look fine,
+   but whose books show warning signs: the same parties are both customers and
+   suppliers (circular trading), March sales spike and come back as credit
+   notes in April, back-dated entries, round-figure invoices, money parked in
+   Suspense, and growing advances to a sister concern.
+   Expected: Attention because of red flags, with most ratios green.
+
+
+Loading one company
+-------------------
+1. Create the company as above and keep it open in Tally.
+2. Double-click its program (for example TallyVedaDemo-Healthy.exe). If
+   Windows shows "Windows protected your PC", click More info > Run anyway.
+3. Wait until it says "Done" (a few minutes; 9,000 to 12,000 entries). Keep
+   Tally open meanwhile. If it stops, run it again: it carries on where it
+   stopped.
+4. Share the company with TallyVeda as usual, using a new access code for it.
+
+Load the companies one at a time. Tally can only take one import at once.
+
+
+If something goes wrong
+-----------------------
+"No company named ... is open in Tally"
+    The company isn't created, isn't open, or its name differs. The name must
+    match exactly, including spaces.
+"keeps books from ..., but the demo books start on ..."
+    Create the company again with both dates as listed above.
+"already has vouchers that this program did not create"
+    That company already has other entries, so nothing was written. Create a
+    new, empty company with the listed name.
+"Tally is not answering"
+    Check the connectivity setting under "Before you start".
+Tally reports rejected entries at the end
+    Send a photo of the program's window to the TallyVeda team.

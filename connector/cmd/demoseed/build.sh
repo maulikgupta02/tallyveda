@@ -21,3 +21,8 @@ build healthy    "TallyVeda Demo Healthy"   2023-04-01 TallyVedaDemo-Healthy.exe
 build stressed   "TallyVeda Demo Stressed"  2023-04-01 TallyVedaDemo-Stressed.exe
 build seasonal   "TallyVeda Demo Seasonal"  2023-04-01 TallyVedaDemo-Seasonal.exe
 build redflags   "TallyVeda Demo Red Flags" 2023-04-01 TallyVedaDemo-RedFlags.exe
+zip_name=../../dist/TallyVeda-demo-data.zip
+rm -f "$zip_name"
+(cd ../../dist && zip -q -j TallyVeda-demo-data.zip TallyVedaDemoSeed.exe TallyVedaDemo-Healthy.exe \
+  TallyVedaDemo-Stressed.exe TallyVedaDemo-Seasonal.exe TallyVedaDemo-RedFlags.exe ../cmd/demoseed/HOW-TO-LOAD-DEMO-DATA.txt)
+echo "zipped connector/dist/TallyVeda-demo-data.zip"
