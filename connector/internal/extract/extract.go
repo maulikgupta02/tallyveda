@@ -286,17 +286,10 @@ func readVouchers(ctx context.Context, p *pacer, company string, from, to time.T
 	return vs, bad, nil
 }
 
-// stockDates are the period end and one and two years earlier, so the backend
-// can adjust cost of goods sold for stock movement.
+// stockDates is only the period end: valuing stock is heavy for Tally, and the
+// server works out earlier values from the vouchers' stock lines (0.5.5).
 func stockDates(o Options) []time.Time {
-	booksFrom, _ := tally.ParseDate(o.Company.BooksFrom)
-	var out []time.Time
-	for _, d := range []time.Time{o.To, o.To.AddDate(0, 0, -365), o.To.AddDate(0, 0, -730)} {
-		if !d.Before(booksFrom.AddDate(0, 0, -1)) {
-			out = append(out, d)
-		}
-	}
-	return out
+	return []time.Time{o.To}
 }
 
 const stockValueKey = "StockItem:ClosingValue"
@@ -452,6 +445,7 @@ func parseVoucher(n *tally.Node) (Voucher, bool) {
 		IsOptional:  tally.Bool(n.Field("ISOPTIONAL")),
 		IsInvoice:   tally.Bool(n.Field("ISINVOICE")),
 	}
+	v.Inventory = inventory(n)
 	all := entries(n.ChildrenNamed("ALLLEDGERENTRIES.LIST"))
 	plain := entries(n.ChildrenNamed("LEDGERENTRIES.LIST"))
 	invAll := allocations(n.ChildrenNamed("ALLINVENTORYENTRIES.LIST"))
@@ -495,6 +489,56 @@ func entries(nodes []*tally.Node) []Entry {
 		out = append(out, en)
 	}
 	return out
+}
+
+// inventory reads the stock lines of a voucher, from ALLINVENTORYENTRIES.LIST
+// when present (it repeats the others), else from the plain and stock-journal
+// lists. The server values stock on past dates from these instead of asking
+// Tally to.
+func inventory(n *tally.Node) []InvLine {
+	lines := n.ChildrenNamed("ALLINVENTORYENTRIES.LIST")
+	if len(lines) == 0 {
+		for _, tag := range []string{"INVENTORYENTRIES.LIST", "INVENTORYENTRIESIN.LIST", "INVENTORYENTRIESOUT.LIST"} {
+			lines = append(lines, n.ChildrenNamed(tag)...)
+		}
+	}
+	// An invoice made against a delivery or receipt note carries the note's
+	// tracking number; the note already moved the stock, so the invoice's line
+	// would count it twice.
+	accounting := len(n.ChildrenNamed("ALLLEDGERENTRIES.LIST"))+len(n.ChildrenNamed("LEDGERENTRIES.LIST")) > 0
+	out := []InvLine{}
+	for _, l := range lines {
+		item := l.Field("STOCKITEMNAME")
+		if item == "" || (accounting && tracked(l)) {
+			continue
+		}
+		qty := math.Abs(quantity(firstNonEmpty(l.Field("ACTUALQTY"), l.Field("BILLEDQTY"))))
+		value := math.Abs(tally.Amount(l.Field("AMOUNT")))
+		if !tally.Bool(l.Field("ISDEEMEDPOSITIVE")) {
+			qty, value = -qty, -value
+		}
+		if qty != 0 || value != 0 {
+			out = append(out, InvLine{Item: item, Qty: qty, Value: value})
+		}
+	}
+	return out
+}
+
+func tracked(line *tally.Node) bool {
+	for _, b := range line.ChildrenNamed("BATCHALLOCATIONS.LIST") {
+		if t := strings.TrimSpace(b.Field("TRACKINGNUMBER")); t != "" && !strings.EqualFold(t, "Not Applicable") {
+			return true
+		}
+	}
+	return false
+}
+
+// quantity parses " 12.5 Bag" or "10 Bag = 5 Box" (the first unit is the item's own).
+func quantity(s string) float64 {
+	if i := strings.Index(s, "="); i >= 0 {
+		s = s[:i]
+	}
+	return tally.Amount(s)
 }
 
 func allocations(inv []*tally.Node) []Entry {

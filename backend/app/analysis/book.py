@@ -135,6 +135,13 @@ class Book:
     vouchers: list[Voucher]
     stock_snapshots: dict[date, float]
     bills: list[dict]
+    # Per-item snapshots and the vouchers' stock lines (date, item, qty, value;
+    # positive = in), for valuing stock on dates Tally wasn't asked about.
+    stock_items: dict[date, list[dict]] = field(default_factory=dict)
+    stock_moves: list[tuple[date, str, float, float]] = field(default_factory=list)
+    # Vouchers on or before this date came from connectors that didn't send
+    # stock lines, so stock can't be rolled back past it.
+    stock_lines_from: date | None = None
     warnings: list[str] = field(default_factory=list)
     excluded_vouchers: int = 0
     cancelled_vouchers: int = 0
@@ -148,13 +155,45 @@ class Book:
         return [l for l in self.ledgers.values() if l.category in categories]
 
     def stock_value(self, on: date) -> float | None:
-        """Closing stock on a date, from the inventory snapshots (±7 days)."""
+        """Closing stock on a date: a snapshot from Tally within 7 days, else
+        worked out from the next snapshot and the stock moved in between."""
         best = None
         for d, v in self.stock_snapshots.items():
             gap = abs((d - on).days)
             if gap <= 7 and (best is None or gap < best[0]):
                 best = (gap, v)
-        return best[1] if best else None
+        if best:
+            return best[1]
+        return self._rolled_back_stock(on)
+
+    def _rolled_back_stock(self, on: date) -> float | None:
+        """Each item's quantity on `on` is the snapshot quantity less what came
+        in (plus what went out) since; it is valued at the item's average
+        purchase rate over the year to `on`, else at the snapshot's rate."""
+        later = sorted(d for d in self.stock_items if d > on)
+        if not later or (self.stock_lines_from and on < self.stock_lines_from):
+            return None
+        anchor = later[0]
+        moved: dict[str, float] = defaultdict(float)
+        bought: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+        for d, item, qty, value in self.stock_moves:
+            if on < d <= anchor:
+                moved[item] += qty
+            if on - timedelta(days=365) < d <= on and qty > 0 and value > 0:
+                bought[item][0] += qty
+                bought[item][1] += value
+        total = 0.0
+        for it in self.stock_items[anchor]:
+            qty_then = float(it.get("closing_qty") or 0) - moved.get(it["name"], 0.0)
+            if qty_then <= 0:
+                continue
+            q, v = bought.get(it["name"], (0.0, 0.0))
+            anchor_qty, anchor_value = float(it.get("closing_qty") or 0), abs(float(it.get("closing_value") or 0))
+            rate = v / q if q else (anchor_value / anchor_qty if anchor_qty else None)
+            if rate is None:
+                return None  # can't value this item: better no figure than a low one
+            total += qty_then * rate
+        return total
 
     def entries_between(self, start: date, end: date):
         for v in self.vouchers:
@@ -267,11 +306,26 @@ def build_book(bundle: dict) -> Book:
             f"{len(unknown_ledgers)} ledgers used in vouchers were missing from the ledger master list."
         )
 
-    snapshots = {}
+    snapshots, stock_items = {}, {}
     for snap in bundle.get("stock_snapshots", []):
-        snapshots[parse_date(snap["as_of"])] = abs(
-            sum(float(i.get("closing_value") or 0) for i in snap.get("items", []))
-        )
+        d = parse_date(snap["as_of"])
+        snapshots[d] = abs(sum(float(i.get("closing_value") or 0) for i in snap.get("items", [])))
+        if all("closing_qty" in i for i in snap.get("items", [])):
+            stock_items[d] = snap.get("items", [])
+    stock_moves, lines_from = [], None
+    for raw in bundle.get("vouchers", []):
+        d = parse_date(raw.get("date"))
+        if d is None:
+            continue
+        # Older vouchers carry no stock lines, and a physical stock count sets
+        # quantities instead of moving them: stock can't be rolled back past either.
+        if "inventory" not in raw or (resolve_vtype(raw.get("type", "")) == "Physical Stock" and raw["inventory"]):
+            lines_from = d if lines_from is None or d > lines_from else lines_from
+            continue
+        if raw.get("is_cancelled") or raw.get("is_optional"):
+            continue
+        for line in raw["inventory"] or []:
+            stock_moves.append((d, line["item"], float(line.get("qty") or 0), float(line.get("value") or 0)))
 
     period = bundle.get("period", {})
     bills = bills_from_vouchers(bundle.get("vouchers", []), ledgers)  # never Tally's Bills collection
@@ -283,6 +337,9 @@ def build_book(bundle: dict) -> Book:
         vouchers=vouchers,
         stock_snapshots=snapshots,
         bills=bills,
+        stock_items=stock_items,
+        stock_moves=stock_moves,
+        stock_lines_from=lines_from,
         warnings=warnings,
         excluded_vouchers=excluded,
         cancelled_vouchers=cancelled,
@@ -314,14 +371,16 @@ def bills_from_vouchers(raw_vouchers: list[dict], ledgers: dict[str, Ledger]) ->
                     opened[key] = v["date"]
     by_ledger: dict[str, list[dict]] = defaultdict(list)
     for (ledger, name), amount in totals.items():
-        if abs(amount) > 0.5:
+        # A settlement of a bill raised before our vouchers is not an open bill;
+        # whatever it leaves open shows up in the closing-balance check below.
+        if abs(amount) > 0.5 and (ledger, name) in opened:
             by_ledger[ledger].append({"ledger": ledger, "name": name, "date": opened.get((ledger, name), ""),
                                       "closing_balance": round(amount, 2)})
     out = []
     for name, bills in by_ledger.items():
         led = ledgers.get(name)
         total = sum(b["closing_balance"] for b in bills)
-        if led and abs(total - led.closing) <= max(1.0, abs(led.closing) * 0.005) and all(b["date"] for b in bills):
+        if led and abs(total - led.closing) <= max(1.0, abs(led.closing) * 0.005):
             out.extend(bills)
     return out
 

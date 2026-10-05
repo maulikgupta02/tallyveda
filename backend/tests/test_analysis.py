@@ -269,3 +269,44 @@ def test_bills_worked_out_from_voucher_allocations():
     ]
     assert bills_from_vouchers(vouchers, ledgers) == [
         {"ledger": "Acme", "name": "S1", "date": "2026-05-01", "closing_balance": 600.0}]
+
+
+def test_bills_ignore_settlements_of_older_bills():
+    from app.analysis.book import Ledger, bills_from_vouchers
+
+    ledgers = {"Acme": Ledger("Acme", "Sundry Debtors", "debtor", "Sundry Debtors", 700.0, 0.0)}
+    vouchers = [
+        {"date": "2026-04-02", "entries": [{"ledger": "Acme", "amount": -900.0,
+                                            "bills": [{"name": "OLD-1", "type": "Agst Ref", "amount": -900.0}]}]},
+        {"date": "2026-05-01", "entries": [{"ledger": "Acme", "amount": 700.0,
+                                            "bills": [{"name": "S9", "type": "New Ref", "amount": 700.0}]}]},
+    ]
+    assert bills_from_vouchers(vouchers, ledgers) == [
+        {"ledger": "Acme", "name": "S9", "date": "2026-05-01", "closing_balance": 700.0}]
+
+
+def test_stock_on_earlier_dates_is_rolled_back_from_the_latest_snapshot():
+    from app.analysis.book import build_book
+
+    def v(d, item, qty, value):
+        return {"date": d, "type": "Journal", "entries": [], "inventory": [{"item": item, "qty": qty, "value": value}]}
+
+    bundle = {
+        "period": {"from": "2025-01-01", "to": "2026-09-30"},
+        "stock_snapshots": [{"as_of": "2026-09-30", "items": [
+            {"name": "Rice", "closing_qty": 100, "closing_value": 6000},
+            {"name": "Oil", "closing_qty": 10, "closing_value": 1000}]}],
+        "vouchers": [
+            v("2025-08-01", "Rice", 50, 2500),    # bought at 50 a bag, a year before the date asked
+            v("2025-12-01", "Rice", 80, 4800),    # after the date asked: not on hand then
+            v("2026-02-01", "Rice", -30, -1800),  # sold after the date: was still on hand
+            v("2026-03-01", "Oil", -5, -500),
+        ],
+    }
+    book = build_book(bundle)
+    # On 30 Sep 2025: rice 100 - 80 + 30 = 50 bags at 50 = 2,500; oil 10 + 5 = 15 at the snapshot's 100 = 1,500.
+    assert book.stock_value(date(2025, 9, 30)) == 4000
+    assert book.stock_value(date(2026, 9, 28)) == 7000  # within a week of the snapshot: Tally's own figure
+
+    bundle["vouchers"].append({"date": "2025-11-01", "type": "Journal", "entries": []})  # from an older connector
+    assert build_book(bundle).stock_value(date(2025, 9, 30)) is None

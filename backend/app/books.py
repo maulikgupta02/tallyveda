@@ -213,17 +213,8 @@ def _plan(session: dict, book: dict | None) -> dict:
         plan["refresh_ledgers"] = sorted(
             _ledgers_between(session["application_id"], book["state"]["period"]["to"], session["period_to"], left_open=True)
         )
-        # The stock snapshots a year and two years back drift as the window
-        # moves; ask for any that is more than a few days off its date.
-        have = [date.fromisoformat(s["as_of"]) for s in book["state"].get("stock_snapshots", [])]
-        books_from = book["state"].get("company", {}).get("books_from") or ""
-        end = date.fromisoformat(session["period_to"])
-        for back in (365, 730):
-            want = end - timedelta(days=back)
-            if books_from and want.isoformat() < books_from:
-                continue
-            if have and not any(abs((d - want).days) <= 3 for d in have):
-                plan["stock_dates"].append(want.isoformat())
+        # Stock is valued by Tally only at the period end (heavy for Tally);
+        # earlier dates are worked out from the vouchers' stock lines.
     return plan
 
 

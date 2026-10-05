@@ -423,7 +423,17 @@ once instead of splitting and waiting again. Stock values are optional: once the
 From 0.5.4 the connector no longer asks Tally for outstanding bills at all: `book.bills_from_vouchers`
 matches the vouchers' New Ref / Agst Ref bill allocations on the server, using a ledger's bills only when
 they add up to its closing balance (bills raised before the stored window can't be seen); other ledgers
-are aged FIFO. Tally still computes ledger closing balances (light) and stock values (optional).
+are aged FIFO. Settlements of bills raised before the stored window are ignored; if older bills are still
+open, the closing-balance check fails and that ledger goes FIFO.
+
+From 0.5.5 Tally values stock only at the period end. Each voucher carries `inventory` lines
+(`{item, qty, value}`, positive = in; always present, so older vouchers without the key are detectable),
+and `Book.stock_value` works out an earlier date from the next per-item snapshot: quantity then = snapshot
+quantity minus what moved since, valued at the item's average purchase rate over the year to that date
+(else the snapshot's rate). It refuses (returns None, so margins show "approximate") past a voucher with no
+stock lines or a Physical Stock voucher. Invoice lines carrying a delivery/receipt note's tracking number
+are skipped by the connector (the note moved the stock). Existing books gain stock lines at their next
+30-day full re-read. Tally still computes ledger closing balances (light) and today's stock value.
 Only one sync talks to a Tally at a time (`monitor.LockTally`, an OS file lock per Tally URL): the page
 waits for it, a scheduled run skips and retries next time. Two syncs at once (the page sharing one
 company while the scheduled task updated another, 2026-10-05) left each waiting until Tally looked hung.

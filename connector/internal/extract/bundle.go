@@ -93,6 +93,18 @@ type Voucher struct {
 	IsOptional  bool    `json:"is_optional,omitempty"`
 	IsInvoice   bool    `json:"is_invoice,omitempty"`
 	Entries     []Entry `json:"entries"`
+	// Inventory is always present (an empty list when the voucher moves no
+	// stock), so the server can tell these vouchers from older ones that
+	// didn't carry it.
+	Inventory []InvLine `json:"inventory"`
+}
+
+// InvLine is one stock item moved by a voucher: Qty and Value are positive
+// for stock coming in and negative for stock going out.
+type InvLine struct {
+	Item  string  `json:"item"`
+	Qty   float64 `json:"qty"`
+	Value float64 `json:"value"`
 }
 
 type Entry struct {
