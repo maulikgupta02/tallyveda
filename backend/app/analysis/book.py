@@ -274,6 +274,7 @@ def build_book(bundle: dict) -> Book:
         )
 
     period = bundle.get("period", {})
+    bills = bills_from_vouchers(bundle.get("vouchers", []), ledgers)  # never Tally's Bills collection
     return Book(
         company=bundle.get("company", {}),
         period_from=parse_date(period.get("from")) or (vouchers[0].date if vouchers else date.today()),
@@ -281,12 +282,48 @@ def build_book(bundle: dict) -> Book:
         ledgers=ledgers,
         vouchers=vouchers,
         stock_snapshots=snapshots,
-        bills=bundle.get("bills", []),
+        bills=bills,
         warnings=warnings,
         excluded_vouchers=excluded,
         cancelled_vouchers=cancelled,
         unbalanced_vouchers=unbalanced,
     )
+
+
+def bills_from_vouchers(raw_vouchers: list[dict], ledgers: dict[str, Ledger]) -> list[dict]:
+    """Bill-wise outstanding worked out from the bill allocations on vouchers,
+    instead of asking Tally (its Bills collection froze Tally, 2026-10-05).
+
+    A bill is opened by a "New Ref" and settled by "Agst Ref" entries with the
+    same name. Bills raised before the vouchers we hold can't be seen, so a
+    ledger's bills are used only when they add up to its closing balance; any
+    other ledger is aged FIFO on invoices instead."""
+    totals: dict[tuple[str, str], float] = defaultdict(float)
+    opened: dict[tuple[str, str], str] = {}
+    for v in raw_vouchers:
+        if v.get("is_cancelled") or v.get("is_optional"):
+            continue
+        for e in v.get("entries", []):
+            for b in e.get("bills") or []:
+                kind = (b.get("type") or "").strip().lower()
+                if not b.get("name") or kind not in ("new ref", "agst ref"):
+                    continue
+                key = (e["ledger"], b["name"])
+                totals[key] += float(b.get("amount") or 0)
+                if kind == "new ref" and (key not in opened or v["date"] < opened[key]):
+                    opened[key] = v["date"]
+    by_ledger: dict[str, list[dict]] = defaultdict(list)
+    for (ledger, name), amount in totals.items():
+        if abs(amount) > 0.5:
+            by_ledger[ledger].append({"ledger": ledger, "name": name, "date": opened.get((ledger, name), ""),
+                                      "closing_balance": round(amount, 2)})
+    out = []
+    for name, bills in by_ledger.items():
+        led = ledgers.get(name)
+        total = sum(b["closing_balance"] for b in bills)
+        if led and abs(total - led.closing) <= max(1.0, abs(led.closing) * 0.005) and all(b["date"] for b in bills):
+            out.extend(bills)
+    return out
 
 
 def month_key(d: date) -> str:

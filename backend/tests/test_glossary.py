@@ -11,3 +11,4 @@ def test_every_tile_has_a_hint():
     labels = set(re.findall(r'tile\("([^"]+)"', src))
     assert labels
     assert sorted(labels - set(HINTS)) == []
+

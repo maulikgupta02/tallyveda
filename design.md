@@ -82,7 +82,9 @@ mark "TV".
 
 ## Metric tooltips (2026-10-05)
 Every metric label (dashboard tiles, portfolio columns, MSME home figures) is wrapped in `_shell.tip(label)`:
-a dotted underline and a dark tooltip on hover or keyboard focus (`.tip` in app.css). The text comes from
+a dotted underline and a dark tooltip on hover or keyboard focus. `static/tip.js` draws one floating
+`.tipbox` on `<body>` (cards and scrolling tables would clip a CSS `::after`) and keeps it inside the window;
+pages that use `tip` must load it. The text comes from
 `glossary.HINTS`, keyed by the label; glossary terms reuse `TERMS` wording. A new tile needs a `HINTS`
 entry, or `tests/test_glossary.py` fails.
 

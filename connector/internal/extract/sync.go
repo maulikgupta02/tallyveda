@@ -147,19 +147,9 @@ func syncFull(ctx context.Context, p *pacer, o Options, plan Plan, sink Sink) (s
 
 func readExtras(ctx context.Context, p *pacer, o Options, dates []time.Time) (map[string]any, error) {
 	snaps, warns := readStock(ctx, p, o, dates, 0.86, 0.94)
-	bills, warn, err := readBills(ctx, p, o, 0.94)
-	if err != nil {
-		return nil, err
-	}
-	if warn != "" {
-		warns = append(warns, warn)
-	}
 	extra := map[string]any{"warnings": append([]string{}, warns...)}
 	if len(snaps) > 0 {
 		extra["stock_snapshots"] = snaps
-	}
-	if warn == "" {
-		extra["bills"] = bills
 	}
 	return extra, nil
 }

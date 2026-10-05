@@ -248,3 +248,24 @@ def test_net_margin_zero_is_red():
     assert status(0.0) == "red"
     assert status(0.001) == "amber"
     assert status(0.05) == "green"
+
+
+def test_bills_worked_out_from_voucher_allocations():
+    from app.analysis.book import Ledger, bills_from_vouchers
+
+    led = lambda name, closing: Ledger(name, "Sundry Debtors", "debtor", "Sundry Debtors", closing, 0.0)
+    ledgers = {"Acme": led("Acme", 600.0), "Old Co": led("Old Co", 200.0)}
+    sale = lambda d, party, amt, ref: {"date": d, "entries": [
+        {"ledger": party, "amount": amt, "bills": [{"name": ref, "type": "New Ref", "amount": amt}]}]}
+    paid = lambda d, party, amt, ref: {"date": d, "entries": [
+        {"ledger": party, "amount": -amt, "bills": [{"name": ref, "type": "Agst Ref", "amount": -amt}]}]}
+    vouchers = [
+        sale("2026-05-01", "Acme", 1000.0, "S1"), paid("2026-06-01", "Acme", 400.0, "S1"),
+        sale("2026-07-01", "Acme", 500.0, "S2"), paid("2026-07-20", "Acme", 500.0, "S2"),
+        # Settles a bill raised before the vouchers we hold: can't be reconciled, so FIFO.
+        paid("2026-05-10", "Old Co", 300.0, "OLD-9"),
+        {"date": "2026-08-01", "is_cancelled": True, "entries": [
+            {"ledger": "Acme", "amount": 50.0, "bills": [{"name": "X", "type": "New Ref", "amount": 50.0}]}]},
+    ]
+    assert bills_from_vouchers(vouchers, ledgers) == [
+        {"ledger": "Acme", "name": "S1", "date": "2026-05-01", "closing_balance": 600.0}]

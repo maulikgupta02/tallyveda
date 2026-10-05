@@ -70,18 +70,11 @@ func Run(ctx context.Context, c *tally.Client, o Options, progress Progress) (*B
 		b.warn("%d vouchers did not balance when read from Tally", unbalanced)
 	}
 
-	// Stock valuation and bills only refine the analysis, so a slow Tally
-	// drops them with a warning instead of failing the whole sync.
+	// Stock valuation only refines the analysis, so a slow Tally drops it with
+	// a warning instead of failing the whole sync. Outstanding bills are worked
+	// out by the server from the vouchers' bill allocations, not asked of Tally.
 	snaps, warns := readStock(ctx, p, o, stockDates(o), 0.85, 0.94)
 	b.StockSnapshots, b.Warnings = append(b.StockSnapshots, snaps...), append(b.Warnings, warns...)
-	bills, warn, err := readBills(ctx, p, o, 0.94)
-	if err != nil {
-		return nil, err
-	}
-	b.Bills = append(b.Bills, bills...)
-	if warn != "" {
-		b.Warnings = append(b.Warnings, warn)
-	}
 	p.report("Extraction complete", 0.98)
 	return b, nil
 }
@@ -99,7 +92,6 @@ func newBundle(o Options) *Bundle {
 		Ledgers:          []Ledger{},
 		VoucherTypes:     []Group{},
 		StockSnapshots:   []StockSnapshot{},
-		Bills:            []Bill{},
 		Vouchers:         []Voucher{},
 		Warnings:         []string{},
 	}
@@ -307,10 +299,7 @@ func stockDates(o Options) []time.Time {
 	return out
 }
 
-const (
-	stockValueKey = "StockItem:ClosingValue"
-	billsKey      = "Bills:ClosingBalance"
-)
+const stockValueKey = "StockItem:ClosingValue"
 
 // readStock values every stock item on each date. A date that can't be read
 // in full is dropped with a warning: a partial snapshot would understate stock.
@@ -372,44 +361,6 @@ func readStock(ctx context.Context, p *pacer, o Options, dates []time.Time, f0, 
 		out = append(out, snap)
 	}
 	return out, warns
-}
-
-// readBills returns bill-wise outstanding. A failure is a warning (the
-// backend falls back to FIFO ageing); err is set only when ctx is done.
-func readBills(ctx context.Context, p *pacer, o Options, f float64) ([]Bill, string, error) {
-	p.report("Reading outstanding bills", f)
-	if FieldMemory != nil && FieldMemory.Skipped(billsKey) {
-		notify("note", "Skipped outstanding bills: they froze Tally on an earlier run.")
-		return nil, "bill-wise outstanding skipped: it froze this Tally before (ageing will use FIFO)", nil
-	}
-	var nodes []*tally.Node
-	err := p.do(ctx, voucherLimit, "outstanding bills", func(ctx context.Context) (err error) {
-		nodes, err = p.c.Collection(ctx, o.Company.Name, "Bills", []string{"Name", "Parent", "BillDate", "BillDueDate", "ClosingBalance"}, o.From, o.To)
-		return err
-	})
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, "", ctx.Err()
-		}
-		// Ageing falls back to FIFO without bills, so after one freeze don't ask again.
-		if FieldMemory != nil && (errors.Is(err, errSlow) || errors.Is(err, errStuck)) {
-			FieldMemory.Froze(billsKey)
-		}
-		notify("note", fmt.Sprintf("Skipped outstanding bills: %v.", err))
-		return nil, fmt.Sprintf("bill-wise outstanding could not be read (ageing will use FIFO): %v", err), nil
-	}
-	bills := []Bill{}
-	for _, n := range nodes {
-		amt := tally.DebitPositive(n.Field("CLOSINGBALANCE"))
-		if amt == 0 {
-			continue
-		}
-		bills = append(bills, Bill{
-			Ledger: n.Field("PARENT"), Name: n.ObjectName(), Date: tally.ISODate(n.Field("BILLDATE")),
-			DueDate: tally.ISODate(n.Field("BILLDUEDATE")), ClosingBalance: amt,
-		})
-	}
-	return bills, "", nil
 }
 
 func (b *Bundle) warn(format string, args ...any) {

@@ -420,7 +420,10 @@ does (often a message box on Tally's screen), `pacer.do` returns `errStuck` and 
 once instead of splitting and waiting again. Stock values are optional: once they make Tally slow or hang,
 `readStock` stops and remembers `StockItem:ClosingValue` in tally-skip.json, so later syncs skip them
 (seen on TallyPrime 1.1.7, 2026-10-05).
-Bill-wise outstanding is treated the same way (`Bills:ClosingBalance`; ageing falls back to FIFO).
+From 0.5.4 the connector no longer asks Tally for outstanding bills at all: `book.bills_from_vouchers`
+matches the vouchers' New Ref / Agst Ref bill allocations on the server, using a ledger's bills only when
+they add up to its closing balance (bills raised before the stored window can't be seen); other ledgers
+are aged FIFO. Tally still computes ledger closing balances (light) and stock values (optional).
 Only one sync talks to a Tally at a time (`monitor.LockTally`, an OS file lock per Tally URL): the page
 waits for it, a scheduled run skips and retries next time. Two syncs at once (the page sharing one
 company while the scheduled task updated another, 2026-10-05) left each waiting until Tally looked hung.

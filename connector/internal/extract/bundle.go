@@ -22,7 +22,6 @@ type Bundle struct {
 	Ledgers          []Ledger        `json:"ledgers"`
 	VoucherTypes     []Group         `json:"voucher_types"`
 	StockSnapshots   []StockSnapshot `json:"stock_snapshots"`
-	Bills            []Bill          `json:"bills"`
 	Vouchers         []Voucher       `json:"vouchers"`
 	Warnings         []string        `json:"warnings"`
 }
@@ -78,14 +77,6 @@ type StockItem struct {
 	Unit         string  `json:"unit,omitempty"`
 	ClosingQty   float64 `json:"closing_qty"`
 	ClosingValue float64 `json:"closing_value"`
-}
-
-type Bill struct {
-	Ledger         string  `json:"ledger"`
-	Name           string  `json:"name"`
-	Date           string  `json:"date,omitempty"`
-	DueDate        string  `json:"due_date,omitempty"`
-	ClosingBalance float64 `json:"closing_balance"`
 }
 
 type Voucher struct {

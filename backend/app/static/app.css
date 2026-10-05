@@ -254,10 +254,9 @@ pre.log { margin: 0; max-height: 420px; overflow: auto; background: #0f172a; col
 .live.off { color: var(--critical-text); }
 .live.off i { background: var(--critical); box-shadow: 0 0 0 3px var(--critical-soft); }
 
-/* Metric explanations on hover / focus */
-.tip { position: relative; cursor: help; text-decoration: underline dotted; text-decoration-color: var(--line-strong, #94a3b8); text-underline-offset: 3px; }
-.tip::after { content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 40; width: max-content; max-width: min(280px, 80vw);
-  padding: 8px 10px; border-radius: 8px; background: #0f172a; color: #f8fafc; font: 400 12.5px/1.45 var(--sans, system-ui); letter-spacing: 0; text-transform: none;
-  white-space: normal; text-align: left; box-shadow: 0 6px 20px rgba(15, 23, 42, .25); opacity: 0; visibility: hidden; transition: opacity .12s; pointer-events: none; }
-.tip:hover::after, .tip:focus-visible::after { opacity: 1; visibility: visible; }
-th .tip::after, .num .tip::after { left: auto; right: 0; }
+/* Metric explanations on hover / focus (positioned by tip.js) */
+.tip { cursor: help; text-decoration: underline dotted; text-decoration-color: var(--line-strong, #94a3b8); text-underline-offset: 3px; }
+.tipbox { position: fixed; z-index: 1000; max-width: min(300px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px;
+  background: #0f172a; color: #f8fafc; font: 400 12.5px/1.45 var(--sans, system-ui); letter-spacing: 0; text-transform: none; text-align: left;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, .25); opacity: 0; pointer-events: none; transition: opacity .12s; }
+.tipbox.on { opacity: 1; }
