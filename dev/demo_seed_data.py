@@ -20,7 +20,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape, quoteattr
 
 sys.path.insert(0, str(Path(__file__).parent))
-from mock_tally import GROUPS, ITEMS, Company, tally_amount, tdate  # noqa: E402
+from mock_tally import GROUPS, Company, tally_amount, tdate  # noqa: E402
 
 # Fixed namespace: the same voucher always gets the same GUID, so a re-run can
 # tell its own vouchers from anyone else's.
@@ -37,19 +37,19 @@ def groups() -> list[str]:
             for n, p, reserved in GROUPS if not reserved]
 
 
-def units() -> list[str]:
-    return [msg('<UNIT NAME="Bag" ACTION="Create"><NAME>Bag</NAME><ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>'
-                '<DECIMALPLACES>0</DECIMALPLACES></UNIT>')]
-
-
 def voucher_types() -> list[str]:
     return [msg('<VOUCHERTYPE NAME="GST Sales" ACTION="Create"><NAME.LIST><NAME>GST Sales</NAME></NAME.LIST>'
                 '<PARENT>Sales</PARENT><NUMBERINGMETHOD>Manual</NUMBERINGMETHOD><ISACTIVE>Yes</ISACTIVE></VOUCHERTYPE>')]
 
 
 def ledgers(co: Company) -> list[str]:
+    # No stock items (valuing them hung TallyPrime 1.1.7 on a test PC, 2026-10-05),
+    # so the capital account no longer carries the opening stock.
+    opening_stock = co.stock_value(date.fromordinal(co.start.toordinal() - 1))
     out = []
     for l in co.ledgers.values():
+        if l["name"] == "Capital - R. Agarwal":
+            l = {**l, "opening": l["opening"] + opening_stock}
         if l.get("reserved"):
             continue  # Profit & Loss A/c exists in every company
         # "Cash" is created with every new company too.
@@ -64,21 +64,6 @@ def ledgers(co: Company) -> list[str]:
         out.append(msg(f'<LEDGER NAME={quoteattr(l["name"])} ACTION="{action}"><NAME.LIST><NAME>{escape(l["name"])}</NAME></NAME.LIST>'
                        f'<PARENT>{escape(l["parent"])}</PARENT><OPENINGBALANCE>{tally_amount(l["opening"])}</OPENINGBALANCE>'
                        f'{extra}</LEDGER>'))
-    return out
-
-
-def stock_items(co: Company) -> list[str]:
-    # Opening stock as stock items: the capital account in mock_tally balances
-    # the ledgers against exactly this value.
-    total = co.stock_value(date.fromordinal(co.start.toordinal() - 1))
-    out = []
-    shares = [0.3, 0.22, 0.2, 0.18, 0.1]
-    for (name, rate), share in zip(ITEMS, shares):
-        value = round(total * share, 2)
-        qty = round(value / rate)
-        out.append(msg(f'<STOCKITEM NAME={quoteattr(name)} ACTION="Create"><NAME.LIST><NAME>{escape(name)}</NAME></NAME.LIST>'
-                       f'<BASEUNITS>Bag</BASEUNITS><OPENINGBALANCE> {qty} Bag</OPENINGBALANCE>'
-                       f'<OPENINGRATE>{rate:.2f}/Bag</OPENINGRATE><OPENINGVALUE>{tally_amount(value)}</OPENINGVALUE></STOCKITEM>'))
     return out
 
 
@@ -113,8 +98,7 @@ def main(out_dir: str) -> None:
     vouchers = [voucher(v, str(uuid.uuid5(NS, str(v.master_id))))
                 for v in sorted(co.vouchers, key=lambda v: v.master_id) if not v.cancelled]
     files = {
-        "1-groups": groups(), "2-units": units(), "3-vouchertypes": voucher_types(),
-        "4-ledgers": ledgers(co), "5-stockitems": stock_items(co), "6-vouchers": vouchers,
+        "1-groups": groups(), "3-vouchertypes": voucher_types(), "4-ledgers": ledgers(co), "6-vouchers": vouchers,
     }
     for name, lines in files.items():
         with gzip.open(out / f"{name}.xml.gz", "wt", encoding="utf-8") as f:
