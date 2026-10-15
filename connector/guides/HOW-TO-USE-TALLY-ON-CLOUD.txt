@@ -29,9 +29,10 @@ your own Windows computer and reaches Tally through Tally's "Sync with Local
 Applications" feature.
 
 One-time setup, done by the owner of your TallyPrime on AWS subscription:
-1. Log in to Tally's Self Service Portal. Go to Actions > Settings > Advanced
-   Settings and set "Allow synchronising Virtual Office with local
-   applications" to Yes.
+1. Log in to Tally's Self Service Portal. In the row of your Virtual Office,
+   click the ... button under Actions, then Settings > Advanced Settings, and
+   set "Allow synchronising Virtual Office with local applications" to Yes.
+   Only the subscription Owner sees this option.
 2. In Manage Users, turn on "Allow to sync local applications" for the user
    who will share the data.
 
@@ -40,7 +41,10 @@ On the Windows computer you use to open Tally (Windows 10 or 11, 64-bit):
    or later ("Update Client" in the portal). This needs administrator rights
    on the computer. Sign out of the client and sign in again.
 4. Open the Virtual Computer Connection client, start TallyPrime and load
-   your company.
+   your company. Inside the virtual computer, enable Tally's data connection
+   (step 1 of HOW-TO-USE.txt) if it isn't already on. Do not also run a
+   TallyPrime installed on this computer while you share: it would answer
+   TallyVeda instead of the one on AWS.
 5. In the client, open Settings > Sync Connectivity Information and wait
    until it shows green, "Ready to Sync with TallyPrime". Yellow means
    TallyPrime is not running; red means a connection problem.

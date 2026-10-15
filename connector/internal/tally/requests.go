@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,7 +87,26 @@ type Company struct {
 	AltVchID int64 `json:"-"`
 }
 
+// Companies lists the companies loaded in Tally. Some relays in front of
+// Tally (TallyPrime on AWS's "Sync with Local Applications") garble UTF-16
+// requests, and Tally then answers with an empty list, so an empty list is
+// retried in the other encoding, which is kept if it finds companies.
 func (c *Client) Companies(ctx context.Context) ([]Company, error) {
+	out, err := c.companies(ctx)
+	if err != nil || len(out) > 0 {
+		return out, err
+	}
+	was := c.UsesUTF16()
+	c.setUTF16(!was)
+	if alt, err := c.companies(ctx); err == nil && len(alt) > 0 {
+		log.Printf("tally: no companies with UTF16=%v, found %d with UTF16=%v; keeping it", was, len(alt), !was)
+		return alt, nil
+	}
+	c.setUTF16(was)
+	return out, nil
+}
+
+func (c *Client) companies(ctx context.Context) ([]Company, error) {
 	root, err := c.Post(ctx, collectionRequest("", "Company", Query{},
 		[]string{"Name", "GUID", "StartingFrom", "BooksFrom", "StateName", "IncomeTaxNumber", "AltVchId"}, time.Time{}, time.Time{}))
 	if err != nil {

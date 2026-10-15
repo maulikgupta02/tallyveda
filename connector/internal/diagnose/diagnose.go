@@ -47,6 +47,11 @@ func Run(ctx context.Context, c *tally.Client, company, version string, progress
 		fmt.Fprintf(&out, "FAIL  list companies: %v\n", err)
 		return out.String()
 	}
+	enc := "UTF-16"
+	if !c.UsesUTF16() {
+		enc = "UTF-8"
+	}
+	fmt.Fprintf(&out, "      %d companies, requests sent as %s\n", len(companies), enc)
 	for _, co := range companies {
 		fmt.Fprintf(&out, "      company %q books from %s, AltVchId %d\n", co.Name, co.BooksFrom, co.AltVchID)
 	}

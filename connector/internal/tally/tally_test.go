@@ -1,6 +1,13 @@
 package tally
 
-import "testing"
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 func TestAmount(t *testing.T) {
 	cases := map[string]float64{
@@ -56,5 +63,47 @@ func TestParseDate(t *testing.T) {
 		if !ok || d.Format("2006-01-02") != "2024-04-01" {
 			t.Errorf("ParseDate(%q) = %v %v", s, d, ok)
 		}
+	}
+}
+
+// A relay that mangles UTF-16 makes Tally list no companies; Companies must
+// retry in UTF-8 and keep using it.
+func TestCompaniesFallsBackToUTF8(t *testing.T) {
+	var utf16Seen, utf8Seen int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Content-Type"), "utf-16") {
+			utf16Seen++
+			io.WriteString(w, "<ENVELOPE></ENVELOPE>")
+			return
+		}
+		utf8Seen++
+		io.WriteString(w, `<ENVELOPE><COMPANY NAME="Acme Traders"><GUID>g1</GUID></COMPANY></ENVELOPE>`)
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	cos, err := c.Companies(context.Background())
+	if err != nil || len(cos) != 1 || cos[0].Name != "Acme Traders" {
+		t.Fatalf("got %+v, %v", cos, err)
+	}
+	if c.UsesUTF16() {
+		t.Fatal("client should have switched to UTF-8")
+	}
+	if _, err := c.Companies(context.Background()); err != nil || utf16Seen != 1 || utf8Seen != 2 {
+		t.Fatalf("second call should go straight to UTF-8: utf16=%d utf8=%d err=%v", utf16Seen, utf8Seen, err)
+	}
+}
+
+// With no company loaded in either encoding, the client keeps UTF-16.
+func TestCompaniesKeepsEncodingWhenNoneOpen(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "<ENVELOPE></ENVELOPE>")
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	if cos, err := c.Companies(context.Background()); err != nil || len(cos) != 0 {
+		t.Fatalf("got %+v, %v", cos, err)
+	}
+	if !c.UsesUTF16() {
+		t.Fatal("client should stay on UTF-16")
 	}
 }

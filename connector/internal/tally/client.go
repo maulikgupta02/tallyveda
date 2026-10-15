@@ -92,10 +92,11 @@ func (c *Client) WaitIdle(ctx context.Context, max time.Duration) error {
 func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 	c.lastMu.Lock()
 	c.lastRequest = envelope
+	utf16 := c.UTF16
 	c.lastMu.Unlock()
 	var body []byte
 	contentType := "text/xml;charset=utf-8"
-	if c.UTF16 {
+	if utf16 {
 		body = encodeUTF16LE(envelope)
 		contentType = "text/xml;charset=utf-16"
 	} else {
@@ -127,6 +128,19 @@ func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 		return nil, &RequestError{Message: msg}
 	}
 	return root, nil
+}
+
+// UsesUTF16 reports the request encoding currently in use.
+func (c *Client) UsesUTF16() bool {
+	c.lastMu.Lock()
+	defer c.lastMu.Unlock()
+	return c.UTF16
+}
+
+func (c *Client) setUTF16(v bool) {
+	c.lastMu.Lock()
+	c.UTF16 = v
+	c.lastMu.Unlock()
 }
 
 // RequestError is an error Tally reported (bad company name, unknown report…).
