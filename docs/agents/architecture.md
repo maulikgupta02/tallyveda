@@ -145,7 +145,7 @@ itself). They never share code or a process.
   `run_test.go`, whose fake single-threaded Tally covers each filter mode.
 - **`internal/app/`** — the local UI: serves `index.html` on 127.0.0.1 with a per-run token,
   owns the guided 4-step flow (detect Tally → enter code → choose company/consent →
-  extract/upload) and idle-timeout (exits ~45s after the tab closes).
+  extract/upload) and idle-timeout (exits ~3 min after the tab closes).
 - **`internal/monitor/`** — owns the daily-monitoring lifecycle: `monitor.go` (due-check
     and upload loop invoked by `-monitor-run`/`-monitor-stop`), platform-specific scheduled-task
     registration split into `schedule_windows.go` (real Windows Task Scheduler XML, no admin

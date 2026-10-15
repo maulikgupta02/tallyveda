@@ -232,6 +232,8 @@ type StartRequest struct {
 
 // Idle reports whether the UI can shut down: no job running and the browser
 // page has stopped pinging (tab closed), or it never opened within 10 minutes.
+// Browsers slow a hidden tab's 10-second ping to once a minute (a covering
+// window counts as hidden on Windows), so the limit stays well above that.
 func (a *App) Idle() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -241,7 +243,7 @@ func (a *App) Idle() bool {
 	if a.lastPing.IsZero() {
 		return time.Since(a.started) > 10*time.Minute
 	}
-	return time.Since(a.lastPing) > 45*time.Second
+	return time.Since(a.lastPing) > 3*time.Minute
 }
 
 func (a *App) ping(w http.ResponseWriter, r *http.Request) {
