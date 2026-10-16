@@ -1,0 +1,23 @@
+connector/internal/tally/requests.go
+  4939b001127cafb4 90-94,98,102-104,106-113,115,118-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "fdb75cacc4e0df3def6a2b9afef086b83b94ec9c",
+  "prompts": {
+    "4939b001127cafb4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11789bd1-575b-4e44-a580-9a0e879b5a44",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 48,
+      "total_deletions": 8,
+      "accepted_lines": 46,
+      "overriden_lines": 0
+    }
+  }
+}
