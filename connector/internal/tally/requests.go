@@ -314,3 +314,25 @@ func CreditDays(s string) *int {
 	}
 	return nil
 }
+
+// CompanyRequest is one way of asking Tally for its company list, for probes.
+type CompanyRequest struct {
+	Name  string
+	UTF16 bool
+	Run   func(ctx context.Context, c *Client) (int, error)
+}
+
+// CompanyRequests lists every way Companies tries, without its fallbacks.
+func CompanyRequests() []CompanyRequest {
+	inline := func(ctx context.Context, c *Client) (int, error) { cos, err := c.companies(ctx); return len(cos), err }
+	builtin := func(ctx context.Context, c *Client) (int, error) {
+		cos, err := c.companyNames(ctx)
+		return len(cos), err
+	}
+	return []CompanyRequest{
+		{"inline TDL, UTF-16", true, inline},
+		{"inline TDL, UTF-8", false, inline},
+		{"List of Companies, UTF-16", true, builtin},
+		{"List of Companies, UTF-8", false, builtin},
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ type Client struct {
 	lastMu      sync.Mutex
 	lastRequest string
 	lastReply   string
+	lastText    string // whole decoded reply, capped, for Outline
 	note        string
 }
 
@@ -36,6 +38,55 @@ func (c *Client) LastReply() string {
 	c.lastMu.Lock()
 	defer c.lastMu.Unlock()
 	return c.lastReply
+}
+
+// LastOutline describes Tally's most recent answer without its data: the
+// status, the tags it contained and how often, and Tally's own message from
+// RESPONSE or LINEERROR. Safe to send before the user has consented.
+func (c *Client) LastOutline() string {
+	c.lastMu.Lock()
+	text := c.lastText
+	c.lastMu.Unlock()
+	return Outline(text)
+}
+
+var (
+	tagRE    = regexp.MustCompile(`<([A-Za-z][\w.:-]*)`)
+	msgRE    = regexp.MustCompile(`(?s)<(RESPONSE|LINEERROR)>([^<]{0,400})</`)
+	quotedRE = regexp.MustCompile(`'[^']*'|"[^"]*"|&apos;.*?&apos;|&quot;.*?&quot;`)
+)
+
+// MaskQuoted hides quoted text, which in Tally's messages is usually a
+// company or ledger name.
+func MaskQuoted(s string) string { return quotedRE.ReplaceAllString(s, "'…'") }
+
+// Outline is LastOutline for any reply text.
+func Outline(text string) string {
+	head, body, _ := strings.Cut(text, "\n")
+	counts := map[string]int{}
+	var order []string
+	for _, m := range tagRE.FindAllStringSubmatch(body, -1) {
+		if counts[m[1]] == 0 {
+			order = append(order, m[1])
+		}
+		counts[m[1]]++
+	}
+	var tags []string
+	for _, t := range order {
+		if len(tags) == 25 {
+			tags = append(tags, "…")
+			break
+		}
+		tags = append(tags, fmt.Sprintf("%s×%d", t, counts[t]))
+	}
+	out := head + "; tags: " + strings.Join(tags, " ")
+	if len(order) == 0 {
+		out = head + "; no XML tags; starts with " + strconv.Quote(clip(body, 60))
+	}
+	for _, m := range msgRE.FindAllStringSubmatch(body, 2) {
+		out += "; " + m[1] + ": " + quotedRE.ReplaceAllString(clip(m[2], 160), "'…'")
+	}
+	return out
 }
 
 // Note says how the last company list was found, or why it came back empty.
@@ -160,6 +211,7 @@ func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 	text := decode(raw)
 	c.lastMu.Lock()
 	c.lastReply = fmt.Sprintf("HTTP %d, %d bytes: %s", resp.StatusCode, len(raw), clip(text, 600))
+	c.lastText = fmt.Sprintf("HTTP %d, %d bytes\n", resp.StatusCode, len(raw)) + text[:min(len(text), 64<<10)]
 	c.lastMu.Unlock()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tally returned HTTP %d", resp.StatusCode)

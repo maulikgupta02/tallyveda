@@ -58,6 +58,7 @@
       <a href="/admin/msmes" class="{{ 'on' if active == 'msmes' }}">{{ icon("case") }}MSMEs{{ count(n.msmes) }}</a>
       <a href="/admin/users" class="{{ 'on' if active == 'users' }}">{{ icon("users") }}Users{{ count(n.users) }}</a>
       <a href="/admin/leads" class="{{ 'on' if active == 'leads' }}">{{ icon("mail") }}Leads{{ count(n.leads) }}</a>
+      <a href="/admin/telemetry" class="{{ 'on' if active == 'telemetry' }}">{{ icon("list") }}Connector telemetry</a>
       <a href="/admin/audit" class="{{ 'on' if active == 'audit' }}">{{ icon("list") }}Audit log</a>
       <a href="/admin#deletions">{{ icon("trash") }}Deletion requests{{ count(n.deletions, true) }}</a>
     </nav>

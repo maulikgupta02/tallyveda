@@ -31,6 +31,7 @@ import (
 	"tallyconnector/internal/monitor"
 	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
+	"tallyconnector/internal/telemetry"
 	"tallyconnector/internal/update"
 	"tallyconnector/internal/upload"
 )
@@ -77,11 +78,15 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	telemetry.Init(*server, version)
+	defer telemetry.Flush(10 * time.Second)
 
 	switch {
 	case *monitorRun:
 		if err := monitor.Run(ctx, version, monitor.Logger(logOut)); err != nil {
 			log.Printf("daily update failed: %v", err)
+			telemetry.Send("error", "daily update failed: "+tally.MaskQuoted(err.Error()))
+			telemetry.Flush(30 * time.Second)
 			os.Exit(1)
 		}
 		return
@@ -112,6 +117,7 @@ func main() {
 	if err := monitor.Upgrade(); err != nil {
 		log.Printf("could not update the installed connector: %v", err)
 	}
+	telemetry.Send("start", fmt.Sprintf("Tally address: %s\n%s", tc.Address(), support.Report()))
 	a := app.New(tc, backend, version)
 	url, err := a.Listen(*port)
 	if err != nil {

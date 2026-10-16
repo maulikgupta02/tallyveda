@@ -207,6 +207,16 @@ CREATE TABLE IF NOT EXISTS connector_logs (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS connector_logs_by_app ON connector_logs(application_id, created_at);
+CREATE TABLE IF NOT EXISTS connector_telemetry (
+    id TEXT PRIMARY KEY,
+    install_id TEXT NOT NULL,      -- random per computer, not tied to an application
+    version TEXT NOT NULL,
+    event TEXT NOT NULL,           -- start | tally | probe | error
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS connector_telemetry_by_install ON connector_telemetry(install_id, created_at);
+CREATE INDEX IF NOT EXISTS connector_telemetry_by_time ON connector_telemetry(created_at);
 """
 
 # Columns added after the first release; applied to existing databases.
@@ -422,6 +432,41 @@ def save_connector_log(app_id: str, kind: str, body: str, session: str = "") -> 
         ).fetchall()[CONNECTOR_LOGS_KEPT:]
         for r in old:
             conn.execute("DELETE FROM connector_logs WHERE id = ?", (r["id"],))
+
+
+TELEMETRY_KEEP_DAYS = 30
+TELEMETRY_PER_INSTALL = 300
+
+
+def save_telemetry(install_id: str, version: str, event: str, body: str) -> None:
+    """Anonymous technical events a connector sends before any code is entered,
+    so support can see why Tally isn't found without asking the MSME."""
+    with db() as conn:
+        conn.execute(
+            "INSERT INTO connector_telemetry (id, install_id, version, event, body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (uuid.uuid4().hex, install_id, version, event, body, now().isoformat()),
+        )
+        old = conn.execute(
+            "SELECT id FROM connector_telemetry WHERE install_id = ? ORDER BY created_at DESC", (install_id,)
+        ).fetchall()[TELEMETRY_PER_INSTALL:]
+        for row in old:
+            conn.execute("DELETE FROM connector_telemetry WHERE id = ?", (row["id"],))
+        cutoff = (now() - timedelta(days=TELEMETRY_KEEP_DAYS)).isoformat()
+        conn.execute("DELETE FROM connector_telemetry WHERE created_at < ?", (cutoff,))
+
+
+def list_telemetry(install_id: str = "", limit: int = 300) -> list[dict]:
+    with db() as conn:
+        if install_id:
+            rows = conn.execute(
+                "SELECT * FROM connector_telemetry WHERE install_id = ? ORDER BY created_at DESC LIMIT ?",
+                (install_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM connector_telemetry ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def list_connector_logs(app_id: str) -> list[dict]:

@@ -35,6 +35,19 @@ func Explain(c *tally.Client) []string {
 	return out
 }
 
+// ExplainSafe is Explain with Tally's reply reduced to its outline, for
+// telemetry sent before the user has consented to share anything.
+func ExplainSafe(c *tally.Client) []string {
+	var out []string
+	for _, line := range Explain(c) {
+		if strings.HasPrefix(line, "Tally replied: ") {
+			line = "Tally replied: " + c.LastOutline()
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
 // LocalTallyHolds reports whether the program on Tally's port is a Tally
 // installed on this computer rather than a relay to a cloud Tally.
 func LocalTallyHolds(c *tally.Client) bool {

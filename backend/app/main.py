@@ -34,6 +34,7 @@ Platform admin endpoints (HTTP Basic auth, role `platform` — see store.py's `u
     GET  /admin/users                            every user across tenants; reset/disable/enable/delete
     GET  /admin/audit                            the audit log
     GET  /admin/leads                            pilot requests from the home page
+    GET  /admin/telemetry[?install=]             anonymous connector events (Tally not found etc.)
 State-changing form POSTs under /admin and /bank are CSRF-guarded (`_csrf_guard`) — see its
 docstring for the exact rule. Connector and JSON `/api/...` routes are exempt (not browser forms).
 
@@ -684,6 +685,44 @@ async def connector_log(request: Request):
     else:
         text = body.text[-200_000:]
     store.save_connector_log(a["id"], body.kind, text, body.session[:64])
+    return {"status": "saved"}
+
+
+class TelemetryIn(BaseModel):
+    install_id: str
+    version: str = ""
+    event: str
+    body: str
+
+
+_telemetry_hits: dict[str, deque] = defaultdict(deque)
+MAX_TELEMETRY_PER_HOUR = 120
+_INSTALL_ID = re.compile(r"^[0-9a-f]{16,64}$")
+
+
+@app.post("/api/connector/telemetry", include_in_schema=False)
+async def connector_telemetry(request: Request):
+    """Anonymous technical events from a connector, sent before any access code
+    is entered: version, Windows, which ports answer, Tally's reply outline.
+    No company names or accounting data; rate-limited per IP."""
+    hits = _telemetry_hits[request.client.host or "unknown"]
+    while hits and hits[0] < time.time() - 3600:
+        hits.popleft()
+    if len(hits) >= MAX_TELEMETRY_PER_HOUR:
+        raise HTTPException(429, "Too many events")
+    hits.append(time.time())
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > 64 * 1024:
+            raise HTTPException(413, "Event too large")
+    try:
+        body = TelemetryIn.model_validate_json(bytes(raw))
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid event: {e}")
+    if not _INSTALL_ID.match(body.install_id) or body.event not in ("start", "tally", "probe", "error"):
+        raise HTTPException(400, "Invalid event")
+    store.save_telemetry(body.install_id, body.version[:20], body.event, body.body[:20_000])
     return {"status": "saved"}
 
 
@@ -1498,6 +1537,12 @@ def admin_delete_user(user_id: str, user: dict = Depends(platform_user), _csrf: 
 @app.get("/admin/audit", response_class=HTMLResponse)
 def admin_audit(user: dict = Depends(platform_user)):
     return templates.get_template("admin_audit.html").render(user=user, audit=store.list_audit(limit=200))
+
+
+@app.get("/admin/telemetry", response_class=HTMLResponse)
+def admin_telemetry(install: str = "", user: dict = Depends(platform_user)):
+    return templates.get_template("admin_telemetry.html").render(
+        user=user, install=install, events=store.list_telemetry(install, limit=500))
 
 
 @app.get("/admin/leads", response_class=HTMLResponse)

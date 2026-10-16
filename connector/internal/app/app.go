@@ -24,6 +24,7 @@ import (
 	"tallyconnector/internal/monitor"
 	"tallyconnector/internal/support"
 	"tallyconnector/internal/tally"
+	"tallyconnector/internal/telemetry"
 	"tallyconnector/internal/update"
 	"tallyconnector/internal/upload"
 )
@@ -52,6 +53,7 @@ type App struct {
 	lastPing time.Time
 	started  time.Time
 	searched time.Time // last search of nearby ports for a Tally with companies
+	probed   bool      // telemetry probe already sent this run
 }
 
 type Job struct {
@@ -181,14 +183,17 @@ func (a *App) tallyStatus(w http.ResponseWriter, r *http.Request) {
 	banner, err := a.Tally.Ping(r.Context())
 	if err != nil {
 		if alt, cos := a.searchNearby(r.Context()); alt != nil {
+			a.reportTally(fmt.Sprintf("found %d companies at %s after %s failed", len(cos), alt.Address(), err), nil)
 			writeJSON(w, 200, map[string]any{"ok": true, "companies": cos, "url": a.Tally.Address()})
 			return
 		}
+		a.reportTally("not found: "+err.Error(), nil)
 		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error(), "url": a.Tally.Address()})
 		return
 	}
 	companies, err := a.Tally.Companies(r.Context())
 	if err != nil {
+		a.reportTally("company list failed: "+tally.MaskQuoted(err.Error()), diagnose.ExplainSafe(a.Tally))
 		writeJSON(w, 200, map[string]any{"ok": false, "banner": banner, "error": err.Error(), "url": a.Tally.Address()})
 		return
 	}
@@ -196,12 +201,31 @@ func (a *App) tallyStatus(w http.ResponseWriter, r *http.Request) {
 		if alt, cos := a.searchNearby(r.Context()); alt != nil {
 			companies = cos
 		} else {
+			a.reportTally("answers ("+banner+") but no companies", diagnose.ExplainSafe(a.Tally))
 			writeJSON(w, 200, map[string]any{"ok": true, "banner": banner, "companies": companies, "url": a.Tally.Address(),
 				"local_tally": diagnose.LocalTallyHolds(a.Tally), "details": diagnose.Explain(a.Tally)})
 			return
 		}
 	}
+	a.reportTally(fmt.Sprintf("ok: %d companies at %s (%s)", len(companies), a.Tally.Address(), banner), diagnose.ExplainSafe(a.Tally))
 	writeJSON(w, 200, map[string]any{"ok": true, "banner": banner, "companies": companies, "url": a.Tally.Address()})
+}
+
+// reportTally sends the Tally status to telemetry when it changes. The first
+// time Tally can't give a company, it also runs a deeper probe once.
+func (a *App) reportTally(state string, details []string) {
+	telemetry.Send("tally", strings.Join(append([]string{state}, details...), "\n"))
+	if strings.HasPrefix(state, "ok") {
+		return
+	}
+	a.mu.Lock()
+	if a.probed || a.job.Running {
+		a.mu.Unlock()
+		return
+	}
+	a.probed = true
+	a.mu.Unlock()
+	go telemetry.Send("probe", diagnose.Probe(context.Background(), a.Tally.Address()))
 }
 
 // searchNearby switches to another local port when a Tally there has
@@ -251,6 +275,7 @@ func (a *App) verify(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&in)
 	info, err := a.Backend.Verify(r.Context(), in.Code)
 	if err != nil {
+		telemetry.Send("error", "code check failed: "+tally.MaskQuoted(err.Error()))
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
@@ -491,6 +516,7 @@ func (a *App) run(w http.ResponseWriter, job func(context.Context, extract.Progr
 		if err != nil {
 			a.job.Error, a.job.Hint, a.job.Waiting = err.Error(), hint(err.Error()), ""
 			log.Printf("failed: %v", err)
+			telemetry.Send("error", "job failed: "+tally.MaskQuoted(err.Error()))
 			return
 		}
 		a.job.Done, a.job.Fraction, a.job.Stage, a.job.Summary = true, 1, "Done", summary

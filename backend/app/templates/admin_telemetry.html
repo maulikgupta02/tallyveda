@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connector telemetry · Admin</title>
+<link rel="stylesheet" href="/static/app.css?v=7">
+<style>
+  .tbl td.when { white-space: nowrap; color: var(--text-2); }
+  .tbl td pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; max-width: 900px; }
+  .tbl td.id { font-family: ui-monospace, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+{% set nav = "telemetry" %}
+{% from "_shell.html" import admin_side with context %}
+<div class="shell">
+  {{ admin_side(nav, user if user is defined else none) }}
+
+  <main class="work">
+    <header class="head">
+      <div>
+        <h1>Connector telemetry</h1>
+        <p class="sub">Anonymous technical events from connectors, sent before any code is entered. Kept 30 days.
+          {% if install %}Showing install <b>{{ install }}</b> · <a href="/admin/telemetry">all installs</a>{% endif %}</p>
+      </div>
+    </header>
+
+    <section class="card flush">
+      <div class="scrollx"><table class="tbl">
+        <thead><tr><th>When</th><th>Install</th><th>Version</th><th>Event</th><th>Details</th></tr></thead>
+        <tbody>
+        {% for e in events %}
+        <tr>
+          <td class="when">{{ e.created_at|when }}</td>
+          <td class="id"><a href="/admin/telemetry?install={{ e.install_id }}">{{ e.install_id[:8] }}</a></td>
+          <td>{{ e.version }}</td>
+          <td><span class="pill">{{ e.event }}</span></td>
+          <td><pre>{{ e.body }}</pre></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No connector events yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

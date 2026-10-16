@@ -166,3 +166,18 @@ func TestFindNearby(t *testing.T) {
 		t.Fatal("must only search localhost")
 	}
 }
+
+// Outline keeps the shape of Tally's reply but none of its data.
+func TestOutlineHidesData(t *testing.T) {
+	text := "HTTP 200, 120 bytes\n<ENVELOPE><COMPANY NAME=\"Secret Traders\"><GUID>abc</GUID></COMPANY><COMPANY NAME=\"Other\"/>" +
+		"<LINEERROR>Could not set 'SVCurrentCompany' to 'Secret Traders'</LINEERROR></ENVELOPE>"
+	got := Outline(text)
+	if strings.Contains(got, "Secret") || strings.Contains(got, "Other") || strings.Contains(got, "abc") {
+		t.Fatalf("outline leaks data: %q", got)
+	}
+	for _, want := range []string{"HTTP 200", "COMPANY×2", "LINEERROR: Could not set"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("outline %q missing %q", got, want)
+		}
+	}
+}
