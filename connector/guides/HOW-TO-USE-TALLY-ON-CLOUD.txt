@@ -48,8 +48,9 @@ On the Windows computer you use to open Tally (Windows 10 or 11, 64-bit):
 5. In the client, open Settings > Sync Connectivity Information and wait
    until it shows green, "Ready to Sync with TallyPrime". Yellow means
    TallyPrime is not running; red means a connection problem.
-6. Note the port shown there. The simplest is to set it to 9000.
-   If you must use a different port, start TallyVeda with that port:
+6. Note the port shown there. The simplest is to set it to 9000. TallyVeda
+   also finds ports 9001 to 9010 by itself. For any other port, start
+   TallyVeda with that port:
    right-click TallyConnector.exe > Show more options > Create shortcut,
    right-click the shortcut > Properties, and at the end of "Target" add
    a space and  -tally http://localhost:PORT  (with your port number), then
@@ -58,6 +59,10 @@ On the Windows computer you use to open Tally (Windows 10 or 11, 64-bit):
 7. Extract this zip (right-click > Extract All) and run TallyConnector.exe
    (or your shortcut). Continue with step 4 of HOW-TO-USE.txt: enter your
    access code, choose your company and give your consent.
+
+If TallyVeda says Tally is open but no company is loaded, open "Details for
+support" on that page and send us a screenshot. It shows which program
+answered and what Tally replied.
 
 Every request goes over the internet to AWS, so sharing takes longer than with
 Tally on your own computer. Keep the computer on and the Virtual Computer

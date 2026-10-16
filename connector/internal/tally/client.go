@@ -27,6 +27,44 @@ type Client struct {
 
 	lastMu      sync.Mutex
 	lastRequest string
+	lastReply   string
+	note        string
+}
+
+// LastReply is the start of Tally's most recent answer, for support.
+func (c *Client) LastReply() string {
+	c.lastMu.Lock()
+	defer c.lastMu.Unlock()
+	return c.lastReply
+}
+
+// Note says how the last company list was found, or why it came back empty.
+func (c *Client) Note() string {
+	c.lastMu.Lock()
+	defer c.lastMu.Unlock()
+	return c.note
+}
+
+func (c *Client) setNote(s string) {
+	c.lastMu.Lock()
+	c.note = s
+	c.lastMu.Unlock()
+}
+
+// SetURL points the client at another Tally address.
+func (c *Client) SetURL(url string) {
+	c.lastMu.Lock()
+	c.URL = strings.TrimRight(url, "/")
+	c.lastMu.Unlock()
+}
+
+// Address is the Tally URL currently in use.
+func (c *Client) Address() string { return c.base() }
+
+func (c *Client) base() string {
+	c.lastMu.Lock()
+	defer c.lastMu.Unlock()
+	return c.URL
 }
 
 // LastRequest is the most recent request envelope, for debugging a hang.
@@ -53,17 +91,18 @@ var ErrNotRunning = errors.New("tally is not reachable")
 func (c *Client) Ping(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
+	url := c.base()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	req.Close = true
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("%w at %s: %v", ErrNotRunning, c.URL, err)
+		return "", fmt.Errorf("%w at %s: %v", ErrNotRunning, url, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	text := strings.TrimSpace(stripTags(decode(body)))
 	if !strings.Contains(strings.ToLower(text), "running") {
-		return text, fmt.Errorf("%w: unexpected response from %s: %q", ErrNotRunning, c.URL, text)
+		return text, fmt.Errorf("%w: unexpected response from %s: %q", ErrNotRunning, url, text)
 	}
 	return text, nil
 }
@@ -93,6 +132,7 @@ func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 	c.lastMu.Lock()
 	c.lastRequest = envelope
 	utf16 := c.UTF16
+	url := c.URL
 	c.lastMu.Unlock()
 	var body []byte
 	contentType := "text/xml;charset=utf-8"
@@ -102,7 +142,7 @@ func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 	} else {
 		body = []byte(envelope)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -117,10 +157,14 @@ func (c *Client) Post(ctx context.Context, envelope string) (*Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading tally response: %w", err)
 	}
+	text := decode(raw)
+	c.lastMu.Lock()
+	c.lastReply = fmt.Sprintf("HTTP %d, %d bytes: %s", resp.StatusCode, len(raw), clip(text, 600))
+	c.lastMu.Unlock()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tally returned HTTP %d", resp.StatusCode)
 	}
-	root, err := Parse(sanitize(decode(raw)))
+	root, err := Parse(sanitize(text))
 	if err != nil {
 		return nil, fmt.Errorf("parsing tally response: %w", err)
 	}
@@ -136,6 +180,9 @@ func (c *Client) UsesUTF16() bool {
 	defer c.lastMu.Unlock()
 	return c.UTF16
 }
+
+// SetUTF16 sets the request encoding.
+func (c *Client) SetUTF16(v bool) { c.setUTF16(v) }
 
 func (c *Client) setUTF16(v bool) {
 	c.lastMu.Lock()
@@ -162,6 +209,14 @@ func responseError(root *Node) string {
 		return root.Text
 	}
 	return ""
+}
+
+func clip(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
 }
 
 func encodeUTF16LE(s string) []byte {

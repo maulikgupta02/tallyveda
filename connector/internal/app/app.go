@@ -51,6 +51,7 @@ type App struct {
 	job      Job
 	lastPing time.Time
 	started  time.Time
+	searched time.Time // last search of nearby ports for a Tally with companies
 }
 
 type Job struct {
@@ -179,15 +180,49 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (a *App) tallyStatus(w http.ResponseWriter, r *http.Request) {
 	banner, err := a.Tally.Ping(r.Context())
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error(), "url": a.Tally.URL})
+		if alt, cos := a.searchNearby(r.Context()); alt != nil {
+			writeJSON(w, 200, map[string]any{"ok": true, "companies": cos, "url": a.Tally.Address()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": false, "error": err.Error(), "url": a.Tally.Address()})
 		return
 	}
 	companies, err := a.Tally.Companies(r.Context())
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"ok": false, "banner": banner, "error": err.Error(), "url": a.Tally.URL})
+		writeJSON(w, 200, map[string]any{"ok": false, "banner": banner, "error": err.Error(), "url": a.Tally.Address()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "banner": banner, "companies": companies, "url": a.Tally.URL})
+	if len(companies) == 0 {
+		if alt, cos := a.searchNearby(r.Context()); alt != nil {
+			companies = cos
+		} else {
+			writeJSON(w, 200, map[string]any{"ok": true, "banner": banner, "companies": companies, "url": a.Tally.Address(),
+				"local_tally": diagnose.LocalTallyHolds(a.Tally), "details": diagnose.Explain(a.Tally)})
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "banner": banner, "companies": companies, "url": a.Tally.Address()})
+}
+
+// searchNearby switches to another local port when a Tally there has
+// companies loaded (see tally.FindNearby). It runs at most every 20 seconds
+// and never while a share is running.
+func (a *App) searchNearby(ctx context.Context) (*tally.Client, []tally.Company) {
+	a.mu.Lock()
+	if a.job.Running || time.Since(a.searched) < 20*time.Second {
+		a.mu.Unlock()
+		return nil, nil
+	}
+	a.searched = time.Now()
+	a.mu.Unlock()
+	alt, cos := a.Tally.FindNearby(ctx)
+	if alt == nil {
+		return nil, nil
+	}
+	log.Printf("tally: no companies at %s, using %s (%d companies)", a.Tally.Address(), alt.Address(), len(cos))
+	a.Tally.SetURL(alt.Address())
+	a.Tally.SetUTF16(alt.UsesUTF16())
+	return alt, cos
 }
 
 func (a *App) otpSend(w http.ResponseWriter, r *http.Request) {

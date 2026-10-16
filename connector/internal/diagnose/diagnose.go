@@ -64,6 +64,12 @@ func Run(ctx context.Context, c *tally.Client, company, version string, progress
 	}
 	if co == nil {
 		fmt.Fprintf(&out, "FAIL  company %q is not open in Tally\n", company)
+		for _, line := range Explain(c) {
+			fmt.Fprintf(&out, "      %s\n", line)
+		}
+		if alt, cos := c.FindNearby(ctx); alt != nil {
+			fmt.Fprintf(&out, "      a Tally at %s has %d companies loaded\n", alt.Address(), len(cos))
+		}
 		return out.String()
 	}
 	name := co.Name

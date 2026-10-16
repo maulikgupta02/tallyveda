@@ -8,3 +8,7 @@ func gather() string {
 	return "OS: " + runtime.GOOS + " (system details are collected on Windows only)\n"
 }
 func sample() (float64, string) { return 0, "" }
+
+// PortOwner and LocalTally only know how to look on Windows.
+func PortOwner(port int) string { return "" }
+func LocalTally() []string      { return nil }

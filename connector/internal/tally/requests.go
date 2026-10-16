@@ -87,22 +87,62 @@ type Company struct {
 	AltVchID int64 `json:"-"`
 }
 
-// Companies lists the companies loaded in Tally. Some relays in front of
-// Tally (TallyPrime on AWS's "Sync with Local Applications") garble UTF-16
-// requests, and Tally then answers with an empty list, so an empty list is
-// retried in the other encoding, which is kept if it finds companies.
+// Companies lists the companies loaded in Tally. Relays in front of Tally
+// (TallyPrime on AWS's "Sync with Local Applications") can garble a request
+// so that Tally answers with an empty list. An empty list is retried in the
+// other encoding, then with Tally's built-in "List of Companies", which needs
+// no inline TDL; whichever encoding finds companies is kept.
 func (c *Client) Companies(ctx context.Context) ([]Company, error) {
 	out, err := c.companies(ctx)
 	if err != nil || len(out) > 0 {
+		c.setNote("")
 		return out, err
 	}
 	was := c.UsesUTF16()
-	c.setUTF16(!was)
-	if alt, err := c.companies(ctx); err == nil && len(alt) > 0 {
-		log.Printf("tally: no companies with UTF16=%v, found %d with UTF16=%v; keeping it", was, len(alt), !was)
-		return alt, nil
+	for _, enc := range []bool{!was, was} {
+		c.setUTF16(enc)
+		if enc != was {
+			if alt, err := c.companies(ctx); err == nil && len(alt) > 0 {
+				c.setNote(fmt.Sprintf("found with %s requests", encName(enc)))
+				log.Printf("tally: no companies in %s, %d in %s; keeping it", encName(was), len(alt), encName(enc))
+				return alt, nil
+			}
+		}
+		if alt, err := c.companyNames(ctx); err == nil && len(alt) > 0 {
+			c.setNote(fmt.Sprintf("found only through List of Companies (%s)", encName(enc)))
+			log.Printf("tally: inline company list empty, List of Companies has %d (%s)", len(alt), encName(enc))
+			return alt, nil
+		}
 	}
 	c.setUTF16(was)
+	c.setNote("no companies in UTF-16 or UTF-8, nor in List of Companies")
+	return out, nil
+}
+
+func encName(utf16 bool) string {
+	if utf16 {
+		return "UTF-16"
+	}
+	return "UTF-8"
+}
+
+// companyNames reads Tally's built-in "List of Companies" collection. It only
+// gives names, which is enough to pick a company and read its books.
+func (c *Client) companyNames(ctx context.Context) ([]Company, error) {
+	root, err := c.Post(ctx, `<ENVELOPE>
+<HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Companies</ID></HEADER>
+<BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></DESC></BODY></ENVELOPE>`)
+	if err != nil {
+		return nil, err
+	}
+	var out []Company
+	seen := map[string]bool{}
+	for _, n := range root.FindAll("COMPANY") {
+		if name := n.ObjectName(); name != "" && !seen[name] {
+			seen[name] = true
+			out = append(out, Company{Name: name, GUID: n.Field("GUID")})
+		}
+	}
 	return out, nil
 }
 

@@ -68,6 +68,7 @@
   h2 { margin: 0; font-family: var(--display); font-size: 28px; line-height: 1.2; font-weight: 700; letter-spacing: -.015em; }
   .head p, .lead { margin: 0; font-size: 15px; color: var(--text-2); line-height: 1.6; }
   .muted { color: var(--muted); font-size: 14px; margin: 0; }
+  .details-text { white-space: pre-wrap; word-break: break-word; font-size: 12px; margin: 10px 0 0; }
   .box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
 
   .fld { display: flex; flex-direction: column; gap: 6px; }
@@ -216,6 +217,10 @@
           <li>Set <b>TallyPrime acts as</b> to <b>Both</b> (or Server) and <b>Port</b> to <b>9000</b>. Accept and restart Tally if asked.</li>
         </ol>
       </div>
+      <details id="tallyDetails" class="box hidden" open>
+        <summary>Details for support</summary>
+        <pre id="tallyDetailsText" class="details-text"></pre>
+      </details>
       <p class="muted">This page checks again automatically every few seconds.</p>
     </section>
 
@@ -393,6 +398,7 @@ async function checkTally() {
       $("st1h").textContent = `Found ${n} open ${what}`;
       $("tallyMsg").textContent = `Connected to Tally. Companies open: ${s.companies.map(c => c.name).join(", ")}`;
       $("tallyHelp").classList.add("hidden");
+      $("tallyDetails").classList.add("hidden");
       const sel = $("company"), current = sel.value;
       sel.innerHTML = "";
       s.companies.forEach(c => { const o = document.createElement("option"); o.value = o.textContent = c.name; sel.appendChild(o); });
@@ -407,6 +413,13 @@ async function checkTally() {
     $("tallyMsg").textContent = s.ok ? "Tally is running, but no company is open. Please open your company in Tally."
                                      : "Tally could not be found on this computer. Please open Tally and check its connectivity settings.";
     $("tallyHelp").classList.toggle("hidden", s.ok);
+    if (s.ok && s.local_tally) {
+      $("tallyMsg").textContent = "TallyPrime installed on this computer is answering on port 9000, not your TallyPrime on AWS. "
+        + "Close the Tally on this computer (or change its port to 9001 under F1 → Settings → Connectivity), keep the Virtual Computer Connection client green, and this page will find your company.";
+    }
+    const details = [`Tally address: ${s.url || ""}`, ...(s.details || []), ...(s.error ? [`Error: ${s.error}`] : [])];
+    $("tallyDetailsText").textContent = details.join("\n");
+    $("tallyDetails").classList.toggle("hidden", !(s.details && s.details.length) && !s.error);
     renderSteps();
   } catch (e) {
     $("tallyMsg").textContent = "TallyVeda could not check Tally: " + e.message;

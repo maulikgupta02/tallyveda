@@ -3,8 +3,10 @@ package tally
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -105,5 +107,62 @@ func TestCompaniesKeepsEncodingWhenNoneOpen(t *testing.T) {
 	}
 	if !c.UsesUTF16() {
 		t.Fatal("client should stay on UTF-16")
+	}
+}
+
+// Some setups answer the inline-TDL company list with nothing but still serve
+// Tally's built-in List of Companies.
+func TestCompaniesFallsBackToListOfCompanies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(decode(body), "List of Companies") {
+			io.WriteString(w, `<ENVELOPE><COMPANY NAME="Acme Traders"><NAME>Acme Traders</NAME></COMPANY></ENVELOPE>`)
+			return
+		}
+		io.WriteString(w, "<ENVELOPE></ENVELOPE>")
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL)
+	cos, err := c.Companies(context.Background())
+	if err != nil || len(cos) != 1 || cos[0].Name != "Acme Traders" {
+		t.Fatalf("got %+v, %v", cos, err)
+	}
+	if !strings.Contains(c.Note(), "List of Companies") {
+		t.Fatalf("note should say how it was found: %q", c.Note())
+	}
+	if !strings.Contains(c.LastReply(), "Acme Traders") {
+		t.Fatalf("last reply not recorded: %q", c.LastReply())
+	}
+}
+
+// FindNearby finds a Tally with companies on another local port.
+func TestFindNearby(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &httptest.Server{Listener: ln, Config: &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			io.WriteString(w, "<RESPONSE>TallyPrime Server is Running</RESPONSE>")
+			return
+		}
+		io.WriteString(w, `<ENVELOPE><COMPANY NAME="Cloud Co"><GUID>g</GUID></COMPANY></ENVELOPE>`)
+	})}}
+	srv.Start()
+	defer srv.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+	defer func(old [2]int) { nearbyPorts = old }(nearbyPorts)
+	nearbyPorts = [2]int{port, port}
+
+	c := NewClient("http://127.0.0.1:1") // nothing listens on port 1
+	alt, cos := c.FindNearby(context.Background())
+	if alt == nil || len(cos) != 1 || cos[0].Name != "Cloud Co" {
+		t.Fatalf("got %v %+v", alt, cos)
+	}
+	if want := "http://127.0.0.1:" + strconv.Itoa(port); alt.Address() != want {
+		t.Fatalf("address %q, want %q", alt.Address(), want)
+	}
+	if other, _ := NewClient("http://example.com:9000").FindNearby(context.Background()); other != nil {
+		t.Fatal("must only search localhost")
 	}
 }
