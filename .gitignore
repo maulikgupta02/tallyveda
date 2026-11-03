@@ -11,3 +11,8 @@ connector/versioninfo.json
 
 # Demo seeder data, generated at build time
 connector/cmd/demoseed/data/*.xml.gz
+
+# Agent docs (local only)
+/project.md
+/design.md
+/docs/agents/
