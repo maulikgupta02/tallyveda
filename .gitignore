@@ -16,3 +16,6 @@ connector/cmd/demoseed/data/*.xml.gz
 /project.md
 /design.md
 /docs/agents/
+
+# Self-hosted VM secrets
+deploy/vm/tallyveda.env
