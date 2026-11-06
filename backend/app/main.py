@@ -73,7 +73,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, Field
 from starlette.middleware.gzip import GZipMiddleware
 
-from . import books, config, mailer, marketing, store
+from . import books, config, mailer, marketing, n8n, store
 from .analysis.alerts import compare, snapshot
 from .report import dashboard as dashboard_views, dashboard_charts as dc
 from .report import format as fmt
@@ -104,6 +104,8 @@ def housekeeping() -> int:
         store.record_audit("system", "retention.purged", "application", a["id"],
                            f"Raw books of {a['applicant_name']} deleted after {config.RETENTION_DAYS} days without sharing")
         purged += 1
+    if purged:
+        n8n.kick()
     return purged
 
 
@@ -134,6 +136,7 @@ async def _noindex_private_routes(request: Request, call_next):
     tool — never meant to rank. Belt-and-braces alongside robots.txt, since a
     crawler that already has a stale link shouldn't need to consult it."""
     _maybe_housekeeping()
+    n8n.maybe_deliver()  # retries for the MATTR AI bridge, driven by traffic like housekeeping
     response = await call_next(request)
     if request.url.path.startswith(_NOINDEX_PREFIXES):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
@@ -448,8 +451,9 @@ async def monitor_status(request: Request):
     except ValueError:
         beat = {}
     if isinstance(beat, dict):
-        store.record_heartbeat(a["id"], str(beat.get("tally") or ""), str(beat.get("error") or ""))
         store.set_connector_version(a["id"], str(beat.get("version") or ""))
+        if store.record_heartbeat(a["id"], str(beat.get("tally") or ""), str(beat.get("error") or "")):
+            n8n.kick()
     return _monitor_status(a)
 
 
@@ -567,7 +571,8 @@ async def sync_start(request: Request):
     except books.SyncBusy as e:
         raise HTTPException(503, str(e))
     store.set_connector_version(a["id"], body.connector_version)
-    store.record_heartbeat(a["id"], "ok")
+    if store.record_heartbeat(a["id"], "ok"):
+        n8n.kick()
     session = books.get_session(plan["sync_id"])
     books.stage(session, {"company": body.company, "machine": body.machine, "consent": body.consent,
                           "connector_version": body.connector_version})
@@ -581,7 +586,8 @@ def _sync_session(sync_id: str, request: Request) -> dict:
         raise HTTPException(404, "Unknown sync")
     if s["status"] != "open":
         raise HTTPException(409, f"This sync is {s['status']}")
-    store.record_heartbeat(a["id"], "ok")  # data just read from Tally: it is answering
+    if store.record_heartbeat(a["id"], "ok"):  # data just read from Tally: it is answering
+        n8n.kick()
     return s
 
 
@@ -647,12 +653,14 @@ def finish_sync(sync_id: str) -> None:
         if not store.latest_ready_report(app_id):
             store.set_status(app_id, "failed", f"{type(e).__name__}: {e}")
         return
+    n8n.kick()  # the snapshot committed with the book
     source = "refresh" if store.list_reports(app_id) else "initial"
     report_id = _store_upload(app_id, source, gzip.compress(json.dumps(bundle).encode()), bundle)
     if not bundle["sync"].get("history_pending"):
         store.end_share(app_id)  # a one-off share keeps its token until all the history is in
     needs_full = bundle["sync"]["needs_full"]
     process_report(report_id, bundle)
+    n8n.kick()  # a first report marks the company ready
     if needs_full:
         store.request_refresh(app_id)  # after the report, which clears the flag: full re-read at the next check-in
 
@@ -1126,6 +1134,7 @@ def msme_request_deletion(reason: str = Form(""), user: dict = Depends(msme_user
     a = _get_or_404(user["application_id"])
     store.stop_monitoring(a["id"], "client")
     store.request_deletion(a["id"], reason)
+    n8n.kick()
     store.record_audit(user["username"], "msme.deletion_requested", "application", a["id"],
                        "Requested deletion of the company's data")
     return RedirectResponse("/msme#privacy", status_code=303)
@@ -1473,6 +1482,7 @@ def admin_delete_msme(app_id: str, confirm: str = Form(...), user: dict = Depend
     if confirm.strip() != a["applicant_name"]:
         raise HTTPException(400, "Typed name did not match this MSME's name — nothing was deleted")
     store.delete_application(app_id)
+    n8n.kick()
     _audit(user, "msme.delete", "application", app_id, f"Deleted MSME {a['applicant_name']} and all its data")
     return RedirectResponse("/admin/msmes", status_code=303)
 

@@ -25,7 +25,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from . import config, store
+from . import config, n8n, store
 from .analysis.book import NON_ACCOUNTING_TYPES, _voucher_base_resolver
 
 MASTER_KEYS = ("groups", "ledgers", "voucher_types")
@@ -447,6 +447,7 @@ def finish(session: dict) -> dict:
         # The staged masters can be megabytes; the book now holds them.
         conn.execute("UPDATE sync_sessions SET status = 'done', staged = '{}', updated_at = ? WHERE id = ?",
                      (_now(), session["id"]))
+        n8n.queue_snapshot(conn, app_id)  # MATTR AI copy, committed with the book (or not at all)
 
     return {
         "schema_version": 1,

@@ -1,0 +1,29 @@
+# TallyVeda backend on the same VM as n8n.
+#   cd deploy/vm && cp tallyveda.env.example tallyveda.env   (fill it in; never commit it)
+#   docker compose up -d --build
+# See deploy/vm/README.md.
+services:
+  tallyveda:
+    build: ../../backend
+    image: tallyveda-backend:local
+    container_name: tallyveda
+    restart: unless-stopped
+    env_file: tallyveda.env
+    # Caddy runs on the host and proxies to 127.0.0.1, as it does for n8n (127.0.0.1:5678).
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - n8n-net
+    volumes:
+      - tallyveda-data:/data   # only used if DATABASE_URL is empty (SQLite)
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  n8n-net:
+    external: true   # the network n8n and its Postgres already use
+
+volumes:
+  tallyveda-data: {}
