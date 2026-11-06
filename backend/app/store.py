@@ -217,6 +217,26 @@ CREATE TABLE IF NOT EXISTS connector_telemetry (
 );
 CREATE INDEX IF NOT EXISTS connector_telemetry_by_install ON connector_telemetry(install_id, created_at);
 CREATE INDEX IF NOT EXISTS connector_telemetry_by_time ON connector_telemetry(created_at);
+CREATE TABLE IF NOT EXISTS n8n_outbox (
+    id TEXT PRIMARY KEY,
+    application_id TEXT NOT NULL,
+    kind TEXT NOT NULL,            -- snapshot | status | purge (see app/n8n.py)
+    batch_seq INTEGER NOT NULL,    -- per company, from n8n_seq
+    payload_gz BYTEA NOT NULL,
+    created_at TEXT NOT NULL,
+    sent_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    next_attempt_at TEXT NOT NULL,
+    dead_at TEXT,                  -- gave up after 24 hours
+    UNIQUE (application_id, batch_seq)
+);
+CREATE INDEX IF NOT EXISTS n8n_outbox_pending ON n8n_outbox(sent_at, dead_at, application_id, batch_seq);
+CREATE TABLE IF NOT EXISTS n8n_seq (
+    application_id TEXT PRIMARY KEY,
+    last_seq INTEGER NOT NULL,
+    status_ok_at TEXT              -- tally_ok_at last sent, to throttle heartbeat updates
+);
 """
 
 # Columns added after the first release; applied to existing databases.
@@ -250,6 +270,8 @@ MIGRATIONS = {
         "deletion_reason": "TEXT",
         "raw_purged_at": "TEXT",
         "connector_version": "TEXT",  # version of the connector that last started a sync
+        # Written agreement to forward this company's books to MATTR AI (app/n8n.py).
+        "mattr_forward": "INTEGER NOT NULL DEFAULT 0",
     },
     "tenants": {
         # Added for the platform admin panel. 'bank' is every pre-existing tenant;
@@ -692,15 +714,24 @@ def set_contact_email(app_id: str, email: str) -> None:
         )
 
 
-def record_heartbeat(app_id: str, tally: str, error: str = "") -> None:
-    """Notes whether Tally answered the connector's scheduled check."""
+def record_heartbeat(app_id: str, tally: str, error: str = "") -> bool:
+    """Notes whether Tally answered the connector's scheduled check. True when
+    that queued an update for MATTR AI (the caller then calls n8n.kick())."""
+    from . import n8n
+
+    if tally not in ("ok", "down"):
+        return False
     with db() as conn:
+        before = conn.execute(
+            "SELECT tally_ok_at, tally_down_since, tally_error, connector_version FROM applications WHERE id = ?", (app_id,)
+        ).fetchone()
         if tally == "ok":
             conn.execute("UPDATE applications SET tally_ok_at = ?, tally_down_since = NULL, tally_error = NULL WHERE id = ?",
                          (now().isoformat(), app_id))
         elif tally == "down":
             conn.execute("UPDATE applications SET tally_down_since = COALESCE(tally_down_since, ?), tally_error = ? WHERE id = ?",
                          (now().isoformat(), error[:300], app_id))
+        return n8n.queue_status(conn, app_id, dict(before) if before else None)
 
 
 def set_connector_version(app_id: str, version: str) -> None:
@@ -774,11 +805,14 @@ def mask_email(email: str | None) -> str:
 
 
 def request_deletion(app_id: str, reason: str) -> None:
+    from . import n8n
+
     with db() as conn:
         conn.execute(
             "UPDATE applications SET deletion_requested_at = ?, deletion_reason = ? WHERE id = ?",
             (now().isoformat(), reason.strip()[:1000], app_id),
         )
+        n8n.queue_purge(conn, app_id, "deletion requested")
 
 
 def deletion_requests() -> list[dict]:
@@ -792,11 +826,14 @@ def deletion_requests() -> list[dict]:
 def purge_raw(app_id: str) -> None:
     """Retention: delete the raw books (synced vouchers and every uploaded
     bundle) and connector logs, keeping each report's figures and pages."""
+    from . import n8n
+
     with db() as conn:
         for table in ("books", "book_vouchers", "sync_sessions", "connector_logs"):
             conn.execute(f"DELETE FROM {table} WHERE application_id = ?", (app_id,))
         reports = conn.execute("SELECT id FROM reports WHERE application_id = ?", (app_id,)).fetchall()
         conn.execute("UPDATE applications SET raw_purged_at = ? WHERE id = ?", (now().isoformat(), app_id))
+        n8n.queue_purge(conn, app_id, "retention purge")
     for r in reports:
         delete_report_file(app_id, r["id"], "bundle.json.gz")
 
@@ -861,7 +898,11 @@ def delete_application(app_id: str) -> None:
     login. Used by /admin/msmes/{id} delete, behind a typed confirmation."""
     import shutil
 
+    from . import n8n
+
     with db() as conn:
+        # Queued before the row goes: the outbox row outlives the application.
+        n8n.queue_purge(conn, app_id, "deleted")
         if IS_POSTGRES:
             conn.execute("DELETE FROM report_files WHERE application_id = ?", (app_id,))
         conn.execute("DELETE FROM reports WHERE application_id = ?", (app_id,))
@@ -1001,8 +1042,11 @@ def create_report(app_id: str, source: str, company_name: str) -> str:
 
 
 def finish_report(report_id: str, period_to: str, indicators: list, snapshot: dict, high_flags: int, alerts: list) -> None:
+    from . import n8n
+
     with db() as conn:
         r = conn.execute("SELECT application_id, created_at FROM reports WHERE id = ?", (report_id,)).fetchone()
+        before = conn.execute("SELECT status FROM applications WHERE id = ?", (r["application_id"],)).fetchone()
         conn.execute(
             "UPDATE reports SET status = 'ready', error = NULL, period_to = ?, indicators_json = ?, snapshot_json = ?,"
             " high_flags = ?, alerts_json = ? WHERE id = ?",
@@ -1013,6 +1057,8 @@ def finish_report(report_id: str, period_to: str, indicators: list, snapshot: di
             " force_refresh = 0 WHERE id = ?",
             (report_id, r["created_at"], r["application_id"]),
         )
+        if before and before["status"] != "ready":
+            n8n.queue_status(conn, r["application_id"], dict(before))
 
 
 def fail_report(report_id: str, error: str) -> None:
