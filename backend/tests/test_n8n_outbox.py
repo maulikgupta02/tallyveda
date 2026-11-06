@@ -56,13 +56,8 @@ class Wire:
         return self.answer(part)
 
 
-def new_app(client, name="Shree Ganesh", forward=True):
-    from app import store
-
-    a = client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": name, "monitoring": True}).json()
-    with store.db() as conn:
-        conn.execute("UPDATE applications SET mattr_forward = ? WHERE id = ?", (int(forward), a["id"]))
-    return a
+def new_app(client, name="Shree Ganesh"):
+    return client.post("/api/bank/applications", auth=AUTH, json={"applicant_name": name, "monitoring": True}).json()
 
 
 def full_sync(client, a, bundle, bearer=None):
@@ -286,33 +281,50 @@ def test_purge_on_deletion_request_retention_and_delete(client, bundle, monkeypa
     assert {c["part"]["kind"] for c in wire.calls} == {"purge"}
 
 
-def test_nothing_queued_when_off_or_not_flagged(client, bundle, monkeypatch):
+def test_nothing_queued_or_sent_when_off(client, bundle, monkeypatch):
     from app import config, n8n, store
 
-    a = new_app(client, "Not Flagged", forward=False)
+    monkeypatch.setattr(config, "N8N_WEBHOOK_URL", "")
+    a = new_app(client, "Bridge off")
     bearer, _ = full_sync(client, a, bundle)
     client.post("/api/connector/monitor/status", headers=bearer, json={"tally": "down", "error": "x"})
+    store.request_deletion(a["id"], "")
     assert outbox() == []
+    wire = Wire(monkeypatch)
+    assert n8n.deliver_pending()["sent"] == 0 and wire.calls == []
+
+
+def test_switching_on_sends_existing_companies(client, bundle, monkeypatch):
+    """Companies synced before the bridge was on are sent without any command,
+    a few per run; one that asked for deletion is purged instead."""
+    from app import config, n8n, store
 
     monkeypatch.setattr(config, "N8N_WEBHOOK_URL", "")
-    b = new_app(client, "Flagged, bridge off")
-    full_sync(client, b, bundle)
-    store.request_deletion(b["id"], "")
+    apps = [new_app(client, f"Old {i}") for i in range(4)]
+    for a in apps:
+        full_sync(client, a, bundle)
+    store.request_deletion(apps[3]["id"], "")
     assert outbox() == []
-    assert n8n.deliver_pending() == {"sent": 0, "failed": 0, "dead": 0, "resynced": 0}
+
+    monkeypatch.setattr(config, "N8N_WEBHOOK_URL", "https://n8n.invalid/webhook/mattr-bridge")
+    monkeypatch.setattr(n8n, "BACKFILL_PER_RUN", 3)
+    wire = Wire(monkeypatch)
+    assert n8n.deliver_pending()["backfilled"] == 3
+    assert n8n.deliver_pending()["backfilled"] == 1
+    assert n8n.deliver_pending()["backfilled"] == 0  # each company once
+    kinds = {c["part"]["application_id"]: c["part"]["kind"] for c in wire.calls}
+    assert kinds == {**{a["id"]: "snapshot" for a in apps[:3]}, apps[3]["id"]: "purge"}
 
 
-def test_forward_off_purges_and_on_sends_a_snapshot(client, bundle, monkeypatch):
+def test_resync_queues_a_fresh_snapshot(client, bundle, monkeypatch):
     from app import n8n
 
-    a = new_app(client, forward=False)
+    a = new_app(client)
     full_sync(client, a, bundle)
-    assert outbox() == []
-    assert n8n.set_forward(a["id"], False) is None  # never sent: nothing to purge
-    assert n8n.set_forward(a["id"], True) == 1
-    assert n8n.set_forward(a["id"], False) == 2
-    assert [r["kind"] for r in outbox(a["id"])] == ["snapshot", "purge"]
-    assert outbox(a["id"])[0]["payload_gz"] == b""  # superseded by the purge
+    Wire(monkeypatch)
+    n8n.deliver_pending()
+    assert n8n.resync(a["id"]) == 3
+    assert n8n.deliver_pending()["sent"] == 1
 
 
 def test_large_company_is_chunked(client, model, monkeypatch):

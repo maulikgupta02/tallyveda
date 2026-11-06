@@ -9,8 +9,7 @@ second bank, or adding another login for an existing bank, is done from here:
 
 MATTR AI bridge (app/n8n.py; needs TC_N8N_WEBHOOK_URL and TC_N8N_WEBHOOK_SECRET):
 
-    python -m app.manage mattr-forward <application_id> on|off
-    python -m app.manage n8n-resync <application_id> | --all-flagged
+    python -m app.manage n8n-resync <application_id> | --all
     python -m app.manage n8n-deliver
     python -m app.manage n8n-reconcile [<application_id>] [--compare n8n.json]
 
@@ -68,37 +67,20 @@ def _need_bridge() -> None:
         raise SystemExit("The MATTR AI bridge is off: set TC_N8N_WEBHOOK_URL and TC_N8N_WEBHOOK_SECRET.")
 
 
-def mattr_forward(args: argparse.Namespace) -> None:
-    from . import n8n
-
-    _need_bridge()
-    a = store.get_application(args.application_id)
-    if not a:
-        raise SystemExit(f"No such application: {args.application_id}")
-    on = args.state == "on"
-    seq = n8n.set_forward(a["id"], on)
-    store.record_audit("cli", "mattr.forward_on" if on else "mattr.forward_off", "application", a["id"],
-                       f"MATTR AI forwarding {'on' if on else 'off'} for {a['applicant_name']}")
-    what = "snapshot" if on else "purge"
-    print(f"{a['applicant_name']}: forwarding {args.state}" + (f", {what} queued as batch {seq}" if seq else
-          ("" if on is False else " (no books yet: the next sync sends them)")))
-    print(n8n.deliver_pending())
-
-
 def n8n_resync(args: argparse.Namespace) -> None:
     from . import n8n
 
     _need_bridge()
-    if args.all_flagged:
+    if args.all:
         with store.db() as conn:
-            ids = [r["id"] for r in conn.execute("SELECT id FROM applications WHERE mattr_forward = 1").fetchall()]
+            ids = [r["application_id"] for r in conn.execute("SELECT application_id FROM books ORDER BY 1").fetchall()]
     elif args.application_id:
         ids = [args.application_id]
     else:
-        raise SystemExit("Give an application id or --all-flagged")
+        raise SystemExit("Give an application id or --all")
     for app_id in ids:
         seq = n8n.resync(app_id)
-        print(f"{app_id}: " + (f"snapshot queued as batch {seq}" if seq else "nothing queued (not flagged, or no books)"))
+        print(f"{app_id}: " + (f"snapshot queued as batch {seq}" if seq else "nothing queued (no books)"))
     print(n8n.deliver_pending())
 
 
@@ -128,8 +110,8 @@ def n8n_reconcile(args: argparse.Namespace) -> None:
         ids = [args.application_id]
     else:
         with store.db() as conn:
-            ids = [r["id"] for r in conn.execute(
-                "SELECT id FROM applications WHERE mattr_forward = 1 ORDER BY id").fetchall()]
+            ids = [r["application_id"] for r in conn.execute(
+                "SELECT application_id FROM books ORDER BY application_id").fetchall()]
     ours = {i: n8n.reconcile_facts(i) for i in ids}
     if not args.compare:
         print(json.dumps(list(ours.values()), indent=2))
@@ -180,14 +162,9 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=200)
     p.set_defaults(func=list_leads)
 
-    p = sub.add_parser("mattr-forward", help="Flag a company for MATTR AI (written agreement on file), or unflag it")
-    p.add_argument("application_id")
-    p.add_argument("state", choices=("on", "off"))
-    p.set_defaults(func=mattr_forward)
-
     p = sub.add_parser("n8n-resync", help="Queue a fresh snapshot of a company's books for MATTR AI")
     p.add_argument("application_id", nargs="?")
-    p.add_argument("--all-flagged", action="store_true")
+    p.add_argument("--all", action="store_true", help="every company with books")
     p.set_defaults(func=n8n_resync)
 
     p = sub.add_parser("n8n-deliver", help="Send what is waiting for MATTR AI now and list what is stuck")

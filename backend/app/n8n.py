@@ -5,14 +5,15 @@ The backend is the system of record; the bot's database (`tally_data`, next
 to n8n) is a projection that never computes books itself. Data flows one way:
 
 - `snapshot`: written in the same transaction as `books.finish()` (and by
-  `manage.py n8n-resync`). It holds the bot's columns of `applications`, the
+  `manage.py n8n-resync`). After the bridge is first switched on, companies
+  n8n has never received are queued automatically, a few per run (`_backfill`). It holds the bot's columns of `applications`, the
   `books` row, every `book_vouchers` row and the latest `sync_sessions` row.
   n8n replaces that company's rows with it, so a snapshot is self-contained.
 - `status`: the Tally connection columns, when a monitoring check-in changes
   them (or the copy in n8n is over an hour old), so "is Tally connected?"
   stays right between syncs.
-- `purge`: retention purge, deletion request, deletion, or forwarding turned
-  off. n8n deletes the company's rows and its chat memory.
+- `purge`: retention purge, deletion request or deletion. n8n deletes the
+  company's rows and its chat memory.
 
 Rows go into `n8n_outbox` with a per-company `batch_seq` (from `n8n_seq`,
 whose row lock keeps two writers from taking the same number). A worker
@@ -28,8 +29,8 @@ compression, signed with HMAC-SHA256 over `timestamp + "." + raw body`.
 Payloads are financial data: they are never logged, and sent rows are
 deleted after SENT_KEEP_DAYS.
 
-Off unless TC_N8N_WEBHOOK_URL and TC_N8N_WEBHOOK_SECRET are both set, and
-only for companies with `applications.mattr_forward = 1`.
+Off unless TC_N8N_WEBHOOK_URL and TC_N8N_WEBHOOK_SECRET are both set. Every
+company is forwarded: only companies that agree to full data access are onboarded.
 """
 
 from __future__ import annotations
@@ -81,15 +82,6 @@ def _now() -> str:
 # commits (or rolls back) with the change it describes.
 
 
-def _forwarded(conn, app_id: str) -> bool:
-    row = conn.execute("SELECT mattr_forward FROM applications WHERE id = ?", (app_id,)).fetchone()
-    return bool(row and row["mattr_forward"])
-
-
-def _was_sent(conn, app_id: str) -> bool:
-    return conn.execute("SELECT 1 FROM n8n_seq WHERE application_id = ?", (app_id,)).fetchone() is not None
-
-
 def _app_row(conn, app_id: str) -> dict | None:
     row = conn.execute(f"SELECT {', '.join(APP_COLUMNS)} FROM applications WHERE id = ?", (app_id,)).fetchone()
     return dict(row) if row else None
@@ -123,8 +115,8 @@ def _enqueue(conn, app_id: str, kind: str, body: dict, status_ok_at: str | None 
 
 def queue_snapshot(conn, app_id: str) -> int | None:
     """Queue the company's applied state, read through `conn` so it is exactly
-    what this transaction commits. None when off, not flagged or no books."""
-    if not enabled() or not _forwarded(conn, app_id):
+    what this transaction commits. None when off or without books."""
+    if not enabled():
         return None
     book = conn.execute(
         "SELECT application_id, state, max_alter_id, last_full_at, updated_at FROM books WHERE application_id = ?",
@@ -155,7 +147,7 @@ def queue_status(conn, app_id: str, before: dict | None) -> bool:
     columns when the Tally state flipped, the error, connector version or
     status changed (the bot only lists 'ready' companies), or n8n's copy of
     tally_ok_at is over an hour old. `before` holds the columns read earlier."""
-    if not enabled() or not _forwarded(conn, app_id):
+    if not enabled():
         return False
     seq = conn.execute("SELECT status_ok_at FROM n8n_seq WHERE application_id = ?", (app_id,)).fetchone()
     if not seq:
@@ -174,21 +166,45 @@ def queue_status(conn, app_id: str, before: dict | None) -> bool:
 
 
 def queue_purge(conn, app_id: str, reason: str) -> int | None:
-    """Queue deletion of the company from n8n, if it was ever sent there. Sent
-    even after forwarding was switched off: that is when it matters."""
-    if not enabled() or not _was_sent(conn, app_id):
+    """Queue deletion of the company from n8n. Sent even if the bridge never
+    sent it: the bot's database may still hold it from the old manual dump."""
+    if not enabled():
         return None
     return _enqueue(conn, app_id, "purge", {"reason": reason})
 
 
-def set_forward(app_id: str, on: bool) -> int | None:
-    """Flag a company for MATTR AI (and queue its books) or unflag it (and
-    queue a purge). Returns the queued batch_seq, if any."""
+BACKFILL_PER_RUN = 3  # snapshots are read into memory one at a time; keep each run small
+
+
+def _backfill() -> int:
+    """Companies n8n has never been sent (the bridge was just switched on):
+    queue a snapshot, or a purge for those already deleted or purged here.
+    A few per run, so the first runs after a deploy stay light."""
     with store.db() as conn:
-        conn.execute("UPDATE applications SET mattr_forward = ? WHERE id = ?", (int(on), app_id))
-        seq = queue_snapshot(conn, app_id) if on else queue_purge(conn, app_id, "forwarding switched off")
-    kick()
-    return seq
+        rows = conn.execute(
+            "SELECT a.id, a.deletion_requested_at, a.raw_purged_at FROM applications a"
+            " WHERE NOT EXISTS (SELECT 1 FROM n8n_seq s WHERE s.application_id = a.id)"
+            " AND (a.deletion_requested_at IS NOT NULL OR a.raw_purged_at IS NOT NULL"
+            "      OR EXISTS (SELECT 1 FROM books b WHERE b.application_id = a.id))"
+            " ORDER BY a.id LIMIT ?",
+            (BACKFILL_PER_RUN,),
+        ).fetchall()
+    for r in rows:
+        with store.db() as conn:
+            if r["deletion_requested_at"] or r["raw_purged_at"]:
+                queue_purge(conn, r["id"], "deletion requested" if r["deletion_requested_at"] else "retention purge")
+            else:
+                queue_snapshot(conn, r["id"])
+    return len(rows)
+
+
+def _backfill_due() -> bool:
+    with store.db() as conn:
+        return conn.execute(
+            "SELECT 1 FROM applications a WHERE NOT EXISTS (SELECT 1 FROM n8n_seq s WHERE s.application_id = a.id)"
+            " AND (a.deletion_requested_at IS NOT NULL OR a.raw_purged_at IS NOT NULL"
+            "      OR EXISTS (SELECT 1 FROM books b WHERE b.application_id = a.id)) LIMIT 1"
+        ).fetchone() is not None
 
 
 def resync(app_id: str) -> int | None:
@@ -307,7 +323,7 @@ def maybe_deliver() -> None:
             "SELECT 1 FROM n8n_outbox WHERE sent_at IS NULL AND dead_at IS NULL AND next_attempt_at <= ? LIMIT 1",
             (_now(),),
         ).fetchone()
-    if due:
+    if due or _backfill_due():
         kick()
 
 
@@ -322,9 +338,10 @@ def _backoff(attempts: int) -> timedelta:
 
 
 def _deliver_locked() -> dict:
-    stats = {"sent": 0, "failed": 0, "dead": 0, "resynced": 0}
+    stats = {"sent": 0, "failed": 0, "dead": 0, "resynced": 0, "backfilled": 0}
     if not enabled():
         return stats
+    stats["backfilled"] = _backfill()
     for _ in range(3):  # a 409 queues a snapshot; send it in the same run
         resynced = stats["resynced"]
         _deliver_pass(stats)

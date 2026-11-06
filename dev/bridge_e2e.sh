@@ -61,7 +61,6 @@ APP=$(curl -sf -u admin:admin -H 'Content-Type: application/json' \
 CODE=$(python3 -c 'import sys,json;print(json.loads(sys.argv[1])["link_code"])' "$APP")
 ID=$(python3 -c 'import sys,json;print(json.loads(sys.argv[1])["id"])' "$APP")
 echo "application $ID"
-manage mattr-forward "$ID" on
 
 export TC_HOME="$WORK/home"
 "$WORK/connector" -tally "http://localhost:$TALLY_PORT" -server "http://localhost:$API_PORT" \

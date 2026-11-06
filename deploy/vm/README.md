@@ -82,7 +82,7 @@ doubles the traffic.
 Commands run inside the container:
 
 ```bash
-docker exec -it tallyveda python -m app.manage mattr-forward <application_id> on
+docker exec -it tallyveda python -m app.manage n8n-resync --all   # only if you want everything resent now
 docker exec -it tallyveda python -m app.manage n8n-deliver
 docker exec -i postgres psql -U postgres -d tally_data -Atc 'SELECT bridge_reconcile_all()' > /tmp/n8n.json
 docker cp /tmp/n8n.json tallyveda:/tmp/n8n.json

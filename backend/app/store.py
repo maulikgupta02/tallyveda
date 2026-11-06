@@ -270,8 +270,6 @@ MIGRATIONS = {
         "deletion_reason": "TEXT",
         "raw_purged_at": "TEXT",
         "connector_version": "TEXT",  # version of the connector that last started a sync
-        # Written agreement to forward this company's books to MATTR AI (app/n8n.py).
-        "mattr_forward": "INTEGER NOT NULL DEFAULT 0",
     },
     "tenants": {
         # Added for the platform admin panel. 'bank' is every pre-existing tenant;
