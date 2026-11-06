@@ -49,10 +49,10 @@ If anything goes wrong later, this file restores the bot's data.
 
 ## Step 2. Install the bridge's database functions (5 minutes)
 
-Copy `audit/n8n-reference/n8n_bridge.sql` from your Mac to the VM. On your Mac:
+Copy `deploy/n8n/n8n_bridge.sql` from your Mac to the VM. On your Mac:
 
 ```bash
-gcloud compute scp audit/n8n-reference/n8n_bridge.sql <vm-name>:~/ --zone <zone>
+gcloud compute scp deploy/n8n/n8n_bridge.sql <vm-name>:~/ --zone <zone>
 ```
 
 Any other copy method works too. Then, on the VM:
@@ -130,7 +130,7 @@ edit workflows, but don't give other people editor access.
 ## Step 4. Import the new workflow (10 minutes)
 
 1. In n8n: **Overview → Create workflow → ⋯ (top right) → Import from File**,
-   and pick `audit/n8n-reference/Tally_bridge.json`.
+   and pick `deploy/n8n/Tally_bridge.json`.
 2. Open the **Store and apply** node. Under *Credential*, pick the existing
    **Postgres n8n_ingest**, the same one **Tally ingest (secure)** uses. Close the node.
 3. Click **Save**, then **Publish**.

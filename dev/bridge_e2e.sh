@@ -17,7 +17,12 @@ ROOT=$PWD
 PSQL=${PSQL:-psql}
 N8N_DB=tv_bridge_n8n
 BACK_DB=tv_bridge_backend
-REF=audit/n8n-reference
+# The bot's own SQL (whatsapp_bot.sql, access_v1.sql, ...) is not in this repo:
+# point BOT_SQL_DIR at a folder holding a copy. The bridge's SQL is in deploy/n8n.
+BOT_SQL_DIR=${BOT_SQL_DIR:-audit/n8n-reference}
+for f in whatsapp_bot.sql whatsapp_bot_memory_addon.sql fix_01_posting_vouchers.sql access_v1.sql; do
+  [ -f "$BOT_SQL_DIR/$f" ] || { echo "Missing $BOT_SQL_DIR/$f: set BOT_SQL_DIR to the bot's SQL files"; exit 1; }
+done
 WORK=$(mktemp -d)
 TALLY_PORT=${TALLY_PORT:-9101}
 API_PORT=${API_PORT:-8766}
@@ -35,8 +40,9 @@ done
 export TC_DEV=1 TC_DATA_DIR="$WORK/data"
 (cd backend && DATABASE_URL="postgresql://postgres@$PGHOST:$PGPORT/$N8N_DB" .venv/bin/python -c "from app import store; store._connect().close()")
 # n8n_bridge.sql grants on database tally_data; this scratch one has another name.
-for f in whatsapp_bot.sql whatsapp_bot_memory_addon.sql fix_01_posting_vouchers.sql access_v1.sql n8n_bridge.sql; do
-  sed "s/DATABASE tally_data/DATABASE $N8N_DB/" "$REF/$f" | q >/dev/null
+for f in "$BOT_SQL_DIR"/whatsapp_bot.sql "$BOT_SQL_DIR"/whatsapp_bot_memory_addon.sql \
+         "$BOT_SQL_DIR"/fix_01_posting_vouchers.sql "$BOT_SQL_DIR"/access_v1.sql deploy/n8n/n8n_bridge.sql; do
+  sed "s/DATABASE tally_data/DATABASE $N8N_DB/" "$f" | q >/dev/null
 done
 echo "n8n database ready"
 

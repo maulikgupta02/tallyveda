@@ -424,7 +424,7 @@ def _alert(app_id: str, row: dict, error: str) -> None:
 
 # ------------------------------------------------------------- reconciliation
 # The same figures are computed by bridge_reconcile() in
-# audit/n8n-reference/n8n_bridge.sql, so the two outputs compare as JSON.
+# deploy/n8n/n8n_bridge.sql, so the two outputs compare as JSON.
 
 
 def _money(x) -> str:

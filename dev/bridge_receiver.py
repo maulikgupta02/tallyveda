@@ -1,5 +1,5 @@
 """Stand-in for the n8n "Tally bridge (MATTR AI)" workflow
-(audit/n8n-reference/Tally_bridge.json), for local runs of dev/bridge_e2e.sh:
+(deploy/n8n/Tally_bridge.json), for local runs of dev/bridge_e2e.sh:
 the same checks as its Code node (HMAC over timestamp + "." + raw body,
 5-minute window, gunzip), then the same SQL call its Postgres node makes.
 

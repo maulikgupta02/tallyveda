@@ -19,3 +19,5 @@ connector/cmd/demoseed/data/*.xml.gz
 
 # Self-hosted VM secrets
 deploy/vm/tallyveda.env
+
+.DS_Store
