@@ -73,3 +73,14 @@ CONNECTOR_URL = os.environ.get("TC_CONNECTOR_URL", "")
 # JSON-LD). No trailing slash. Defaults to the live Render URL — change it once a real
 # domain is bought (see project.md).
 PUBLIC_URL = os.environ.get("TC_PUBLIC_URL", "https://tally-connector-1lir.onrender.com").rstrip("/")
+
+# MATTR AI bridge: after each successful sync the backend pushes the company's
+# applied books to an n8n webhook, which replaces that company's rows in the
+# WhatsApp bot's database (see app/n8n.py). Both must be set to switch it on;
+# unset, nothing is queued or sent. Only companies flagged with
+# `python -m app.manage mattr-forward <id> on` are forwarded.
+N8N_WEBHOOK_URL = os.environ.get("TC_N8N_WEBHOOK_URL", "").strip()
+N8N_WEBHOOK_SECRET = os.environ.get("TC_N8N_WEBHOOK_SECRET", "")
+# Optional: where delivery failures that gave up after 24 hours are emailed
+# (needs the TC_SMTP_* settings). Unset: they are only logged.
+ALERT_EMAIL = os.environ.get("TC_ALERT_EMAIL", "")
