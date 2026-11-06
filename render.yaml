@@ -21,3 +21,10 @@ services:
         generateValue: true
       - key: TC_BANK_NAME
         value: Demo Bank
+      # MATTR AI bridge (app/n8n.py). Leave unset to keep it off.
+      - key: TC_N8N_WEBHOOK_URL
+        sync: false
+      - key: TC_N8N_WEBHOOK_SECRET
+        sync: false
+      - key: TC_ALERT_EMAIL
+        sync: false
